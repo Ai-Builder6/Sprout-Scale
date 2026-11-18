@@ -17,7 +17,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { LogOut, Plus } from 'lucide-react';
+import { Cake, Camera, LogOut, Plus } from 'lucide-react';
 import {
   clearAccessToken,
   db,
@@ -29,16 +29,22 @@ import {
 } from './firebase';
 import {
   AccessoryId,
+  calculateExactAgeFromDob,
   ChildProfile,
   clampNumber,
   DEMO_CHILD,
   DEMO_MEASUREMENTS,
+  formatHumanDate,
+  getLocalTodayIso,
+  GrowthMeasurement,
+  HAIR_COLOR_PRESETS,
   HairStyle,
   PaletteId,
+  sanitizeHexColor,
   sanitizeId,
+  SKIN_TONE_PRESETS,
   UnitSystem,
   VALIDATION_BOUNDS,
-  GrowthMeasurement,
 } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { GrowthWallStage } from './components/GrowthWallStage';
@@ -50,14 +56,20 @@ import { GrowthTimelineSection } from './components/GrowthTimelineSection';
 import { HowToMeasureSection } from './components/HowToMeasureSection';
 import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { GoogleDriveVaultSection } from './components/GoogleDriveVaultSection';
-import { GrowthBackupPayload } from './services/googleDriveService';
+import { ChildAvatarPhotoModal } from './components/ChildAvatarPhotoModal';
+import {
+  getLocalAvatarDataUrl,
+  removeLocalAvatarDataUrl,
+  saveLocalAvatarDataUrl,
+} from './services/avatarPhotoService';
+import {
+  downloadDriveImageAsDataUrl,
+  GrowthBackupPayload,
+  uploadChildAvatarToDrive,
+} from './services/googleDriveService';
 
 function getTodayIsoDate(): string {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  return getLocalTodayIso();
 }
 
 function SproutScaleWorkspace() {
@@ -103,12 +115,23 @@ function SproutScaleWorkspace() {
   const [isPlayingTimelapse, setIsPlayingTimelapse] = useState<boolean>(false);
   const timelapseTimerRef = useRef<number | null>(null);
 
+  // Realistic Child Photo Avatar cache & Studio modal state
+  const [avatarPhotoMap, setAvatarPhotoMap] = useState<Record<string, string>>({});
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
+
   // Active children list & measurements depending on Auth state
   const activeChildrenList = user ? cloudChildren : demoChildren;
   const activeChild: ChildProfile = useMemo(() => {
     const found = activeChildrenList.find((c) => c.id === selectedChildId);
     return found ?? activeChildrenList[0] ?? DEMO_CHILD;
   }, [activeChildrenList, selectedChildId]);
+
+  const activeAvatarPhotoUrl = avatarPhotoMap[activeChild.id] ?? null;
+
+  const activeChildLiveAge = useMemo(
+    () => (activeChild.birthDate ? calculateExactAgeFromDob(activeChild.birthDate) : null),
+    [activeChild.birthDate],
+  );
 
   const activeMeasurements: GrowthMeasurement[] = useMemo(() => {
     if (user) {
@@ -117,13 +140,16 @@ function SproutScaleWorkspace() {
     return demoMeasurementsMap[activeChild.id] ?? [];
   }, [user, cloudMeasurements, demoMeasurementsMap, activeChild.id]);
 
-  // Latest recorded milestone for active child (fallback to Age 2 baseline)
+  // Latest recorded milestone for active child (fallback to Age 2 baseline or DOB age)
   const latestMilestone = useMemo(() => {
     if (activeMeasurements.length === 0) {
+      const dobMonths = activeChild.birthDate
+        ? calculateExactAgeFromDob(activeChild.birthDate)?.totalMonths
+        : undefined;
       return {
         heightCm: activeChild.ageTwoHeightCm,
         weightKg: activeChild.ageTwoWeightKg,
-        ageMonths: 24,
+        ageMonths: dobMonths ?? 24,
       };
     }
     const sorted = [...activeMeasurements].sort((a, b) => b.ageMonths - a.ageMonths);
@@ -135,9 +161,61 @@ function SproutScaleWorkspace() {
     if (!isPlayingTimelapse) {
       setDraftHeightCm(latestMilestone.heightCm);
       setDraftWeightKg(latestMilestone.weightKg);
-      setDraftAgeMonths(latestMilestone.ageMonths);
+      if (activeChild.birthDate && activeMeasurements.length <= 1) {
+        const calc = calculateExactAgeFromDob(activeChild.birthDate, draftDate);
+        setDraftAgeMonths(calc ? calc.totalMonths : latestMilestone.ageMonths);
+      } else {
+        setDraftAgeMonths(latestMilestone.ageMonths);
+      }
     }
-  }, [activeChild.id, latestMilestone.heightCm, latestMilestone.weightKg, latestMilestone.ageMonths, isPlayingTimelapse]);
+  }, [
+    activeChild.id,
+    activeChild.birthDate,
+    activeMeasurements.length,
+    draftDate,
+    latestMilestone.heightCm,
+    latestMilestone.weightKg,
+    latestMilestone.ageMonths,
+    isPlayingTimelapse,
+  ]);
+
+  // Load cached portrait photos from IndexedDB (and Google Drive when fileId is present)
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncPortraits = async () => {
+      for (const kid of activeChildrenList) {
+        if (avatarPhotoMap[kid.id]) continue;
+
+        const cachedLocal = await getLocalAvatarDataUrl(kid.id);
+        if (cancelled) return;
+
+        if (cachedLocal) {
+          setAvatarPhotoMap((prev) => (prev[kid.id] ? prev : { ...prev, [kid.id]: cachedLocal }));
+          continue;
+        }
+
+        if (kid.avatarDriveFileId && accessToken) {
+          try {
+            const downloaded = await downloadDriveImageAsDataUrl(
+              accessToken,
+              kid.avatarDriveFileId,
+            );
+            if (cancelled) return;
+            await saveLocalAvatarDataUrl(kid.id, downloaded);
+            setAvatarPhotoMap((prev) => ({ ...prev, [kid.id]: downloaded }));
+          } catch {
+            // Keep illustrated fallback if Drive photo is unavailable or requires re-auth
+          }
+        }
+      }
+    };
+
+    void syncPortraits();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChildrenList, accessToken, avatarPhotoMap]);
 
   // 1. Initialize Firebase Auth & In-Memory OAuth Token state
   useEffect(() => {
@@ -153,11 +231,15 @@ function SproutScaleWorkspace() {
           await setDoc(doc(db, 'children', firstChildId), {
             ownerId: currentUser.uid,
             name: DEMO_CHILD.name,
+            birthDate: DEMO_CHILD.birthDate,
             ageTwoHeightCm: DEMO_CHILD.ageTwoHeightCm,
             ageTwoWeightKg: DEMO_CHILD.ageTwoWeightKg,
             paletteId: DEMO_CHILD.paletteId,
             accessoryId: DEMO_CHILD.accessoryId,
             hairStyle: DEMO_CHILD.hairStyle,
+            skinTone: DEMO_CHILD.skinTone,
+            hairColor: DEMO_CHILD.hairColor,
+            avatarDriveFileId: '',
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -219,15 +301,32 @@ function SproutScaleWorkspace() {
       (snapshot) => {
         const loaded: ChildProfile[] = snapshot.docs.map((docSnap) => {
           const d = docSnap.data();
+          const rawBirthDate = String(d.birthDate ?? '');
+          const rawDriveFileId = String(d.avatarDriveFileId ?? '');
           return {
             id: docSnap.id,
             ownerId: String(d.ownerId ?? user.uid),
             name: String(d.name ?? 'Sprout'),
+            birthDate: VALIDATION_BOUNDS.DATE_PATTERN.test(rawBirthDate) ? rawBirthDate : '',
             ageTwoHeightCm: Number(d.ageTwoHeightCm ?? 86.5),
             ageTwoWeightKg: Number(d.ageTwoWeightKg ?? 12.5),
             paletteId: (d.paletteId as PaletteId) ?? 'meadow',
             accessoryId: (d.accessoryId as AccessoryId) ?? 'sprout',
             hairStyle: (d.hairStyle as HairStyle) ?? 'curls',
+            skinTone: sanitizeHexColor(
+              typeof d.skinTone === 'string' ? d.skinTone : undefined,
+              SKIN_TONE_PRESETS[1].hex,
+            ),
+            hairColor: sanitizeHexColor(
+              typeof d.hairColor === 'string' ? d.hairColor : undefined,
+              HAIR_COLOR_PRESETS[1].hex,
+            ),
+            avatarDriveFileId:
+              rawDriveFileId.length > 0 &&
+              rawDriveFileId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
+              VALIDATION_BOUNDS.ID_PATTERN.test(rawDriveFileId)
+                ? rawDriveFileId
+                : '',
           };
         });
         setCloudChildren(loaded);
@@ -580,38 +679,177 @@ function SproutScaleWorkspace() {
     }
   };
 
+  const handleDraftDateChange = (nextDate: string) => {
+    setDraftDate(nextDate);
+    if (activeChild.birthDate && VALIDATION_BOUNDS.DATE_PATTERN.test(nextDate)) {
+      const calc = calculateExactAgeFromDob(activeChild.birthDate, nextDate);
+      if (calc) {
+        setIsPlayingTimelapse(false);
+        setDraftAgeMonths(calc.totalMonths);
+      }
+    }
+  };
+
+  const handleApplyAvatarPhoto = async ({
+    croppedDataUrl,
+    sampledSkinHex,
+  }: {
+    croppedDataUrl: string;
+    sampledSkinHex: string;
+  }) => {
+    const safeSkinTone = sanitizeHexColor(
+      sampledSkinHex,
+      activeChild.skinTone || SKIN_TONE_PRESETS[1].hex,
+    );
+
+    setAvatarPhotoMap((prev) => ({
+      ...prev,
+      [activeChild.id]: croppedDataUrl,
+    }));
+    await saveLocalAvatarDataUrl(activeChild.id, croppedDataUrl);
+
+    if (user) {
+      let uploadedDriveFileId = activeChild.avatarDriveFileId || '';
+      if (accessToken) {
+        try {
+          const rawFileId = await uploadChildAvatarToDrive(
+            accessToken,
+            activeChild.id,
+            activeChild.name,
+            croppedDataUrl,
+          );
+          if (
+            rawFileId.length > 0 &&
+            rawFileId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
+            VALIDATION_BOUNDS.ID_PATTERN.test(rawFileId)
+          ) {
+            uploadedDriveFileId = rawFileId;
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : '';
+          if (msg.includes('AUTH_REQUIRED')) {
+            clearAccessToken();
+            setAccessToken(null);
+            setNeedsDriveAuth(true);
+          }
+        }
+      }
+
+      const path = `children/${activeChild.id}`;
+      try {
+        await updateDoc(doc(db, 'children', activeChild.id), {
+          skinTone: safeSkinTone,
+          accessoryId: 'none',
+          avatarDriveFileId: uploadedDriveFileId,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, path);
+      }
+    } else {
+      setDemoChildren((prev) =>
+        prev.map((c) =>
+          c.id === activeChild.id
+            ? { ...c, skinTone: safeSkinTone, accessoryId: 'none' }
+            : c,
+        ),
+      );
+    }
+
+    showTransientBanner(
+      'success',
+      `Framed ${activeChild.name}’s real photo onto their growing avatar!`,
+    );
+  };
+
+  const handleRemoveAvatarPhoto = async () => {
+    setAvatarPhotoMap((prev) => {
+      const next = { ...prev };
+      delete next[activeChild.id];
+      return next;
+    });
+    await removeLocalAvatarDataUrl(activeChild.id);
+
+    if (user) {
+      const path = `children/${activeChild.id}`;
+      try {
+        await updateDoc(doc(db, 'children', activeChild.id), {
+          avatarDriveFileId: '',
+          skinTone: sanitizeHexColor(activeChild.skinTone, SKIN_TONE_PRESETS[1].hex),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, path);
+      }
+    } else {
+      setDemoChildren((prev) =>
+        prev.map((c) => (c.id === activeChild.id ? { ...c, avatarDriveFileId: '' } : c)),
+      );
+    }
+
+    showTransientBanner('success', `Switched ${activeChild.name} to illustrated face.`);
+  };
+
   const handleSaveCharacterProfile = async (updates: {
     name: string;
+    birthDate: string;
     ageTwoHeightCm: number;
     ageTwoWeightKg: number;
     paletteId: PaletteId;
     accessoryId: AccessoryId;
     hairStyle: HairStyle;
+    skinTone: string;
+    hairColor: string;
   }) => {
     setIsSaving(true);
+    const safeBirthDate = VALIDATION_BOUNDS.DATE_PATTERN.test(updates.birthDate)
+      ? updates.birthDate
+      : '';
+    const safeSkinTone = sanitizeHexColor(updates.skinTone, SKIN_TONE_PRESETS[1].hex);
+    const safeHairColor = sanitizeHexColor(updates.hairColor, HAIR_COLOR_PRESETS[1].hex);
+
     try {
       if (user) {
         const path = `children/${activeChild.id}`;
         try {
           await updateDoc(doc(db, 'children', activeChild.id), {
             name: updates.name.slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN),
+            birthDate: safeBirthDate,
             ageTwoHeightCm: updates.ageTwoHeightCm,
             ageTwoWeightKg: updates.ageTwoWeightKg,
             paletteId: updates.paletteId,
             accessoryId: updates.accessoryId,
             hairStyle: updates.hairStyle,
+            skinTone: safeSkinTone,
+            hairColor: safeHairColor,
             updatedAt: serverTimestamp(),
           });
         } catch (err) {
           handleFirestoreError(err, OperationType.UPDATE, path);
         }
-        showTransientBanner('success', `Updated ${updates.name}’s character & Age 2 baseline!`);
       } else {
         setDemoChildren((prev) =>
-          prev.map((c) => (c.id === activeChild.id ? { ...c, ...updates } : c)),
+          prev.map((c) =>
+            c.id === activeChild.id
+              ? {
+                  ...c,
+                  ...updates,
+                  birthDate: safeBirthDate,
+                  skinTone: safeSkinTone,
+                  hairColor: safeHairColor,
+                }
+              : c,
+          ),
         );
-        showTransientBanner('success', `Updated ${updates.name}’s character & Age 2 baseline!`);
       }
+
+      if (safeBirthDate) {
+        const calc = calculateExactAgeFromDob(safeBirthDate, draftDate);
+        if (calc) {
+          setDraftAgeMonths(calc.totalMonths);
+        }
+      }
+      showTransientBanner('success', `Saved ${updates.name}’s info, age & avatar!`);
     } finally {
       setIsSaving(false);
     }
@@ -619,13 +857,22 @@ function SproutScaleWorkspace() {
 
   const handleCreateNewChild = async (newChild: {
     name: string;
+    birthDate: string;
     ageTwoHeightCm: number;
     ageTwoWeightKg: number;
     paletteId: PaletteId;
     accessoryId: AccessoryId;
     hairStyle: HairStyle;
+    skinTone: string;
+    hairColor: string;
   }) => {
     setIsSaving(true);
+    const safeBirthDate = VALIDATION_BOUNDS.DATE_PATTERN.test(newChild.birthDate)
+      ? newChild.birthDate
+      : '';
+    const safeSkinTone = sanitizeHexColor(newChild.skinTone, SKIN_TONE_PRESETS[1].hex);
+    const safeHairColor = sanitizeHexColor(newChild.hairColor, HAIR_COLOR_PRESETS[1].hex);
+
     try {
       if (user) {
         const childId = sanitizeId(`child_${Date.now()}`);
@@ -634,11 +881,15 @@ function SproutScaleWorkspace() {
           await setDoc(doc(db, 'children', childId), {
             ownerId: user.uid,
             name: newChild.name.slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN),
+            birthDate: safeBirthDate,
             ageTwoHeightCm: newChild.ageTwoHeightCm,
             ageTwoWeightKg: newChild.ageTwoWeightKg,
             paletteId: newChild.paletteId,
             accessoryId: newChild.accessoryId,
             hairStyle: newChild.hairStyle,
+            skinTone: safeSkinTone,
+            hairColor: safeHairColor,
+            avatarDriveFileId: '',
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -661,13 +912,16 @@ function SproutScaleWorkspace() {
         }
         setSelectedChildId(childId);
         setActiveDeckTab('measure');
-        showTransientBanner('success', `Added ${newChild.name} starting at Age 2!`);
       } else {
         const childId = sanitizeId(`demo_child_${Date.now()}`);
         const created: ChildProfile = {
           id: childId,
           ownerId: 'demo_family',
           ...newChild,
+          birthDate: safeBirthDate,
+          skinTone: safeSkinTone,
+          hairColor: safeHairColor,
+          avatarDriveFileId: '',
         };
         setDemoChildren((prev) => [...prev, created]);
         setDemoMeasurementsMap((prev) => ({
@@ -687,8 +941,15 @@ function SproutScaleWorkspace() {
         }));
         setSelectedChildId(childId);
         setActiveDeckTab('measure');
-        showTransientBanner('success', `Added ${newChild.name} starting at Age 2!`);
       }
+
+      if (safeBirthDate) {
+        const calc = calculateExactAgeFromDob(safeBirthDate, draftDate);
+        if (calc) {
+          setDraftAgeMonths(calc.totalMonths);
+        }
+      }
+      showTransientBanner('success', `Added ${newChild.name} starting at Age 2!`);
     } finally {
       setIsSaving(false);
     }
@@ -763,7 +1024,7 @@ function SproutScaleWorkspace() {
               onClick={() => setActiveDeckTab('character')}
               className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              Character
+              Child Info
             </a>
             <a
               href="#timeline"
@@ -818,9 +1079,44 @@ function SproutScaleWorkspace() {
                 Watch how tall they’ve grown since turning two.
               </h1>
               <p className="text-sm sm:text-base text-slate-700 leading-relaxed">
-                Slide or mark your kid’s height and weight to watch their character sprout
-                right beside their 2-year-old self on the playroom ruler.
+                Enter your child’s date of birth, frame their real photo or camera picture onto
+                their lifelike avatar, and mark height and weight beside their 2-year-old self.
               </p>
+
+              {/* Unboxed Child Info & Calculated Age Summary Line */}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pt-0.5 text-xs text-slate-700">
+                <span className="font-bold text-indigo-950">{activeChild.name}</span>
+                <span aria-hidden="true">·</span>
+                {activeChildLiveAge ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 font-semibold text-sky-900">
+                      <Cake className="w-3.5 h-3.5 text-rose-500 shrink-0" aria-hidden="true" />
+                      Age {activeChildLiveAge.formattedExactAge}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-mono tabular-nums text-slate-600">
+                      Born {formatHumanDate(activeChild.birthDate)}
+                    </span>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDeckTab('character')}
+                    className="font-bold text-sky-800 hover:underline cursor-pointer"
+                  >
+                    Enter Date of Birth to auto-calculate age
+                  </button>
+                )}
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => setIsPhotoModalOpen(true)}
+                  className="inline-flex items-center gap-1 font-bold text-sky-800 hover:text-indigo-950 hover:underline cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5" aria-hidden="true" />
+                  {activeAvatarPhotoUrl ? 'Update Child Photo' : 'Take / Upload Child Photo'}
+                </button>
+              </div>
             </div>
 
             {/* Child Switcher & Account Sync Controls */}
@@ -835,7 +1131,7 @@ function SproutScaleWorkspace() {
                     key={kid.id}
                     type="button"
                     onClick={() => setSelectedChildId(kid.id)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       kid.id === activeChild.id
                         ? 'bg-amber-400 text-slate-950 shadow-xs'
                         : 'text-indigo-950/80 hover:text-indigo-950 hover:bg-white/60'
@@ -847,9 +1143,9 @@ function SproutScaleWorkspace() {
                 <button
                   type="button"
                   onClick={() => setActiveDeckTab('character')}
-                  className="px-2.5 py-1.5 text-xs font-bold text-sky-800 hover:text-indigo-950 hover:bg-white/60 rounded-md transition-colors whitespace-nowrap shrink-0"
+                  className="px-2.5 py-1.5 text-xs font-bold text-sky-800 hover:text-indigo-950 hover:bg-white/60 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  + Kid
+                  + Child
                 </button>
               </div>
 
@@ -860,7 +1156,7 @@ function SproutScaleWorkspace() {
                   <button
                     type="button"
                     onClick={handleSignOut}
-                    className="inline-flex items-center gap-1 font-bold text-indigo-950 hover:text-sky-700 whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-1 font-bold text-indigo-950 hover:text-sky-700 whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
                     Sign out
@@ -873,7 +1169,7 @@ function SproutScaleWorkspace() {
                   <button
                     type="button"
                     onClick={handleGoogleSignIn}
-                    className="font-bold text-sky-800 hover:text-indigo-950 hover:underline whitespace-nowrap shrink-0"
+                    className="font-bold text-sky-800 hover:text-indigo-950 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     Sign in with Google to keep records
                   </button>
@@ -903,6 +1199,7 @@ function SproutScaleWorkspace() {
               <div className="lg:col-span-8 flex flex-col">
                 <GrowthWallStage
                   childProfile={activeChild}
+                  avatarPhotoUrl={activeAvatarPhotoUrl}
                   measurements={activeMeasurements}
                   activeHeightCm={draftHeightCm}
                   activeWeightKg={draftWeightKg}
@@ -913,6 +1210,7 @@ function SproutScaleWorkspace() {
                   onSelectMilestoneOnWall={handleInspectMilestone}
                   isPlayingTimelapse={isPlayingTimelapse}
                   onToggleTimelapse={handleToggleTimelapse}
+                  onOpenPhotoStudio={() => setIsPhotoModalOpen(true)}
                 />
               </div>
 
@@ -921,6 +1219,7 @@ function SproutScaleWorkspace() {
                   activeTab={activeDeckTab}
                   onTabChange={setActiveDeckTab}
                   childProfile={activeChild}
+                  avatarPhotoUrl={activeAvatarPhotoUrl}
                   units={units}
                   draftHeightCm={draftHeightCm}
                   draftWeightKg={draftWeightKg}
@@ -942,7 +1241,7 @@ function SproutScaleWorkspace() {
                     setIsPlayingTimelapse(false);
                     setDraftAgeMonths(mos);
                   }}
-                  onChangeDraftDate={setDraftDate}
+                  onChangeDraftDate={handleDraftDateChange}
                   onChangeDraftNote={setDraftNote}
                   onResetDraft={() => {
                     setDraftHeightCm(latestMilestone.heightCm);
@@ -950,6 +1249,8 @@ function SproutScaleWorkspace() {
                     setDraftAgeMonths(latestMilestone.ageMonths);
                   }}
                   onSubmitMeasurement={handleMarkMeasurement}
+                  onOpenPhotoStudio={() => setIsPhotoModalOpen(true)}
+                  onRemoveAvatarPhoto={handleRemoveAvatarPhoto}
                   onSaveCharacterProfile={handleSaveCharacterProfile}
                   onCreateNewChild={handleCreateNewChild}
                 />
@@ -1010,6 +1311,21 @@ function SproutScaleWorkspace() {
           </div>
         </div>
       </footer>
+
+      {/* Realistic Child Photo Studio Modal (Camera + Device Upload + Google Drive Picker) */}
+      <ChildAvatarPhotoModal
+        isOpen={isPhotoModalOpen}
+        childName={activeChild.name}
+        currentAvatarUrl={activeAvatarPhotoUrl}
+        paletteId={activeChild.paletteId}
+        accessoryId={activeChild.accessoryId}
+        hairStyle={activeChild.hairStyle}
+        skinTone={activeChild.skinTone || SKIN_TONE_PRESETS[1].hex}
+        hairColor={activeChild.hairColor || HAIR_COLOR_PRESETS[1].hex}
+        accessToken={accessToken}
+        onClose={() => setIsPhotoModalOpen(false)}
+        onApplyPhoto={(res) => void handleApplyAvatarPhoto(res)}
+      />
     </div>
   );
 }

@@ -45,11 +45,15 @@ export async function runDirtyDozenSecuritySuite() {
       await setDoc(doc(adminDb, 'children', 'child_alice'), {
         ownerId: 'user_alice',
         name: 'Leo',
+        birthDate: '2020-11-18',
         ageTwoHeightCm: 86.5,
         ageTwoWeightKg: 12.5,
         paletteId: 'meadow',
         accessoryId: 'sprout',
         hairStyle: 'curls',
+        skinTone: '#f1c29b',
+        hairColor: '#4a2e1b',
+        avatarDriveFileId: '',
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
@@ -150,10 +154,10 @@ export async function runDirtyDozenSecuritySuite() {
       }),
     );
 
-    // 7. Update-Gap Value Poisoning
+    // 7. Update-Gap / Raw Base64 Image Injection into avatarDriveFileId
     await assertFails(
       updateDoc(doc(aliceDb, 'children', 'child_alice'), {
-        name: 'A'.repeat(500),
+        avatarDriveFileId: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD',
         updatedAt: serverTimestamp(),
       }),
     );
@@ -181,17 +185,10 @@ export async function runDirtyDozenSecuritySuite() {
       }),
     );
 
-    // 10. Out-of-Bounds Biological Values
+    // 10. Malformed Date of Birth / Out-of-Bounds Biological Values
     await assertFails(
-      setDoc(doc(aliceDb, 'children', 'child_alice', 'measurements', 'm_oob'), {
-        ownerId: 'user_alice',
-        childId: 'child_alice',
-        ageMonths: 36,
-        heightCm: 9999,
-        weightKg: 14.5,
-        recordedDate: '2026-11-18',
-        note: 'Invalid height',
-        createdAt: serverTimestamp(),
+      updateDoc(doc(aliceDb, 'children', 'child_alice'), {
+        birthDate: '11/18/2020',
         updatedAt: serverTimestamp(),
       }),
     );

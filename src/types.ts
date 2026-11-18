@@ -1,6 +1,6 @@
 export type UnitSystem = 'metric' | 'imperial';
 export type PaletteId = 'meadow' | 'sunny' | 'ocean' | 'berry';
-export type AccessoryId = 'sprout' | 'cap' | 'crown' | 'dino';
+export type AccessoryId = 'none' | 'sprout' | 'cap' | 'crown' | 'dino';
 export type HairStyle = 'curls' | 'bob' | 'spiky' | 'puffs';
 
 // Validation constants synchronized verbatim with firebase-blueprint.json & firestore.rules
@@ -11,15 +11,16 @@ export const VALIDATION_BOUNDS = {
   NAME_MAX_LEN: 50,
   NOTE_MAX_LEN: 120,
   DATE_PATTERN: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
+  HEX_COLOR_PATTERN: /^#[0-9a-fA-F]{6}$/,
   AGE_TWO_HEIGHT_MIN: 70,
   AGE_TWO_HEIGHT_MAX: 115,
   AGE_TWO_WEIGHT_MIN: 8,
   AGE_TWO_WEIGHT_MAX: 25,
-  AGE_MONTHS_MIN: 24,
+  AGE_MONTHS_MIN: 0,
   AGE_MONTHS_MAX: 216,
-  HEIGHT_CM_MIN: 65,
+  HEIGHT_CM_MIN: 45,
   HEIGHT_CM_MAX: 210,
-  WEIGHT_KG_MIN: 7,
+  WEIGHT_KG_MIN: 2.5,
   WEIGHT_KG_MAX: 120,
 } as const;
 
@@ -27,11 +28,15 @@ export interface ChildProfile {
   id: string;
   ownerId: string;
   name: string;
+  birthDate: string;
   ageTwoHeightCm: number;
   ageTwoWeightKg: number;
   paletteId: PaletteId;
   accessoryId: AccessoryId;
   hairStyle: HairStyle;
+  skinTone: string;
+  hairColor: string;
+  avatarDriveFileId: string;
 }
 
 export interface GrowthMeasurement {
@@ -58,6 +63,24 @@ export interface PaletteTheme {
   accentHex: string;
 }
 
+export const SKIN_TONE_PRESETS: { id: string; label: string; hex: string }[] = [
+  { id: 'porcelain', label: 'Porcelain', hex: '#fbe3d3' },
+  { id: 'peach', label: 'Warm Peach', hex: '#f4c9a8' },
+  { id: 'honey', label: 'Golden Honey', hex: '#e2ab82' },
+  { id: 'olive', label: 'Warm Olive', hex: '#c98e63' },
+  { id: 'caramel', label: 'Caramel', hex: '#9f6541' },
+  { id: 'espresso', label: 'Rich Cocoa', hex: '#6c3f28' },
+];
+
+export const HAIR_COLOR_PRESETS: { id: string; label: string; hex: string }[] = [
+  { id: 'espresso', label: 'Dark Brown', hex: '#2a1d17' },
+  { id: 'chestnut', label: 'Chestnut', hex: '#5c3822' },
+  { id: 'golden', label: 'Honey Blonde', hex: '#d49b42' },
+  { id: 'auburn', label: 'Copper Red', hex: '#a44225' },
+  { id: 'jet', label: 'Jet Black', hex: '#17171c' },
+  { id: 'sandy', label: 'Sandy Brown', hex: '#8b623f' },
+];
+
 export const CHARACTER_PALETTES: Record<PaletteId, PaletteTheme> = {
   meadow: {
     id: 'meadow',
@@ -66,9 +89,9 @@ export const CHARACTER_PALETTES: Record<PaletteId, PaletteTheme> = {
     shirtSecondary: '#fef08a',
     overalls: '#1d4ed8',
     shoes: '#f97316',
-    skin: '#f6cba3',
+    skin: '#f4c9a8',
     cheeks: '#fb7185',
-    hair: '#4a2e1b',
+    hair: '#5c3822',
     accentHex: '#16a34a',
   },
   sunny: {
@@ -78,9 +101,9 @@ export const CHARACTER_PALETTES: Record<PaletteId, PaletteTheme> = {
     shirtSecondary: '#ffffff',
     overalls: '#0284c7',
     shoes: '#f43f5e',
-    skin: '#e0a97b',
+    skin: '#e2ab82',
     cheeks: '#fb7185',
-    hair: '#291d16',
+    hair: '#2a1d17',
     accentHex: '#eab308',
   },
   ocean: {
@@ -90,9 +113,9 @@ export const CHARACTER_PALETTES: Record<PaletteId, PaletteTheme> = {
     shirtSecondary: '#fef08a',
     overalls: '#4338ca',
     shoes: '#84cc16',
-    skin: '#f9dcc4',
+    skin: '#fbe3d3',
     cheeks: '#f43f5e',
-    hair: '#7c4a27',
+    hair: '#8b623f',
     accentHex: '#0891b2',
   },
   berry: {
@@ -102,9 +125,9 @@ export const CHARACTER_PALETTES: Record<PaletteId, PaletteTheme> = {
     shirtSecondary: '#fde047',
     overalls: '#6d28d9',
     shoes: '#facc15',
-    skin: '#8d5b3e',
+    skin: '#9f6541',
     cheeks: '#fb7185',
-    hair: '#1c1512',
+    hair: '#17171c',
     accentHex: '#e11d48',
   },
 };
@@ -113,11 +136,15 @@ export const DEMO_CHILD: ChildProfile = {
   id: 'demo_leo',
   ownerId: 'demo_family',
   name: 'Leo',
+  birthDate: '2020-11-18',
   ageTwoHeightCm: 86.5,
   ageTwoWeightKg: 12.5,
   paletteId: 'meadow',
   accessoryId: 'sprout',
   hairStyle: 'curls',
+  skinTone: '#f4c9a8',
+  hairColor: '#5c3822',
+  avatarDriveFileId: '',
 };
 
 export const DEMO_MEASUREMENTS: GrowthMeasurement[] = [
@@ -173,9 +200,146 @@ export const DEMO_MEASUREMENTS: GrowthMeasurement[] = [
   },
 ];
 
+export interface CalculatedAgeBreakdown {
+  years: number;
+  months: number;
+  days: number;
+  totalMonths: number;
+  daysUntilNextBirthday: number;
+  isBirthdayToday: boolean;
+  formattedExactAge: string;
+  formattedShortAge: string;
+}
+
+export function parseIsoLocalDate(isoDate: string): Date | null {
+  if (!VALIDATION_BOUNDS.DATE_PATTERN.test(isoDate)) {
+    return null;
+  }
+  const [yStr, mStr, dStr] = isoDate.split('-');
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  if (!y || !m || !d || m < 1 || m > 12 || d < 1 || d > 31) {
+    return null;
+  }
+  const date = new Date(y, m - 1, d);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date;
+}
+
+export function getLocalTodayIso(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function formatHumanDate(isoDate: string): string {
+  const parsed = parseIsoLocalDate(isoDate);
+  if (!parsed) return isoDate;
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+/**
+ * Calculates exact chronological age (years, months, days, total months, and next birthday countdown)
+ * from a YYYY-MM-DD birthDate relative to an optional YYYY-MM-DD referenceDate (defaults to today).
+ */
+export function calculateExactAgeFromDob(
+  birthDate: string,
+  referenceDateIso?: string,
+): CalculatedAgeBreakdown | null {
+  const dob = parseIsoLocalDate(birthDate);
+  if (!dob) return null;
+
+  const ref = parseIsoLocalDate(referenceDateIso ?? getLocalTodayIso()) ?? new Date();
+  const safeRef = ref.getTime() < dob.getTime() ? dob : ref;
+
+  let years = safeRef.getFullYear() - dob.getFullYear();
+  let months = safeRef.getMonth() - dob.getMonth();
+  let days = safeRef.getDate() - dob.getDate();
+
+  if (days < 0) {
+    months -= 1;
+    const prevMonthLastDay = new Date(safeRef.getFullYear(), safeRef.getMonth(), 0).getDate();
+    days += prevMonthLastDay;
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  years = Math.max(0, years);
+  months = Math.max(0, months);
+  days = Math.max(0, days);
+
+  const totalMonths = clampNumber(
+    years * 12 + months + (days >= 15 ? 1 : 0),
+    VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+    VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+  );
+
+  // Days until next birthday from today
+  const today = parseIsoLocalDate(getLocalTodayIso()) ?? new Date();
+  let nextBday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+  if (nextBday.getTime() < today.getTime()) {
+    nextBday = new Date(today.getFullYear() + 1, dob.getMonth(), dob.getDate());
+  }
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const daysUntilNextBirthday = Math.max(
+    0,
+    Math.round((nextBday.getTime() - today.getTime()) / msPerDay),
+  );
+  const isBirthdayToday =
+    today.getMonth() === dob.getMonth() && today.getDate() === dob.getDate();
+
+  const parts: string[] = [];
+  if (years > 0) {
+    parts.push(`${years} ${years === 1 ? 'yr' : 'yrs'}`);
+  }
+  if (months > 0 || years === 0) {
+    parts.push(`${months} ${months === 1 ? 'mo' : 'mos'}`);
+  }
+  if (days > 0) {
+    parts.push(`${days} ${days === 1 ? 'day' : 'days'}`);
+  }
+
+  const formattedExactAge = parts.join(', ');
+  const formattedShortAge =
+    years === 0
+      ? `${months}m`
+      : months === 0
+        ? `${years} yrs`
+        : `${years}y ${months}m`;
+
+  return {
+    years,
+    months,
+    days,
+    totalMonths,
+    daysUntilNextBirthday,
+    isBirthdayToday,
+    formattedExactAge,
+    formattedShortAge,
+  };
+}
+
 export function clampNumber(val: number, min: number, max: number): number {
   if (Number.isNaN(val)) return min;
   return Math.min(max, Math.max(min, val));
+}
+
+export function sanitizeHexColor(raw: string | undefined, fallback: string): string {
+  if (raw && VALIDATION_BOUNDS.HEX_COLOR_PATTERN.test(raw)) {
+    return raw.toLowerCase();
+  }
+  return fallback;
 }
 
 export function sanitizeId(raw: string): string {
@@ -225,6 +389,9 @@ export function formatWeightDelta(deltaKg: number, units: UnitSystem): string {
 }
 
 export function formatAgeLabel(ageMonths: number): string {
+  if (ageMonths < 12) {
+    return `Age ${ageMonths} mos`;
+  }
   const years = Math.floor(ageMonths / 12);
   const months = ageMonths % 12;
   if (months === 0) {
@@ -239,20 +406,20 @@ export function getGrowthStageInfo(ageMonths: number): {
 } {
   if (ageMonths < 36) {
     return {
-      stageName: 'Little Sprout (Age 2)',
-      description: 'Toddler proportions, button overalls, and busy footsteps.',
+      stageName: 'Little Sprout (Toddler)',
+      description: 'Toddler proportions, denim bib overalls, and busy footsteps.',
     };
   }
   if (ageMonths < 60) {
     return {
       stageName: 'Preschool Explorer',
-      description: 'Stretching taller with striped tee and curious stride.',
+      description: 'Stretching taller with layered striped tee and curious stride.',
     };
   }
   if (ageMonths < 96) {
     return {
       stageName: 'Big Kid Adventurer',
-      description: 'Longer legs, adventure vest, and big confident reach.',
+      description: 'Longer legs, sporty varsity top, and confident reach.',
     };
   }
   return {

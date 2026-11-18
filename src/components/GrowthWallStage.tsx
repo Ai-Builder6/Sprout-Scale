@@ -1,11 +1,13 @@
 import React from 'react';
-import { Play, Pause, Sparkles } from 'lucide-react';
+import { Camera, Play, Pause, Sparkles } from 'lucide-react';
 import {
+  calculateExactAgeFromDob,
   ChildProfile,
   clampNumber,
   formatAgeLabel,
   formatHeight,
   formatHeightDelta,
+  formatHumanDate,
   formatWeight,
   formatWeightDelta,
   getFunComparison,
@@ -17,6 +19,7 @@ import { CharacterFigureGroup } from './GrowingCharacterSvg';
 
 interface GrowthWallStageProps {
   childProfile: ChildProfile;
+  avatarPhotoUrl: string | null;
   measurements: GrowthMeasurement[];
   activeHeightCm: number;
   activeWeightKg: number;
@@ -27,6 +30,7 @@ interface GrowthWallStageProps {
   onSelectMilestoneOnWall: (measurement: GrowthMeasurement) => void;
   isPlayingTimelapse: boolean;
   onToggleTimelapse: () => void;
+  onOpenPhotoStudio: () => void;
 }
 
 const MIN_RULER_CM = 65;
@@ -51,6 +55,7 @@ function heightCmToSvgY(cm: number): number {
 
 export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   childProfile,
+  avatarPhotoUrl,
   measurements,
   activeHeightCm,
   activeWeightKg,
@@ -61,6 +66,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   onSelectMilestoneOnWall,
   isPlayingTimelapse,
   onToggleTimelapse,
+  onOpenPhotoStudio,
 }) => {
   const ageTwoCrownY = heightCmToSvgY(childProfile.ageTwoHeightCm);
   const currentCrownY = heightCmToSvgY(activeHeightCm);
@@ -69,6 +75,10 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   const weightGainKg = activeWeightKg - childProfile.ageTwoWeightKg;
 
   const stageInfo = getGrowthStageInfo(activeAgeMonths);
+  const exactDobAge = childProfile.birthDate
+    ? calculateExactAgeFromDob(childProfile.birthDate)
+    : null;
+
   const funFacts = getFunComparison(
     activeHeightCm,
     activeWeightKg,
@@ -94,10 +104,18 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
       {/* Stage Top Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-100 pb-4">
         <div className="space-y-0.5">
-          <div className="flex items-center gap-2 text-xs text-slate-600">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <span className="font-bold text-indigo-950">{childProfile.name}’s Growth Wall</span>
             <span aria-hidden="true">·</span>
             <span className="font-semibold text-sky-700">{stageInfo.stageName}</span>
+            {exactDobAge && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>
+                  Born {formatHumanDate(childProfile.birthDate)} ({exactDobAge.formattedExactAge})
+                </span>
+              </>
+            )}
             {isPreviewDirty && (
               <>
                 <span aria-hidden="true">·</span>
@@ -108,7 +126,16 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           <p className="text-xs text-slate-600">{stageInfo.description}</p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenPhotoStudio}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-sky-950 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5 text-sky-700" aria-hidden="true" />
+            {avatarPhotoUrl ? 'Change Photo' : 'Photo Avatar'}
+          </button>
+
           <button
             type="button"
             onClick={onToggleTimelapse}
@@ -352,7 +379,9 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
                   fontWeight={700}
                   fontFamily="Plus Jakarta Sans, sans-serif"
                 >
-                  {`${Math.floor(m.ageMonths / 12)}y${m.ageMonths % 12 ? `${m.ageMonths % 12}m` : ''}`}
+                  {m.ageMonths < 12
+                    ? `${m.ageMonths}m`
+                    : `${Math.floor(m.ageMonths / 12)}y${m.ageMonths % 12 ? `${m.ageMonths % 12}m` : ''}`}
                 </text>
               </g>
             );
@@ -369,6 +398,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             strokeDasharray="6 4"
           />
           <CharacterFigureGroup
+            instanceId="age_two_wall"
             centerX={138}
             floorY={FLOOR_Y}
             crownY={ageTwoCrownY}
@@ -376,8 +406,11 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             heightCm={childProfile.ageTwoHeightCm}
             weightKg={childProfile.ageTwoWeightKg}
             paletteId={childProfile.paletteId}
-            accessoryId="sprout"
+            accessoryId={childProfile.accessoryId}
             hairStyle={childProfile.hairStyle}
+            skinTone={childProfile.skinTone}
+            hairColor={childProfile.hairColor}
+            avatarPhotoUrl={avatarPhotoUrl}
             mode="age-two-baseline"
           />
 
@@ -486,7 +519,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             fill="#0f172a"
           />
 
-          {/* Current Height Measurement Line & Bright Coral-Red Sliding Stadiometer Paddle */}
+          {/* Current Height Measurement Line & Sliding Stadiometer Paddle */}
           <line
             x1={320}
             y1={currentCrownY}
@@ -527,6 +560,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
 
           {/* Active Growing Character */}
           <CharacterFigureGroup
+            instanceId="current_wall"
             centerX={368}
             floorY={FLOOR_Y}
             crownY={currentCrownY}
@@ -536,15 +570,18 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             paletteId={childProfile.paletteId}
             accessoryId={childProfile.accessoryId}
             hairStyle={childProfile.hairStyle}
+            skinTone={childProfile.skinTone}
+            hairColor={childProfile.hairColor}
+            avatarPhotoUrl={avatarPhotoUrl}
             mode="current"
             isWaveActive={isPlayingTimelapse || isPreviewDirty}
           />
 
           {/* Active Kid Name & Growth Summary Card Under Scale */}
           <rect
-            x={250}
+            x={244}
             y={FLOOR_Y + 32}
-            width={236}
+            width={248}
             height={44}
             rx={10}
             fill="#ffffff"
@@ -571,10 +608,10 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             fontWeight={700}
             fontFamily="JetBrains Mono, monospace"
           >
-            {`${formatHeightDelta(heightGainCm, units)} taller · ${formatWeightDelta(weightGainKg, units)}`}
+            {`${formatHeightDelta(heightGainCm, units)} vs Age 2 · ${formatWeightDelta(weightGainKg, units)}`}
           </text>
 
-          {/* BRIGHT TURQUOISE & SUNSHINE WEIGHT DIAL GAUGE (Bottom Right x=578, y=534) */}
+          {/* BRIGHT TURQUOISE & SUNSHINE WEIGHT DIAL GAUGE */}
           <g>
             <circle
               cx={578}
@@ -593,7 +630,6 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
               strokeWidth={3}
               strokeDasharray="6 4"
             />
-            {/* Age 2 Weight Reference Needle */}
             <g transform={`rotate(${ageTwoScaleAngle}, 578, 535)`}>
               <line
                 x1={578}
@@ -605,7 +641,6 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
                 strokeDasharray="2 2"
               />
             </g>
-            {/* Active Ruby-Coral Weight Needle */}
             <g transform={`rotate(${scaleAngle}, 578, 535)`}>
               <line
                 x1={578}

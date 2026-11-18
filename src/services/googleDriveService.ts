@@ -30,11 +30,14 @@ export interface GrowthBackupPayload {
   exportedAt: string;
   child: {
     name: string;
+    birthDate?: string;
     ageTwoHeightCm: number;
     ageTwoWeightKg: number;
     paletteId: string;
     accessoryId: string;
     hairStyle: string;
+    skinTone?: string;
+    hairColor?: string;
   };
   measurements: {
     ageMonths: number;
@@ -117,7 +120,6 @@ function ensurePickerLoaded(): Promise<void> {
       return;
     }
 
-    // Dynamically ensure script is present if still loading
     const existing = document.querySelector('script[src="https://apis.google.com/js/api.js"]');
     if (existing) {
       existing.addEventListener('load', loadViaGapi, { once: true });
@@ -152,7 +154,11 @@ function ensurePickerLoaded(): Promise<void> {
  */
 export async function openGoogleDrivePicker(
   accessToken: string,
-  options?: { includeUploadView?: boolean; title?: string },
+  options?: {
+    includeUploadView?: boolean;
+    title?: string;
+    viewMode?: 'docs' | 'images';
+  },
 ): Promise<PickedDriveItem | null> {
   await ensurePickerLoaded();
 
@@ -183,8 +189,11 @@ export async function openGoogleDrivePicker(
       }
     };
 
+    const primaryView =
+      options?.viewMode === 'images' ? pickerApi.ViewId.DOCS_IMAGES : pickerApi.ViewId.DOCS;
+
     let builder = new pickerApi.PickerBuilder()
-      .addView(pickerApi.ViewId.DOCS)
+      .addView(primaryView)
       .setOAuthToken(accessToken)
       .setCallback(pickerCallback)
       .setOrigin(pickerOrigin);
@@ -210,6 +219,85 @@ async function assertDriveOk(res: Response, actionLabel: string): Promise<void> 
     const text = await res.text();
     throw new Error(`Google Drive ${actionLabel} failed (${res.status}): ${text.slice(0, 180)}`);
   }
+}
+
+/**
+ * Uploads a cropped JPEG child portrait to Google Drive so Firestore stores only the lightweight file ID.
+ */
+export async function uploadChildAvatarToDrive(
+  accessToken: string,
+  childId: string,
+  childName: string,
+  jpegDataUrl: string,
+): Promise<string> {
+  const base64Part = jpegDataUrl.split(',')[1] ?? '';
+  const safeName = childName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'Child';
+  const metadata = {
+    name: `SproutScale_Avatar_${safeName}_${Date.now()}.jpg`,
+    mimeType: 'image/jpeg',
+    appProperties: {
+      app: 'SproutScale',
+      kind: 'child-avatar',
+      childId,
+    },
+  };
+
+  const boundary = 'sproutscale_avatar_boundary_651928';
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelimiter = `\r\n--${boundary}--`;
+
+  const body =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    'Content-Type: image/jpeg\r\nContent-Transfer-Encoding: base64\r\n\r\n' +
+    base64Part +
+    closeDelimiter;
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    },
+  );
+  await assertDriveOk(res, 'avatar upload');
+  const created = (await res.json()) as { id: string };
+  return created.id;
+}
+
+/**
+ * Downloads an image file from Google Drive as a browser data URL.
+ */
+export async function downloadDriveImageAsDataUrl(
+  accessToken: string,
+  fileId: string,
+): Promise<string> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  await assertDriveOk(res, 'image download');
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to decode Drive image.'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Failed to decode Drive image.'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 /**
@@ -245,11 +333,14 @@ function buildBackupPayload(
     exportedAt: new Date().toISOString(),
     child: {
       name: child.name,
+      birthDate: child.birthDate,
       ageTwoHeightCm: child.ageTwoHeightCm,
       ageTwoWeightKg: child.ageTwoWeightKg,
       paletteId: child.paletteId,
       accessoryId: child.accessoryId,
       hairStyle: child.hairStyle,
+      skinTone: child.skinTone,
+      hairColor: child.hairColor,
     },
     measurements: sorted.map((m) => ({
       ageMonths: m.ageMonths,
@@ -271,6 +362,7 @@ function buildKeepsakePosterSvg(
   const latestH = latest ? latest.heightCm : child.ageTwoHeightCm;
   const latestW = latest ? latest.weightKg : child.ageTwoWeightKg;
   const latestAge = latest ? latest.ageMonths : 24;
+  const dobLine = child.birthDate ? ` · Born ${child.birthDate.replace(/[<>&"]/g, '')}` : '';
 
   const rowsSvg = sorted
     .slice(-8)
@@ -285,7 +377,7 @@ function buildKeepsakePosterSvg(
   <rect width="800" height="560" fill="#f8fafc" rx="20" />
   <rect x="28" y="28" width="744" height="504" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" rx="16" />
   <text x="60" y="84" font-family="sans-serif" font-size="28" font-weight="bold" fill="#0f172a">SproutScale Growth Keepsake — ${child.name.replace(/[<>&"]/g, '')}</text>
-  <text x="60" y="118" font-family="sans-serif" font-size="15" fill="#059669" font-weight="bold">Started at Age 2: ${formatHeight(child.ageTwoHeightCm, units)} · ${formatWeight(child.ageTwoWeightKg, units)}</text>
+  <text x="60" y="118" font-family="sans-serif" font-size="15" fill="#059669" font-weight="bold">Started at Age 2: ${formatHeight(child.ageTwoHeightCm, units)} · ${formatWeight(child.ageTwoWeightKg, units)}${dobLine}</text>
   <text x="60" y="148" font-family="sans-serif" font-size="16" fill="#0f172a">Latest (${formatAgeLabel(latestAge)}): ${formatHeight(latestH, units)} · ${formatWeight(latestW, units)} (+${(latestH - child.ageTwoHeightCm).toFixed(1)} cm taller since Age 2)</text>
   <line x1="60" y1="178" x2="740" y2="178" stroke="#e2e8f0" stroke-width="1.5" />
   <text x="60" y="218" font-family="sans-serif" font-size="16" font-weight="bold" fill="#334155">Recorded Wall Milestones</text>
