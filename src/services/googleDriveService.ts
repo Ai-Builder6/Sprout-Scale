@@ -1,5 +1,6 @@
 import {
   BiologicalSex,
+  ChildPhotoKind,
   ChildProfile,
   formatAgeLabel,
   formatFeetInches,
@@ -274,6 +275,63 @@ export async function uploadChildAvatarToDrive(
     },
   );
   await assertDriveOk(res, 'avatar upload');
+  const created = (await res.json()) as { id: string };
+  return created.id;
+}
+
+/**
+ * Uploads any captured child portrait or wall height photo JPEG to Google Drive
+ * so Firestore only stores the lightweight Google Drive file ID.
+ */
+export async function uploadChildPhotoToDrive(
+  accessToken: string,
+  params: {
+    childId: string;
+    childName: string;
+    kind: ChildPhotoKind;
+    capturedDate: string;
+    jpegDataUrl: string;
+  },
+): Promise<string> {
+  const base64Part = params.jpegDataUrl.split(',')[1] ?? '';
+  const safeName = params.childName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'Child';
+  const kindTag = params.kind === 'wall' ? 'WallCheckIn' : 'Portrait';
+  const metadata = {
+    name: `SproutScale_${safeName}_${kindTag}_${params.capturedDate}_${Date.now()}.jpg`,
+    mimeType: 'image/jpeg',
+    appProperties: {
+      app: 'SproutScale',
+      kind: 'child-photo',
+      photoKind: params.kind,
+      childId: params.childId,
+    },
+  };
+
+  const boundary = 'sproutscale_photo_boundary_839104';
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelimiter = `\r\n--${boundary}--`;
+
+  const body =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    'Content-Type: image/jpeg\r\nContent-Transfer-Encoding: base64\r\n\r\n' +
+    base64Part +
+    closeDelimiter;
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    },
+  );
+  await assertDriveOk(res, 'photo backup upload');
   const created = (await res.json()) as { id: string };
   return created.id;
 }

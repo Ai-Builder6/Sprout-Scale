@@ -1,4 +1,4 @@
-import { clampNumber, SKIN_TONE_PRESETS } from '../types';
+import { ChildPhotoKind, clampNumber, SKIN_TONE_PRESETS } from '../types';
 
 export interface PortraitCropParams {
   zoom: number; // 1.0 to 2.8
@@ -11,8 +11,24 @@ export interface ProcessedAvatarResult {
   sampledSkinHex: string;
 }
 
+export interface SavedLocalPhotoRecord {
+  id: string;
+  childId: string;
+  kind: ChildPhotoKind;
+  dataUrl: string;
+  capturedDate: string;
+  ageMonths: number;
+  heightCm: number;
+  weightKg: number;
+  caption: string;
+  driveFileId: string;
+  createdAtMs: number;
+}
+
 const DB_NAME = 'sproutscale_avatar_cache_v1';
+const DB_VERSION = 2;
 const STORE_NAME = 'child_portraits';
+const PHOTOS_STORE_NAME = 'saved_photos';
 
 function openAvatarCacheDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') {
@@ -20,11 +36,15 @@ function openAvatarCacheDb(): Promise<IDBDatabase | null> {
   }
   return new Promise((resolve) => {
     try {
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME);
+        }
+        if (!db.objectStoreNames.contains(PHOTOS_STORE_NAME)) {
+          const photosStore = db.createObjectStore(PHOTOS_STORE_NAME, { keyPath: 'id' });
+          photosStore.createIndex('by_childId', 'childId', { unique: false });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -89,6 +109,189 @@ export async function removeLocalAvatarDataUrl(childId: string): Promise<void> {
     try {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       tx.objectStore(STORE_NAME).delete(childId);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      db.close();
+      resolve();
+    }
+  });
+}
+
+/**
+ * Compresses any captured or uploaded photo into a crisp storage-ready JPEG (max 1200px)
+ * so every picture taken saves cleanly into IndexedDB and Google Drive.
+ */
+export function compressPhotoToStorageJpeg(
+  sourceDataUrl: string,
+  maxDim = 1200,
+  quality = 0.85,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const naturalW = img.naturalWidth || img.width;
+        const naturalH = img.naturalHeight || img.height;
+        if (!naturalW || !naturalH) {
+          resolve(sourceDataUrl);
+          return;
+        }
+        const scale = Math.min(1, maxDim / Math.max(naturalW, naturalH));
+        const outW = Math.max(1, Math.round(naturalW * scale));
+        const outH = Math.max(1, Math.round(naturalH * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = outW;
+        canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(sourceDataUrl);
+          return;
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.drawImage(img, 0, 0, outW, outH);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } catch {
+        resolve(sourceDataUrl);
+      }
+    };
+    img.onerror = () => resolve(sourceDataUrl);
+    img.src = sourceDataUrl;
+  });
+}
+
+export async function savePhotoToLocalAlbum(record: SavedLocalPhotoRecord): Promise<void> {
+  const db = await openAvatarCacheDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(PHOTOS_STORE_NAME, 'readwrite');
+      tx.objectStore(PHOTOS_STORE_NAME).put(record);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      db.close();
+      resolve();
+    }
+  });
+}
+
+export async function listLocalPhotosForChild(
+  childId: string,
+): Promise<SavedLocalPhotoRecord[]> {
+  const db = await openAvatarCacheDb();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(PHOTOS_STORE_NAME, 'readonly');
+      const store = tx.objectStore(PHOTOS_STORE_NAME);
+      const index = store.index('by_childId');
+      const req = index.getAll(IDBKeyRange.only(childId));
+      req.onsuccess = () => {
+        db.close();
+        const items = Array.isArray(req.result)
+          ? (req.result as SavedLocalPhotoRecord[])
+          : [];
+        items.sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0));
+        resolve(items);
+      };
+      req.onerror = () => {
+        db.close();
+        resolve([]);
+      };
+    } catch {
+      db.close();
+      resolve([]);
+    }
+  });
+}
+
+export async function updateLocalPhotoRecord(
+  photoId: string,
+  patch: Partial<
+    Pick<
+      SavedLocalPhotoRecord,
+      'driveFileId' | 'caption' | 'heightCm' | 'weightKg' | 'ageMonths'
+    >
+  >,
+): Promise<void> {
+  const db = await openAvatarCacheDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(PHOTOS_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(PHOTOS_STORE_NAME);
+      const getReq = store.get(photoId);
+      getReq.onsuccess = () => {
+        const existing = getReq.result as SavedLocalPhotoRecord | undefined;
+        if (existing) {
+          store.put({ ...existing, ...patch });
+        }
+      };
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      db.close();
+      resolve();
+    }
+  });
+}
+
+export async function deleteLocalPhoto(photoId: string): Promise<void> {
+  const db = await openAvatarCacheDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(PHOTOS_STORE_NAME, 'readwrite');
+      tx.objectStore(PHOTOS_STORE_NAME).delete(photoId);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      db.close();
+      resolve();
+    }
+  });
+}
+
+export async function deleteAllLocalPhotosForChild(childId: string): Promise<void> {
+  const existing = await listLocalPhotosForChild(childId);
+  if (existing.length === 0) return;
+  const db = await openAvatarCacheDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(PHOTOS_STORE_NAME, 'readwrite');
+      const store = tx.objectStore(PHOTOS_STORE_NAME);
+      for (const item of existing) {
+        store.delete(item.id);
+      }
       tx.oncomplete = () => {
         db.close();
         resolve();

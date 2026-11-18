@@ -35,6 +35,13 @@ interface WallPhotoHeightEstimatorModalProps {
     heightCm: number;
     sourceLabel: string;
   }) => void;
+  onSaveCapturedPhoto?: (params: {
+    dataUrl: string;
+    kind: 'wall';
+    caption: string;
+    heightCmOverride?: number;
+    existingPhotoId?: string | null;
+  }) => Promise<string | null> | void;
 }
 
 type CaptureViewMode = 'workspace' | 'camera';
@@ -50,6 +57,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
   accessToken,
   onClose,
   onApplyEstimatedInches,
+  onSaveCapturedPhoto,
 }) => {
   const [viewMode, setViewMode] = useState<CaptureViewMode>('workspace');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -72,11 +80,13 @@ export const WallPhotoHeightEstimatorModal: React.FC<
   const [isAnalyzingAi, setIsAnalyzingAi] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<SelectedResultSource>('ai');
+  const [isPhotoSavedToAlbum, setIsPhotoSavedToAlbum] = useState<boolean>(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const svgCanvasRef = useRef<SVGSVGElement | null>(null);
+  const activeSavedPhotoIdRef = useRef<string | null>(null);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -178,6 +188,19 @@ export const WallPhotoHeightEstimatorModal: React.FC<
           ),
         );
       }
+
+      // Enrich the already-saved photo with the AI estimated height in inches
+      if (onSaveCapturedPhoto && activeSavedPhotoIdRef.current) {
+        const estCm = Number(clampNumber(result.estimatedInches * 2.54, 65, 175).toFixed(1));
+        const estFmt = formatInchesDetailed(result.estimatedInches);
+        void onSaveCapturedPhoto({
+          dataUrl: photoToAnalyze.dataUrl,
+          kind: 'wall',
+          caption: `Wall check-in · ${estFmt.feetInchesLabel} (${estFmt.totalInchesLabel})`,
+          heightCmOverride: estCm,
+          existingPhotoId: activeSavedPhotoIdRef.current,
+        });
+      }
     } catch (err) {
       setErrorMessage(
         err instanceof Error
@@ -190,13 +213,26 @@ export const WallPhotoHeightEstimatorModal: React.FC<
     }
   };
 
-  const loadNewWallPhoto = async (rawDataUrl: string) => {
+  const loadNewWallPhoto = async (rawDataUrl: string, sourceCaption = 'Wall height photo') => {
     setErrorMessage(null);
     setAiEstimate(null);
+    setIsPhotoSavedToAlbum(false);
+    activeSavedPhotoIdRef.current = null;
     try {
       const prepared = await prepareWallPhotoForAnalysis(rawDataUrl);
       setPreparedPhoto(prepared);
       setViewMode('workspace');
+      if (onSaveCapturedPhoto) {
+        const savedId = await onSaveCapturedPhoto({
+          dataUrl: prepared.dataUrl,
+          kind: 'wall',
+          caption: sourceCaption,
+        });
+        if (typeof savedId === 'string' && savedId.length > 0) {
+          activeSavedPhotoIdRef.current = savedId;
+        }
+        setIsPhotoSavedToAlbum(true);
+      }
       await runAiGuesstimate(prepared);
     } catch (err) {
       setErrorMessage(
@@ -222,7 +258,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const snappedUrl = canvas.toDataURL('image/jpeg', 0.9);
     stopCamera();
-    void loadNewWallPhoto(snappedUrl);
+    void loadNewWallPhoto(snappedUrl, 'Wall camera photo');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,7 +266,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
     if (!file) return;
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      await loadNewWallPhoto(dataUrl);
+      await loadNewWallPhoto(dataUrl, 'Uploaded wall photo');
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Could not read photo file.');
     } finally {
@@ -249,7 +285,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
       });
       if (picked) {
         const dataUrl = await downloadDriveImageAsDataUrl(accessToken, picked.id);
-        await loadNewWallPhoto(dataUrl);
+        await loadNewWallPhoto(dataUrl, `Drive wall photo (${picked.name.slice(0, 50)})`);
       }
     } catch (err) {
       setErrorMessage(
@@ -315,13 +351,28 @@ export const WallPhotoHeightEstimatorModal: React.FC<
       clampNumber(activeInchesToApply * 2.54, 65, 175).toFixed(1),
     );
     const clampedIn = Number((clampedCm / 2.54).toFixed(1));
+    const sourceLabel =
+      selectedSource === 'ai' && aiEstimate
+        ? `AI Wall Guesstimate (${aiEstimate.detectedReferenceLabel})`
+        : `Photo Reference Ruler (${refInches}" reference)`;
+
+    if (preparedPhoto && onSaveCapturedPhoto) {
+      void onSaveCapturedPhoto({
+        dataUrl: preparedPhoto.dataUrl,
+        kind: 'wall',
+        caption: `${activeFormatted.feetInchesLabel} (${activeFormatted.totalInchesLabel}) · ${sourceLabel}`.slice(
+          0,
+          120,
+        ),
+        heightCmOverride: clampedCm,
+        existingPhotoId: activeSavedPhotoIdRef.current,
+      });
+    }
+
     onApplyEstimatedInches({
       inches: clampedIn,
       heightCm: clampedCm,
-      sourceLabel:
-        selectedSource === 'ai' && aiEstimate
-          ? `AI Wall Guesstimate (${aiEstimate.detectedReferenceLabel})`
-          : `Photo Reference Ruler (${refInches}" reference)`,
+      sourceLabel,
     });
     onClose();
   };
@@ -985,17 +1036,24 @@ export const WallPhotoHeightEstimatorModal: React.FC<
 
         {/* Footer Actions */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-sky-100">
-          <div className="text-xs text-slate-600">
+          <div className="text-xs text-slate-600 space-y-0.5">
             {preparedPhoto ? (
-              <span>
-                Ready to apply:{' '}
-                <strong className="font-mono tabular-nums text-indigo-950">
-                  {activeFormatted.feetInchesLabel} ({activeFormatted.totalInchesLabel})
-                </strong>{' '}
-                <span className="font-mono tabular-nums text-slate-400">
-                  · {activeFormatted.cmLabel}
-                </span>
-              </span>
+              <>
+                <div>
+                  Ready to apply:{' '}
+                  <strong className="font-mono tabular-nums text-indigo-950">
+                    {activeFormatted.feetInchesLabel} ({activeFormatted.totalInchesLabel})
+                  </strong>{' '}
+                  <span className="font-mono tabular-nums text-slate-400">
+                    · {activeFormatted.cmLabel}
+                  </span>
+                </div>
+                {isPhotoSavedToAlbum && (
+                  <p className="text-[11px] font-semibold text-emerald-700">
+                    Photo automatically saved to {childName}’s photo album.
+                  </p>
+                )}
+              </>
             ) : (
               <span>Photo guesstimates are great for playful check-ins; verify with a book &amp; tape for doctor records.</span>
             )}

@@ -3,6 +3,7 @@ export type BiologicalSex = 'boy' | 'girl' | 'unspecified';
 export type PaletteId = 'meadow' | 'sunny' | 'ocean' | 'berry';
 export type AccessoryId = 'none' | 'sprout' | 'cap' | 'crown' | 'dino';
 export type HairStyle = 'curls' | 'bob' | 'spiky' | 'puffs';
+export type ChildPhotoKind = 'avatar' | 'wall';
 
 // Validation constants synchronized verbatim with firebase-blueprint.json & firestore.rules
 export const VALIDATION_BOUNDS = {
@@ -11,6 +12,7 @@ export const VALIDATION_BOUNDS = {
   NAME_MIN_LEN: 1,
   NAME_MAX_LEN: 50,
   NOTE_MAX_LEN: 120,
+  CAPTION_MAX_LEN: 120,
   DATE_PATTERN: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
   HEX_COLOR_PATTERN: /^#[0-9a-fA-F]{6}$/,
   AGE_TWO_HEIGHT_MIN: 70,
@@ -39,6 +41,7 @@ export interface ChildProfile {
   skinTone: string;
   hairColor: string;
   avatarDriveFileId: string;
+  createdAtMs?: number;
 }
 
 export interface GrowthMeasurement {
@@ -50,6 +53,21 @@ export interface GrowthMeasurement {
   weightKg: number;
   recordedDate: string;
   note: string;
+}
+
+export interface ChildPhotoRecord {
+  id: string;
+  ownerId: string;
+  childId: string;
+  kind: ChildPhotoKind;
+  capturedDate: string;
+  ageMonths: number;
+  heightCm: number;
+  weightKg: number;
+  caption: string;
+  driveFileId: string;
+  createdAtMs: number;
+  localDataUrl?: string;
 }
 
 export interface PaletteTheme {

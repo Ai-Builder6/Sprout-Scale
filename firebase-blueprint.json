@@ -171,6 +171,89 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "ChildPhoto": {
+      "title": "ChildPhoto",
+      "description": "Lightweight metadata for every portrait or wall height photo taken for a child. Raw image bytes are stored locally in IndexedDB and optionally in Google Drive (never in Firestore).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the parent/guardian who owns this photo record.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "childId": {
+          "type": "string",
+          "description": "ID of the parent ChildProfile document.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "kind": {
+          "type": "string",
+          "description": "Whether the picture was taken in the Avatar Photo Studio or the Wall Height Guesstimator.",
+          "enum": ["avatar", "wall"],
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "capturedDate": {
+          "type": "string",
+          "description": "ISO date YYYY-MM-DD when the photo was taken or saved.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "ageMonths": {
+          "type": "number",
+          "description": "Child's age in months at the time the photo was saved (0 to 216 months)."
+        },
+        "heightCm": {
+          "type": "number",
+          "description": "Associated or estimated height in centimeters (0 if unset, up to 210 cm)."
+        },
+        "weightKg": {
+          "type": "number",
+          "description": "Associated weight in kilograms (0 if unset, up to 120 kg)."
+        },
+        "caption": {
+          "type": "string",
+          "description": "Short caption or source label for the photo (up to 120 characters).",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "driveFileId": {
+          "type": "string",
+          "description": "Optional Google Drive file ID where the JPEG image is backed up (strictly blocks base64/data URLs).",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^([a-zA-Z0-9_\\-]+)?$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the photo metadata record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the photo metadata record was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "childId",
+        "kind",
+        "capturedDate",
+        "ageMonths",
+        "heightCm",
+        "weightKg",
+        "caption",
+        "driveFileId",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -185,6 +268,12 @@
         "$ref": "#/entities/GrowthMeasurement"
       },
       "description": "Stores height and weight milestones belonging to a specific child profile."
+    },
+    "/children/{childId}/photos/{photoId}": {
+      "schema": {
+        "$ref": "#/entities/ChildPhoto"
+      },
+      "description": "Stores lightweight metadata and optional Google Drive file IDs for saved child portraits and wall height photos."
     }
   }
 }

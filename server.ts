@@ -247,6 +247,164 @@ async function startServer(): Promise<void> {
     }
   });
 
+  app.post('/api/generate-growth-music', async (req, res) => {
+    try {
+      const {
+        childName,
+        ageLabel,
+        heightSummary,
+        gainedSummary,
+        latestNote,
+        stylePreset,
+        durationMode,
+        customPrompt,
+        avatarDataUrl,
+      } = req.body as {
+        childName?: string;
+        ageLabel?: string;
+        heightSummary?: string;
+        gainedSummary?: string;
+        latestNote?: string;
+        stylePreset?: string;
+        durationMode?: 'clip' | 'full';
+        customPrompt?: string;
+        avatarDataUrl?: string | null;
+      };
+
+      const ai = getGenAIClient();
+      const model =
+        durationMode === 'full' ? 'lyria-3-pro-preview' : 'lyria-3-clip-preview';
+
+      const safeName = String(childName || 'our little sprout').trim().slice(0, 50);
+      const safeAge = String(ageLabel || 'growing strong').trim().slice(0, 40);
+      const safeHeight = String(heightSummary || '').trim().slice(0, 60);
+      const safeGained = String(gainedSummary || '').trim().slice(0, 80);
+      const safeNote = String(latestNote || '').trim().slice(0, 120);
+      const safeCustom = String(customPrompt || '').trim().slice(0, 240);
+
+      const styleDescriptions: Record<string, string> = {
+        'sunny-folk':
+          'warm sunny acoustic folk song with cheerful strummed guitar, light handclaps, upright bass, and joyful family vocals',
+        'playful-ukulele':
+          'playful storybook children’s celebratory tune with bright ukulele, wooden marimba/xylophone, whistle melody, and upbeat singalong vocals',
+        'indie-pop':
+          'upbeat feel-good indie pop celebration anthem with crisp drums, bright piano chords, shimmering guitar, and uplifting vocals',
+        'lullaby-piano':
+          'gentle heartwarming keepsake piano and acoustic strings ballad with tender, soothing vocals',
+      };
+
+      const chosenStyle =
+        styleDescriptions[String(stylePreset || 'sunny-folk')] ||
+        styleDescriptions['sunny-folk'];
+
+      const durationPhrase =
+        durationMode === 'full'
+          ? 'Generate a full-length keepsake family milestone song'
+          : 'Generate a 30-second celebratory milestone music clip';
+
+      const promptLines = [
+        `${durationPhrase} in the style of a ${chosenStyle}.`,
+        `This song celebrates ${safeName} (${safeAge})${safeHeight ? ` standing ${safeHeight}` : ''}${safeGained ? `, having sprouted ${safeGained} since turning Age 2` : ''}.`,
+        safeNote ? `Weave in this special milestone memory: "${safeNote}".` : '',
+        safeCustom ? `Additional family request: ${safeCustom}` : '',
+        'Keep the mood bright, affectionate, and family-friendly with memorable lyrics celebrating how fast they are growing.',
+      ].filter(Boolean);
+
+      const textPrompt = promptLines.join(' ');
+
+      const parts: Array<
+        | { text: string }
+        | { inlineData: { data: string; mimeType: string } }
+      > = [{ text: textPrompt }];
+
+      if (
+        avatarDataUrl &&
+        typeof avatarDataUrl === 'string' &&
+        avatarDataUrl.startsWith('data:image/')
+      ) {
+        const imgMatch = avatarDataUrl.match(
+          /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/,
+        );
+        if (imgMatch) {
+          parts.push({
+            inlineData: {
+              mimeType: imgMatch[1],
+              data: imgMatch[2],
+            },
+          });
+        }
+      }
+
+      // Omit responseModalities so Lyria streams both MP3 audio (inlineData) and lyrics (text)
+      const streamResponse = await ai.models.generateContentStream({
+        model,
+        contents: parts.length === 1 ? textPrompt : { parts },
+      });
+
+      const audioChunks: Buffer[] = [];
+      let lyrics = '';
+      let mimeType = 'audio/mpeg';
+
+      for await (const chunk of streamResponse) {
+        const candidateParts = chunk.candidates?.[0]?.content?.parts;
+        if (!candidateParts) continue;
+        for (const part of candidateParts) {
+          if (part.inlineData?.data) {
+            if (audioChunks.length === 0 && part.inlineData.mimeType) {
+              mimeType = part.inlineData.mimeType;
+            }
+            audioChunks.push(Buffer.from(part.inlineData.data, 'base64'));
+          }
+          if (part.text) {
+            lyrics += part.text;
+          }
+        }
+      }
+
+      if (audioChunks.length === 0) {
+        res.status(502).json({
+          error:
+            'The music generator completed without returning audio data. Please try again with a slightly simpler prompt.',
+        });
+        return;
+      }
+
+      const audioBase64 = Buffer.concat(audioChunks).toString('base64');
+      const audioDataUrl = `data:${mimeType};base64,${audioBase64}`;
+
+      res.json({
+        audioDataUrl,
+        lyrics: lyrics.trim(),
+        mimeType,
+        modelUsed: model,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.includes('MISSING_GEMINI_API_KEY') ||
+        msg.includes('API_KEY_INVALID') ||
+        msg.includes('PERMISSION_DENIED') ||
+        msg.includes('403')
+      ) {
+        res.status(403).json({
+          error:
+            'Lyria music generation requires a valid billing-enabled Gemini API key. Please check your selected API key in the Settings > Secrets panel.',
+        });
+        return;
+      }
+      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+        res.status(429).json({
+          error:
+            'Music generation quota reached. Upgrading or selecting a billing-enabled API key in the Settings > Secrets panel increases quota for Lyria models.',
+        });
+        return;
+      }
+      res.status(500).json({
+        error: `Could not generate milestone song (${msg.slice(0, 160)}). Please try again.`,
+      });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

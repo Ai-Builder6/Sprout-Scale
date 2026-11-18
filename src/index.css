@@ -19,3 +19,38 @@
     text-wrap: balance;
   }
 }
+
+@media print {
+  body.printing-growth-report {
+    background-color: #ffffff;
+  }
+
+  body.printing-growth-report header,
+  body.printing-growth-report main,
+  body.printing-growth-report footer,
+  body.printing-growth-report nav,
+  body.printing-growth-report .no-print {
+    display: none !important;
+  }
+
+  body.printing-growth-report .growth-report-modal-backdrop {
+    position: static !important;
+    padding: 0 !important;
+    background: transparent !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  body.printing-growth-report .growth-report-modal-shell {
+    max-width: 100% !important;
+    max-height: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  body.printing-growth-report .growth-report-printable-sheet {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+}

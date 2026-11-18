@@ -216,6 +216,38 @@ export async function runDirtyDozenSecuritySuite() {
 
     // 12. Blanket List Scraping Attack
     await assertFails(getDocs(collection(bobDb, 'children')));
+
+    // 13. ChildPhoto Raw Base64 Injection & Cross-Tenant Photo Write
+    await assertFails(
+      setDoc(doc(aliceDb, 'children', 'child_alice', 'photos', 'p_raw_base64'), {
+        ownerId: 'user_alice',
+        childId: 'child_alice',
+        kind: 'wall',
+        capturedDate: '2026-11-18',
+        ageMonths: 48,
+        heightCm: 103.0,
+        weightKg: 16.5,
+        caption: 'Wall check-in',
+        driveFileId: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(bobDb, 'children', 'child_alice', 'photos', 'p_cross_tenant'), {
+        ownerId: 'user_bob',
+        childId: 'child_alice',
+        kind: 'avatar',
+        capturedDate: '2026-11-18',
+        ageMonths: 48,
+        heightCm: 103.0,
+        weightKg: 16.5,
+        caption: 'Intrusion',
+        driveFileId: '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }),
+    );
   } finally {
     await testEnv.cleanup();
   }

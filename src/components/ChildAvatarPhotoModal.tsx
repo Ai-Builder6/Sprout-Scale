@@ -38,6 +38,11 @@ interface ChildAvatarPhotoModalProps {
   accessToken: string | null;
   onClose: () => void;
   onApplyPhoto: (result: { croppedDataUrl: string; sampledSkinHex: string }) => void;
+  onSaveCapturedPhoto?: (params: {
+    dataUrl: string;
+    kind: 'avatar';
+    caption: string;
+  }) => Promise<string | null> | void;
 }
 
 type ModalMode = 'choose-or-frame' | 'camera';
@@ -54,6 +59,7 @@ export const ChildAvatarPhotoModal: React.FC<ChildAvatarPhotoModalProps> = ({
   accessToken,
   onClose,
   onApplyPhoto,
+  onSaveCapturedPhoto,
 }) => {
   const [mode, setMode] = useState<ModalMode>('choose-or-frame');
   const [rawSourceUrl, setRawSourceUrl] = useState<string | null>(currentAvatarUrl);
@@ -69,10 +75,12 @@ export const ChildAvatarPhotoModal: React.FC<ChildAvatarPhotoModalProps> = ({
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState<boolean>(false);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const lastSavedSourceRef = useRef<string | null>(null);
 
   const stopCameraStream = () => {
     if (streamRef.current) {
@@ -88,6 +96,8 @@ export const ChildAvatarPhotoModal: React.FC<ChildAvatarPhotoModalProps> = ({
       setSampledTone(skinTone);
       setCrop({ zoom: 1.25, offsetX: 0, offsetY: 0 });
       setCameraError(null);
+      setSavedNotice(null);
+      lastSavedSourceRef.current = currentAvatarUrl;
       setMode('choose-or-frame');
     } else {
       stopCameraStream();
@@ -166,6 +176,13 @@ export const ChildAvatarPhotoModal: React.FC<ChildAvatarPhotoModalProps> = ({
 
   if (!isOpen) return null;
 
+  const persistCapturedPortraitToAlbum = (dataUrl: string, caption: string) => {
+    if (!onSaveCapturedPhoto || lastSavedSourceRef.current === dataUrl) return;
+    lastSavedSourceRef.current = dataUrl;
+    void onSaveCapturedPhoto({ dataUrl, kind: 'avatar', caption });
+    setSavedNotice(`Saved photo to ${childName || 'your child'}’s photo album!`);
+  };
+
   const handleSnapFromCamera = () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth || !video.videoHeight) return;
@@ -186,6 +203,7 @@ export const ChildAvatarPhotoModal: React.FC<ChildAvatarPhotoModalProps> = ({
     setRawSourceUrl(capturedUrl);
     setCrop({ zoom: 1.3, offsetX: 0, offsetY: 0 });
     setMode('choose-or-frame');
+    persistCapturedPortraitToAlbum(capturedUrl, 'Camera portrait');
   };
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -198,6 +216,7 @@ export const ChildAvatarPhotoModal: React.FC<ChildAvatarPhotoModalProps> = ({
       setRawSourceUrl(url);
       setCrop({ zoom: 1.25, offsetX: 0, offsetY: 0 });
       setMode('choose-or-frame');
+      persistCapturedPortraitToAlbum(url, 'Uploaded portrait');
     } catch (err) {
       setCameraError(err instanceof Error ? err.message : 'Failed to load photo.');
     } finally {
@@ -221,6 +240,7 @@ export const ChildAvatarPhotoModal: React.FC<ChildAvatarPhotoModalProps> = ({
         setRawSourceUrl(dataUrl);
         setCrop({ zoom: 1.25, offsetX: 0, offsetY: 0 });
         setMode('choose-or-frame');
+        persistCapturedPortraitToAlbum(dataUrl, `Drive portrait (${picked.name.slice(0, 60)})`);
       }
     } catch (err) {
       setCameraError(
@@ -325,6 +345,16 @@ export const ChildAvatarPhotoModal: React.FC<ChildAvatarPhotoModalProps> = ({
             className="px-3.5 py-2.5 rounded-lg text-xs font-medium bg-red-50 text-red-900 border border-red-200"
           >
             {cameraError}
+          </div>
+        )}
+
+        {savedNotice && !cameraError && (
+          <div
+            role="status"
+            className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-900 border border-emerald-200 flex items-center gap-1.5"
+          >
+            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
+            <span>{savedNotice}</span>
           </div>
         )}
 

@@ -88,6 +88,10 @@ interface MeasurementControlDeckProps {
     skinTone: string;
     hairColor: string;
   }) => Promise<void>;
+  isAddingNewKid: boolean;
+  onSetIsAddingNewKid: (adding: boolean) => void;
+  totalChildrenCount: number;
+  onDeleteChild: (childId: string) => Promise<void>;
 }
 
 const ACCESSORY_OPTIONS: { id: AccessoryId; label: string }[] = [
@@ -130,11 +134,15 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   onRemoveAvatarPhoto,
   onSaveCharacterProfile,
   onCreateNewChild,
+  isAddingNewKid,
+  onSetIsAddingNewKid,
+  totalChildrenCount,
+  onDeleteChild,
 }) => {
   // Local state for Child Info, DOB & Avatar customization form synced when childProfile changes
   const [editName, setEditName] = useState(childProfile.name);
   const [editBirthDate, setEditBirthDate] = useState(childProfile.birthDate || '');
-  const [editSex] = useState<BiologicalSex>(childProfile.sex || 'unspecified');
+  const [editSex, setEditSex] = useState<BiologicalSex>(childProfile.sex || 'unspecified');
   const [editAgeTwoHeight, setEditAgeTwoHeight] = useState(childProfile.ageTwoHeightCm);
   const [editAgeTwoWeight, setEditAgeTwoWeight] = useState(childProfile.ageTwoWeightKg);
   const [editPalette, setEditPalette] = useState<PaletteId>(childProfile.paletteId);
@@ -146,13 +154,32 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   const [editHairColor, setEditHairColor] = useState<string>(
     childProfile.hairColor || HAIR_COLOR_PRESETS[1].hex,
   );
-  const [isAddingNewKid, setIsAddingNewKid] = useState(false);
+  const [confirmDeleteChild, setConfirmDeleteChild] = useState<boolean>(false);
+  const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Keep form synced when switching active child or when photo skinTone updates
+  // Keep form synced when switching active child OR entering "Add New Child" mode
   React.useEffect(() => {
-    if (!isAddingNewKid) {
+    setConfirmDeleteChild(false);
+    if (isAddingNewKid) {
+      const paletteOrder: PaletteId[] = ['sunny', 'ocean', 'berry', 'meadow'];
+      const nextPalette = paletteOrder[totalChildrenCount % paletteOrder.length];
+      setEditName('');
+      setEditBirthDate('');
+      setEditSex('unspecified');
+      setEditAgeTwoHeight(86.5);
+      setEditAgeTwoWeight(12.5);
+      setEditPalette(nextPalette);
+      setEditAccessory('sprout');
+      setEditHair('bob');
+      setEditSkinTone(SKIN_TONE_PRESETS[1].hex);
+      setEditHairColor(HAIR_COLOR_PRESETS[1].hex);
+      window.setTimeout(() => {
+        nameInputRef.current?.focus();
+      }, 60);
+    } else {
       setEditName(childProfile.name);
       setEditBirthDate(childProfile.birthDate || '');
+      setEditSex(childProfile.sex || 'unspecified');
       setEditAgeTwoHeight(childProfile.ageTwoHeightCm);
       setEditAgeTwoWeight(childProfile.ageTwoWeightKg);
       setEditPalette(childProfile.paletteId);
@@ -161,7 +188,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
       setEditSkinTone(childProfile.skinTone || SKIN_TONE_PRESETS[1].hex);
       setEditHairColor(childProfile.hairColor || HAIR_COLOR_PRESETS[1].hex);
     }
-  }, [childProfile, isAddingNewKid]);
+  }, [childProfile, isAddingNewKid, totalChildrenCount]);
 
   const draftYears = Math.floor(draftAgeMonths / 12);
   const draftRemMonths = draftAgeMonths % 12;
@@ -262,23 +289,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
     if (isAddingNewKid) {
       await onCreateNewChild(payload);
-      setIsAddingNewKid(false);
+      onSetIsAddingNewKid(false);
     } else {
       await onSaveCharacterProfile(payload);
     }
   };
 
   const startNewKidFlow = () => {
-    setIsAddingNewKid(true);
-    setEditName('');
-    setEditBirthDate('');
-    setEditAgeTwoHeight(86.5);
-    setEditAgeTwoWeight(12.5);
-    setEditPalette('sunny');
-    setEditAccessory('sprout');
-    setEditHair('bob');
-    setEditSkinTone(SKIN_TONE_PRESETS[1].hex);
-    setEditHairColor(HAIR_COLOR_PRESETS[1].hex);
+    onSetIsAddingNewKid(true);
   };
 
   return (
@@ -687,27 +705,35 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
         <form onSubmit={handleCharacterFormSubmit} className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-indigo-950">
-              {isAddingNewKid ? 'Add New Child Info' : `${childProfile.name}’s Info & Avatar`}
+              {isAddingNewKid ? 'Add Another Child' : `${childProfile.name}’s Info & Avatar`}
             </h3>
             {!isAddingNewKid ? (
               <button
                 type="button"
                 onClick={startNewKidFlow}
-                className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 hover:text-indigo-950 whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
-                Add Child
+                <UserPlus className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+                Add Another Child
               </button>
             ) : (
               <button
                 type="button"
-                onClick={() => setIsAddingNewKid(false)}
+                onClick={() => onSetIsAddingNewKid(false)}
                 className="text-xs font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Cancel
               </button>
             )}
           </div>
+
+          {isAddingNewKid && (
+            <div className="px-3.5 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 leading-relaxed">
+              <strong>Creating Child #{totalChildrenCount + 1}:</strong> Enter their name and
+              birthday below. Your other {totalChildrenCount === 1 ? 'child stays' : `${totalChildrenCount} children stay`}{' '}
+              safely saved in the switcher above.
+            </div>
+          )}
 
           {/* Realistic Child Photo Avatar Strip */}
           {!isAddingNewKid && (
@@ -767,6 +793,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 Child’s Name
               </label>
               <input
+                ref={nameInputRef}
                 id="kid-name-input"
                 type="text"
                 required
@@ -793,6 +820,35 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 onChange={(e) => setEditBirthDate(e.target.value)}
                 className="w-full h-10 px-3 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
               />
+            </div>
+          </div>
+
+          {/* WHO Growth Chart Reference Curve (Boy / Girl / Combined) */}
+          <div className="space-y-1.5">
+            <span className="block text-xs font-semibold text-slate-700">
+              WHO Growth Chart Curve
+            </span>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(
+                [
+                  { id: 'boy', label: 'Boy' },
+                  { id: 'girl', label: 'Girl' },
+                  { id: 'unspecified', label: 'Combined' },
+                ] as { id: BiologicalSex; label: string }[]
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setEditSex(opt.id)}
+                  className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap cursor-pointer ${
+                    editSex === opt.id
+                      ? 'border-sky-600 bg-sky-50 text-indigo-950'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1021,14 +1077,56 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           <button
             type="submit"
             disabled={isSaving}
-            className="w-full h-11 px-4 py-2.5 text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className={`w-full h-11 px-4 py-2.5 text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 ${
+              isAddingNewKid
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                : 'bg-sky-600 hover:bg-sky-700 text-white'
+            }`}
           >
             {isSaving
               ? 'Saving...'
               : isAddingNewKid
-                ? 'Save Child Info & Start Wall'
-                : 'Save Child Info & Avatar'}
+                ? `Save ${editName.trim() || 'New Child'} & Switch to Wall`
+                : `Save ${childProfile.name}’s Info & Avatar`}
           </button>
+
+          {!isAddingNewKid && totalChildrenCount > 1 && (
+            <div className="pt-2 border-t border-slate-100">
+              {confirmDeleteChild ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200">
+                  <span className="text-xs font-semibold text-rose-900">
+                    Remove {childProfile.name} &amp; their measurements?
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => void onDeleteChild(childProfile.id)}
+                      className="px-2.5 py-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-md cursor-pointer"
+                    >
+                      Confirm Remove
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteChild(false)}
+                      className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteChild(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-rose-700 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  Remove {childProfile.name}’s profile
+                </button>
+              )}
+            </div>
+          )}
         </form>
       )}
     </div>

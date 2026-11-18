@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ArrowUpRight, Trash2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ArrowUpRight, Check, Download, FileText, Trash2 } from 'lucide-react';
 import {
   ChildProfile,
   cmToInches,
@@ -15,10 +15,17 @@ import {
   inchesToCm,
   kgToLbs,
 } from '../types';
+import {
+  computeGrowthProgressSummary,
+  downloadPrintableGrowthPdfReport,
+} from '../services/growthPdfReportService';
+import { GrowthReportModal } from './GrowthReportModal';
+import { GrowthMusicKeepsakeCard } from './GrowthMusicKeepsakeCard';
 
 interface GrowthTimelineSectionProps {
   childProfile: ChildProfile;
   measurements: GrowthMeasurement[];
+  avatarPhotoUrl?: string | null;
   onInspectMilestone: (measurement: GrowthMeasurement) => void;
   onDeleteMeasurement: (measurementId: string) => Promise<void>;
 }
@@ -26,11 +33,19 @@ interface GrowthTimelineSectionProps {
 export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
   childProfile,
   measurements,
+  avatarPhotoUrl = null,
   onInspectMilestone,
   onDeleteMeasurement,
 }) => {
   const [chartMetric, setChartMetric] = useState<'height' | 'weight'>('height');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+  const [quickPdfSaved, setQuickPdfSaved] = useState<boolean>(false);
+
+  const progressSummary = useMemo(
+    () => computeGrowthProgressSummary(childProfile, measurements),
+    [childProfile, measurements],
+  );
 
   // Combine Age 2 baseline point (if no explicit 24-month entry exists) for curve continuity
   const sortedAsc = [...measurements].sort((a, b) => a.ageMonths - b.ageMonths);
@@ -98,6 +113,18 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
   // Descending order for table so newest milestones appear first
   const sortedDesc = [...measurements].sort((a, b) => b.ageMonths - a.ageMonths);
 
+  const handleQuickPdfDownload = () => {
+    downloadPrintableGrowthPdfReport({
+      childProfile,
+      measurements,
+      avatarPhotoUrl,
+    });
+    setQuickPdfSaved(true);
+    window.setTimeout(() => {
+      setQuickPdfSaved(false);
+    }, 3500);
+  };
+
   return (
     <section id="timeline" className="space-y-8 pt-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -107,37 +134,140 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
           </h2>
           <p className="text-sm text-slate-700 max-w-2xl">
             Every height (ft &amp; in) and weight (lb) mark recorded for {childProfile.name}{' '}
-            since Age 2 — click any milestone point to inspect it on the Growth Wall.
+            since Age 2 — click any milestone point to inspect it on the Growth Wall or export a printable PDF report.
           </p>
         </div>
 
-        <div
-          role="group"
-          aria-label="Growth curve metric"
-          className="flex items-center gap-1 p-1 bg-sky-200/80 rounded-lg"
-        >
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={() => setChartMetric('height')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              chartMetric === 'height'
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'text-sky-950 hover:text-indigo-950'
-            }`}
+            onClick={() => setIsReportModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 rounded-lg shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            Height (ft &amp; in)
+            <FileText className="w-3.5 h-3.5 text-slate-950" aria-hidden="true" />
+            Printable PDF Report
           </button>
+
           <button
             type="button"
-            onClick={() => setChartMetric('weight')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              chartMetric === 'weight'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'text-sky-950 hover:text-indigo-950'
-            }`}
+            onClick={handleQuickPdfDownload}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-950 bg-white hover:bg-sky-50 border border-sky-300 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            Weight (lb)
+            {quickPdfSaved ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
+                PDF Saved
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5 text-sky-700" aria-hidden="true" />
+                Quick PDF
+              </>
+            )}
           </button>
+
+          <div
+            role="group"
+            aria-label="Growth curve metric"
+            className="flex items-center gap-1 p-1 bg-sky-200/80 rounded-lg"
+          >
+            <button
+              type="button"
+              onClick={() => setChartMetric('height')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                chartMetric === 'height'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-sky-950 hover:text-indigo-950'
+              }`}
+            >
+              Height (ft &amp; in)
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartMetric('weight')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                chartMetric === 'weight'
+                  ? 'bg-rose-600 text-white shadow-xs'
+                  : 'text-sky-950 hover:text-indigo-950'
+              }`}
+            >
+              Weight (lb)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Inline Growth Progress Summary Card */}
+      <div className="bg-white border-2 border-sky-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 border-b border-sky-100 pb-3.5">
+          <div className="space-y-1 max-w-3xl">
+            <p className="text-xs font-bold uppercase tracking-wide text-sky-800">
+              {childProfile.name}’s Progress Summary Since Age 2
+            </p>
+            <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+              {progressSummary.narrativeSummary}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsReportModalOpen(true)}
+            className="text-xs font-bold text-sky-800 hover:text-indigo-950 hover:underline whitespace-nowrap shrink-0 self-start cursor-pointer"
+          >
+            Preview &amp; Print Full Report
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:divide-x sm:divide-sky-100">
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-slate-600">Height Gained Since Age 2</p>
+            <p className="text-base font-bold font-mono tabular-nums text-emerald-700">
+              {progressSummary.totalHeightGainPrimary}{' '}
+              <span className="text-xs text-slate-600 font-semibold">
+                (+{Math.max(0, progressSummary.heightPercentGain).toFixed(1)}%)
+              </span>
+            </p>
+            <p className="text-[11px] font-mono tabular-nums text-slate-400">
+              {progressSummary.totalHeightGainSecondary} · Now {progressSummary.latestHeightPrimary}
+            </p>
+          </div>
+
+          <div className="space-y-0.5 sm:pl-4">
+            <p className="text-xs font-semibold text-slate-600">Weight Gained Since Age 2</p>
+            <p className="text-base font-bold font-mono tabular-nums text-indigo-950">
+              {progressSummary.totalWeightGainPrimary}
+            </p>
+            <p className="text-[11px] font-mono tabular-nums text-slate-400">
+              {progressSummary.totalWeightGainSecondary} · Now {progressSummary.latestWeightPrimary}
+            </p>
+          </div>
+
+          <div className="space-y-0.5 lg:pl-4">
+            <p className="text-xs font-semibold text-slate-600">Average Annual Pace</p>
+            <p className="text-base font-bold font-mono tabular-nums text-sky-900">
+              {progressSummary.annualHeightVelocityPrimary &&
+              progressSummary.annualWeightVelocityPrimary
+                ? `${progressSummary.annualHeightVelocityPrimary} · ${progressSummary.annualWeightVelocityPrimary}`
+                : 'Baseline Recorded'}
+            </p>
+            <p className="text-[11px] font-mono tabular-nums text-slate-400">
+              {progressSummary.annualHeightVelocitySecondary &&
+              progressSummary.annualWeightVelocitySecondary
+                ? `${progressSummary.annualHeightVelocitySecondary} · ${progressSummary.annualWeightVelocitySecondary}`
+                : 'Add future check-ins for annual rate'}
+            </p>
+          </div>
+
+          <div className="space-y-0.5 sm:pl-4">
+            <p className="text-xs font-semibold text-slate-600">WHO Peer Percentile</p>
+            <p className="text-base font-bold font-mono tabular-nums text-indigo-950">
+              H: {progressSummary.latestHeightPercentileOrdinal} · W:{' '}
+              {progressSummary.latestWeightPercentileOrdinal}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              {progressSummary.whoCurveLabel} ({progressSummary.latestAgeLabel})
+            </p>
+          </div>
         </div>
       </div>
 
@@ -404,6 +534,23 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
           </div>
         )}
       </div>
+
+      {/* Milestone Keepsake Song Studio (Lyria 3 30s Clip & Full Track Generator) */}
+      <GrowthMusicKeepsakeCard
+        childProfile={childProfile}
+        measurements={measurements}
+        progressSummary={progressSummary}
+        avatarPhotoUrl={avatarPhotoUrl}
+      />
+
+      {/* Printable PDF Growth Report Preview & Export Modal */}
+      <GrowthReportModal
+        isOpen={isReportModalOpen}
+        childProfile={childProfile}
+        measurements={measurements}
+        avatarPhotoUrl={avatarPhotoUrl}
+        onClose={() => setIsReportModalOpen(false)}
+      />
     </section>
   );
 };
