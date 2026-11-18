@@ -17,7 +17,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { Cake, Camera, LogOut, Plus } from 'lucide-react';
+import { Cake, Camera, LogOut, Plus, Ruler } from 'lucide-react';
 import {
   clearAccessToken,
   db,
@@ -35,6 +35,7 @@ import {
   clampNumber,
   DEMO_CHILD,
   DEMO_MEASUREMENTS,
+  formatHeight,
   formatHumanDate,
   getLocalTodayIso,
   GrowthMeasurement,
@@ -54,12 +55,12 @@ import {
   ControlDeckTab,
   MeasurementControlDeck,
 } from './components/MeasurementControlDeck';
-import { WhoPeerComparisonSection } from './components/WhoPeerComparisonSection';
 import { GrowthTimelineSection } from './components/GrowthTimelineSection';
 import { HowToMeasureSection } from './components/HowToMeasureSection';
 import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { GoogleDriveVaultSection } from './components/GoogleDriveVaultSection';
 import { ChildAvatarPhotoModal } from './components/ChildAvatarPhotoModal';
+import { WallPhotoHeightEstimatorModal } from './components/WallPhotoHeightEstimatorModal';
 import {
   getLocalAvatarDataUrl,
   removeLocalAvatarDataUrl,
@@ -118,9 +119,10 @@ function SproutScaleWorkspace() {
   const [isPlayingTimelapse, setIsPlayingTimelapse] = useState<boolean>(false);
   const timelapseTimerRef = useRef<number | null>(null);
 
-  // Realistic Child Photo Avatar cache & Studio modal state
+  // Realistic Child Photo Avatar cache & Studio / Wall Photo Guesstimator modal state
   const [avatarPhotoMap, setAvatarPhotoMap] = useState<Record<string, string>>({});
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
+  const [isWallEstimatorOpen, setIsWallEstimatorOpen] = useState<boolean>(false);
 
   // Active children list & measurements depending on Auth state
   const activeChildrenList = user ? cloudChildren : demoChildren;
@@ -795,25 +797,22 @@ function SproutScaleWorkspace() {
     showTransientBanner('success', `Switched ${activeChild.name} to illustrated face.`);
   };
 
-  const handleSelectBiologicalSex = async (nextSex: BiologicalSex) => {
-    const safeSex = sanitizeBiologicalSex(nextSex);
-    if (safeSex === activeChild.sex) return;
-
-    if (user) {
-      const path = `children/${activeChild.id}`;
-      try {
-        await updateDoc(doc(db, 'children', activeChild.id), {
-          sex: safeSex,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, path);
-      }
-    } else {
-      setDemoChildren((prev) =>
-        prev.map((c) => (c.id === activeChild.id ? { ...c, sex: safeSex } : c)),
-      );
-    }
+  const handleApplyWallPhotoEstimate = ({
+    inches,
+    heightCm,
+    sourceLabel,
+  }: {
+    inches: number;
+    heightCm: number;
+    sourceLabel: string;
+  }) => {
+    setIsPlayingTimelapse(false);
+    setDraftHeightCm(heightCm);
+    setActiveDeckTab('measure');
+    showTransientBanner(
+      'success',
+      `Applied ${inches.toFixed(1)} in (${formatHeight(heightCm, 'imperial')}) from ${sourceLabel} — click Mark Height & Weight to save!`,
+    );
   };
 
   const handleSaveCharacterProfile = async (updates: {
@@ -1053,12 +1052,13 @@ function SproutScaleWorkspace() {
             >
               Growth Wall
             </a>
-            <a
-              href="#who-percentiles"
-              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            <button
+              type="button"
+              onClick={() => setIsWallEstimatorOpen(true)}
+              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              WHO Percentiles
-            </a>
+              Photo Ruler
+            </button>
             <a
               href="#timeline"
               className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
@@ -1148,6 +1148,15 @@ function SproutScaleWorkspace() {
                 >
                   <Camera className="w-3.5 h-3.5" aria-hidden="true" />
                   {activeAvatarPhotoUrl ? 'Update Child Photo' : 'Take / Upload Child Photo'}
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => setIsWallEstimatorOpen(true)}
+                  className="inline-flex items-center gap-1 font-bold text-emerald-800 hover:text-indigo-950 hover:underline cursor-pointer"
+                >
+                  <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
+                  Guesstimate Inches from Wall Photo
                 </button>
               </div>
             </div>
@@ -1244,6 +1253,7 @@ function SproutScaleWorkspace() {
                   isPlayingTimelapse={isPlayingTimelapse}
                   onToggleTimelapse={handleToggleTimelapse}
                   onOpenPhotoStudio={() => setIsPhotoModalOpen(true)}
+                  onOpenWallHeightEstimator={() => setIsWallEstimatorOpen(true)}
                 />
               </div>
 
@@ -1283,6 +1293,7 @@ function SproutScaleWorkspace() {
                   }}
                   onSubmitMeasurement={handleMarkMeasurement}
                   onOpenPhotoStudio={() => setIsPhotoModalOpen(true)}
+                  onOpenWallHeightEstimator={() => setIsWallEstimatorOpen(true)}
                   onRemoveAvatarPhoto={handleRemoveAvatarPhoto}
                   onSaveCharacterProfile={handleSaveCharacterProfile}
                   onCreateNewChild={handleCreateNewChild}
@@ -1292,18 +1303,7 @@ function SproutScaleWorkspace() {
           )}
         </section>
 
-        {/* Section 2: WHO Growth Chart Percentiles & 10-Peer Classroom Stack-Up */}
-        <WhoPeerComparisonSection
-          childProfile={activeChild}
-          activeHeightCm={draftHeightCm}
-          activeWeightKg={draftWeightKg}
-          activeAgeMonths={draftAgeMonths}
-          isPreviewDirty={isPreviewDirty}
-          units={units}
-          onSelectBiologicalSex={(sex) => void handleSelectBiologicalSex(sex)}
-        />
-
-        {/* Section 3: Growth Trajectory Curve & Wall Marks Table */}
+        {/* Section 2: Growth Trajectory Curve & Wall Marks Table */}
         <GrowthTimelineSection
           childProfile={activeChild}
           measurements={activeMeasurements}
@@ -1330,7 +1330,9 @@ function SproutScaleWorkspace() {
         />
 
         {/* Section 4: Home Measuring Guide */}
-        <HowToMeasureSection />
+        <HowToMeasureSection
+          onOpenWallHeightEstimator={() => setIsWallEstimatorOpen(true)}
+        />
       </main>
 
       {/* Clean Quiet Footer */}
@@ -1369,6 +1371,16 @@ function SproutScaleWorkspace() {
         accessToken={accessToken}
         onClose={() => setIsPhotoModalOpen(false)}
         onApplyPhoto={(res) => void handleApplyAvatarPhoto(res)}
+      />
+
+      {/* Wall Photo Height Guesstimator Modal (AI Vision + Reference Object Inches Ruler) */}
+      <WallPhotoHeightEstimatorModal
+        isOpen={isWallEstimatorOpen}
+        childName={activeChild.name}
+        ageMonths={draftAgeMonths}
+        accessToken={accessToken}
+        onClose={() => setIsWallEstimatorOpen(false)}
+        onApplyEstimatedInches={handleApplyWallPhotoEstimate}
       />
     </div>
   );

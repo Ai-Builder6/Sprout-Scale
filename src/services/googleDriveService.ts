@@ -7,7 +7,6 @@ import {
   GrowthMeasurement,
   UnitSystem,
 } from '../types';
-import { evaluateChildWhoPercentiles } from './whoGrowthService';
 
 export interface DriveFileSummary {
   id: string;
@@ -367,24 +366,13 @@ function buildKeepsakePosterSvg(
   const latestW = latest ? latest.weightKg : child.ageTwoWeightKg;
   const latestAge = latest ? latest.ageMonths : 24;
   const dobLine = child.birthDate ? ` · Born ${child.birthDate.replace(/[<>&"]/g, '')}` : '';
-  const whoLatest = evaluateChildWhoPercentiles({
-    heightCm: latestH,
-    weightKg: latestW,
-    ageMonths: latestAge,
-    sex: child.sex,
-  });
 
   const rowsSvg = sorted
     .slice(-8)
     .map((m, idx) => {
       const y = 272 + idx * 32;
-      const mWho = evaluateChildWhoPercentiles({
-        heightCm: m.heightCm,
-        weightKg: m.weightKg,
-        ageMonths: m.ageMonths,
-        sex: child.sex,
-      });
-      return `<text x="60" y="${y}" font-family="sans-serif" font-size="13.5" fill="#1e293b">${formatAgeLabel(m.ageMonths)} (${m.recordedDate}) — ${formatHeight(m.heightCm, units)} (WHO ${mWho.height.ordinalLabel}) · ${formatWeight(m.weightKg, units)} (WHO ${mWho.weight.ordinalLabel})${m.note ? ` · ${m.note.replace(/[<>&"]/g, '')}` : ''}</text>`;
+      const totalInches = (m.heightCm / 2.54).toFixed(1);
+      return `<text x="60" y="${y}" font-family="sans-serif" font-size="13.5" fill="#1e293b">${formatAgeLabel(m.ageMonths)} (${m.recordedDate}) — ${formatHeight(m.heightCm, units)} (${totalInches} in) · ${formatWeight(m.weightKg, units)}${m.note ? ` · ${m.note.replace(/[<>&"]/g, '')}` : ''}</text>`;
     })
     .join('\n');
 
@@ -393,11 +381,10 @@ function buildKeepsakePosterSvg(
   <rect width="800" height="560" fill="#f8fafc" rx="20" />
   <rect x="28" y="28" width="744" height="504" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" rx="16" />
   <text x="60" y="80" font-family="sans-serif" font-size="28" font-weight="bold" fill="#0f172a">SproutScale Growth Keepsake — ${child.name.replace(/[<>&"]/g, '')}</text>
-  <text x="60" y="112" font-family="sans-serif" font-size="15" fill="#059669" font-weight="bold">Started at Age 2: ${formatHeight(child.ageTwoHeightCm, units)} · ${formatWeight(child.ageTwoWeightKg, units)}${dobLine}</text>
-  <text x="60" y="140" font-family="sans-serif" font-size="15.5" fill="#0f172a">Latest (${formatAgeLabel(latestAge)}): ${formatHeight(latestH, units)} · ${formatWeight(latestW, units)} (+${(latestH - child.ageTwoHeightCm).toFixed(1)} cm taller since Age 2)</text>
-  <text x="60" y="166" font-family="sans-serif" font-size="14" fill="#0284c7" font-weight="bold">WHO Peer Percentiles: Height ${whoLatest.height.ordinalLabel} percentile · Weight ${whoLatest.weight.ordinalLabel} percentile</text>
-  <line x1="60" y1="190" x2="740" y2="190" stroke="#e2e8f0" stroke-width="1.5" />
-  <text x="60" y="230" font-family="sans-serif" font-size="16" font-weight="bold" fill="#334155">Recorded Wall Milestones</text>
+  <text x="60" y="112" font-family="sans-serif" font-size="15" fill="#059669" font-weight="bold">Started at Age 2: ${formatHeight(child.ageTwoHeightCm, units)} (${(child.ageTwoHeightCm / 2.54).toFixed(1)} in) · ${formatWeight(child.ageTwoWeightKg, units)}${dobLine}</text>
+  <text x="60" y="140" font-family="sans-serif" font-size="15.5" fill="#0f172a">Latest (${formatAgeLabel(latestAge)}): ${formatHeight(latestH, units)} (${(latestH / 2.54).toFixed(1)} in) · ${formatWeight(latestW, units)} (+${(latestH - child.ageTwoHeightCm).toFixed(1)} cm taller since Age 2)</text>
+  <line x1="60" y1="168" x2="740" y2="168" stroke="#e2e8f0" stroke-width="1.5" />
+  <text x="60" y="218" font-family="sans-serif" font-size="16" font-weight="bold" fill="#334155">Recorded Wall Milestones</text>
   ${rowsSvg || '<text x="60" y="272" font-family="sans-serif" font-size="14" fill="#64748b">Age 2 baseline recorded.</text>'}
 </svg>`;
 }
