@@ -166,23 +166,23 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5">
+    <div className="bg-white border-2 border-amber-200 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5 shadow-xs">
       {/* Segmented Control Deck Tabs */}
       <div className="space-y-4">
         <div
           role="tablist"
           aria-label="Measurement and character controls"
-          className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-lg"
+          className="grid grid-cols-2 gap-1 p-1 bg-sky-100 rounded-lg"
         >
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === 'measure'}
             onClick={() => onTabChange('measure')}
-            className={`px-3 py-2 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 py-2 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'measure'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-amber-400 text-slate-950 shadow-xs'
+                : 'text-sky-900 hover:text-indigo-950'
             }`}
           >
             Mark Height & Weight
@@ -192,10 +192,10 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             role="tab"
             aria-selected={activeTab === 'character'}
             onClick={() => onTabChange('character')}
-            className={`px-3 py-2 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 py-2 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'character'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-amber-400 text-slate-950 shadow-xs'
+                : 'text-sky-900 hover:text-indigo-950'
             }`}
           >
             Character & Age 2
@@ -226,11 +226,11 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             <div className="flex items-baseline justify-between gap-2">
               <label
                 htmlFor="height-slider"
-                className="text-sm font-semibold text-slate-900"
+                className="text-sm font-bold text-indigo-950"
               >
                 Height Today
               </label>
-              <span className="text-base font-bold font-mono tabular-nums text-emerald-700">
+              <span className="text-base font-bold font-mono tabular-nums text-sky-700">
                 {formatHeight(draftHeightCm, units)}
               </span>
             </div>
@@ -244,7 +244,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     Number(clampNumber(draftHeightCm - 0.5, 70, 175).toFixed(1)),
                   )
                 }
-                className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
+                className="w-10 h-10 flex items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100 transition-colors shrink-0 cursor-pointer"
               >
                 <Minus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -257,7 +257,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 step={0.5}
                 value={draftHeightCm}
                 onChange={(e) => onChangeDraftHeight(parseFloat(e.target.value))}
-                className="w-full accent-emerald-600 h-2 bg-slate-200 rounded-lg cursor-pointer"
+                className="w-full accent-sky-600 h-2.5 bg-sky-100 rounded-lg cursor-pointer"
               />
 
               <button
@@ -268,26 +268,26 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     Number(clampNumber(draftHeightCm + 0.5, 70, 175).toFixed(1)),
                   )
                 }
-                className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
+                className="w-10 h-10 flex items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100 transition-colors shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
-            <p className="text-xs text-slate-500">
-              Slide to watch {childProfile.name} stretch up the wooden ruler
+            <p className="text-xs text-slate-600">
+              Slide to watch {childProfile.name} stretch up the sunny ruler
             </p>
           </div>
 
           {/* Weight Slider + Fine Controls */}
-          <div className="space-y-2 pt-1 border-t border-slate-100">
+          <div className="space-y-2 pt-2 border-t border-sky-100">
             <div className="flex items-baseline justify-between gap-2">
               <label
                 htmlFor="weight-slider"
-                className="text-sm font-semibold text-slate-900"
+                className="text-sm font-bold text-indigo-950"
               >
                 Weight Today
               </label>
-              <span className="text-base font-bold font-mono tabular-nums text-slate-900">
+              <span className="text-base font-bold font-mono tabular-nums text-rose-700">
                 {formatWeight(draftWeightKg, units)}
               </span>
             </div>
@@ -301,7 +301,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     Number(clampNumber(draftWeightKg - 0.2, 8, 75).toFixed(1)),
                   )
                 }
-                className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
+                className="w-10 h-10 flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
               >
                 <Minus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -314,7 +314,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 step={0.2}
                 value={draftWeightKg}
                 onChange={(e) => onChangeDraftWeight(parseFloat(e.target.value))}
-                className="w-full accent-emerald-600 h-2 bg-slate-200 rounded-lg cursor-pointer"
+                className="w-full accent-rose-500 h-2.5 bg-amber-100 rounded-lg cursor-pointer"
               />
 
               <button
@@ -325,7 +325,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     Number(clampNumber(draftWeightKg + 0.2, 8, 75).toFixed(1)),
                   )
                 }
-                className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors shrink-0"
+                className="w-10 h-10 flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -442,7 +442,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             <button
               type="submit"
               disabled={isSaving}
-              className="flex-1 h-11 px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0"
+              className="flex-1 h-11 px-4 py-2.5 text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               {isSaving ? 'Marking Wall...' : 'Mark Height & Weight'}
             </button>
@@ -451,7 +451,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <button
                 type="button"
                 onClick={onResetDraft}
-                className="h-11 px-3.5 py-2.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                className="h-11 px-3.5 py-2.5 text-xs font-bold text-sky-900 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                 Reset
@@ -626,7 +626,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           <button
             type="submit"
             disabled={isSaving}
-            className="w-full h-11 px-4 py-2.5 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0"
+            className="w-full h-11 px-4 py-2.5 text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             {isSaving
               ? 'Saving...'

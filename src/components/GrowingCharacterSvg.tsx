@@ -77,15 +77,15 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
   const legOffsetX = waistHalfW * 0.48;
   const legWidth = Math.max(8, waistHalfW * 0.44);
 
-  // Color assignments (muted editorial blueprint palette for Age 2 ghost, vibrant for current)
-  const skinFill = isBaseline ? '#e2e8f0' : palette.skin;
-  const cheekFill = isBaseline ? '#cbd5e1' : palette.cheeks;
-  const hairFill = isBaseline ? '#94a3b8' : palette.hair;
-  const shirtFill = isBaseline ? '#cbd5e1' : palette.shirtPrimary;
-  const shirtSubFill = isBaseline ? '#f1f5f9' : palette.shirtSecondary;
-  const pantsFill = isBaseline ? '#94a3b8' : palette.overalls;
-  const shoeFill = isBaseline ? '#64748b' : palette.shoes;
-  const strokeColor = isBaseline ? '#64748b' : '#1e293b';
+  // Color assignments (cheerful pastel sky-blue storybook tint for Age 2 baseline, vivid for current)
+  const skinFill = isBaseline ? '#e0f2fe' : palette.skin;
+  const cheekFill = isBaseline ? '#fda4af' : palette.cheeks;
+  const hairFill = isBaseline ? '#38bdf8' : palette.hair;
+  const shirtFill = isBaseline ? '#7dd3fc' : palette.shirtPrimary;
+  const shirtSubFill = isBaseline ? '#fef08a' : palette.shirtSecondary;
+  const pantsFill = isBaseline ? '#0284c7' : palette.overalls;
+  const shoeFill = isBaseline ? '#fb923c' : palette.shoes;
+  const strokeColor = isBaseline ? '#0369a1' : '#1e293b';
 
   // Clothing stage based on age
   const stageIndex =
@@ -100,8 +100,8 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
 
   return (
     <g
-      opacity={isBaseline ? 0.78 : 1}
-      strokeDasharray={isBaseline ? '3 2' : undefined}
+      opacity={isBaseline ? 0.88 : 1}
+      strokeDasharray={isBaseline ? '4 2' : undefined}
     >
       {/* Subtle floor shadow */}
       <ellipse
@@ -109,8 +109,8 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
         cy={floorY + 2}
         rx={waistHalfW * 1.25}
         ry={4.5}
-        fill={isBaseline ? '#cbd5e1' : '#0f172a'}
-        opacity={isBaseline ? 0.45 : 0.12}
+        fill={isBaseline ? '#7dd3fc' : '#0f172a'}
+        opacity={isBaseline ? 0.4 : 0.14}
         stroke="none"
       />
 
@@ -564,19 +564,19 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
           <path
             d={`M ${centerX} ${crownY} Q ${centerX + 1} ${crownY - 10} ${centerX} ${crownY - 14}`}
             fill="none"
-            stroke={isBaseline ? '#64748b' : '#15803d'}
+            stroke={isBaseline ? '#0284c7' : '#15803d'}
             strokeWidth={2}
             strokeLinecap="round"
           />
           <path
             d={`M ${centerX} ${crownY - 11} Q ${centerX - 11} ${crownY - 19} ${centerX - 12} ${crownY - 10} Q ${centerX - 5} ${crownY - 6} ${centerX} ${crownY - 11} Z`}
-            fill={isBaseline ? '#cbd5e1' : '#22c55e'}
+            fill={isBaseline ? '#4ade80' : '#22c55e'}
             stroke={strokeColor}
             strokeWidth={1.3}
           />
           <path
             d={`M ${centerX} ${crownY - 13} Q ${centerX + 11} ${crownY - 21} ${centerX + 12} ${crownY - 12} Q ${centerX + 5} ${crownY - 8} ${centerX} ${crownY - 13} Z`}
-            fill={isBaseline ? '#e2e8f0' : '#4ade80'}
+            fill={isBaseline ? '#86efac' : '#4ade80'}
             stroke={strokeColor}
             strokeWidth={1.3}
           />

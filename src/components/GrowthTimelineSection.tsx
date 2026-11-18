@@ -109,10 +109,10 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
     <section id="timeline" className="space-y-8 pt-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-indigo-950">
             Growth Curve & Wall Marks
           </h2>
-          <p className="text-sm text-slate-600 max-w-2xl">
+          <p className="text-sm text-slate-700 max-w-2xl">
             Every height and weight mark recorded for {childProfile.name} from Age 2 onward.
             Select any milestone to watch their character jump to that exact age on the wall.
           </p>
@@ -121,15 +121,15 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
         <div
           role="group"
           aria-label="Growth curve metric"
-          className="flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg"
+          className="flex items-center gap-1 p-1 bg-sky-200/80 rounded-lg"
         >
           <button
             type="button"
             onClick={() => setChartMetric('height')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               chartMetric === 'height'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-sky-950 hover:text-indigo-950'
             }`}
           >
             Height Trajectory
@@ -137,10 +137,10 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
           <button
             type="button"
             onClick={() => setChartMetric('weight')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               chartMetric === 'weight'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'text-sky-950 hover:text-indigo-950'
             }`}
           >
             Weight Trajectory
@@ -149,17 +149,19 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
       </div>
 
       {/* Interactive SVG Trajectory Curve */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+      <div className="bg-white border-2 border-sky-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
           <span>
             Age 2 Baseline:{' '}
-            <strong className="font-mono tabular-nums text-slate-800">
+            <strong className="font-mono tabular-nums text-indigo-950">
               {chartMetric === 'height'
                 ? formatHeight(childProfile.ageTwoHeightCm, units)
                 : formatWeight(childProfile.ageTwoWeightKg, units)}
             </strong>
           </span>
-          <span>Click any milestone point to view on Growth Wall</span>
+          <span className="font-medium text-sky-800">
+            Click any colorful milestone point to view on Growth Wall
+          </span>
         </div>
 
         <div className="w-full overflow-x-auto">
@@ -206,20 +208,26 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
               y1={valToY(baselineVal)}
               x2={svgW - padRight}
               y2={valToY(baselineVal)}
-              stroke="#94a3b8"
-              strokeWidth={1.5}
-              strokeDasharray="4 4"
+              stroke="#38bdf8"
+              strokeWidth={1.8}
+              strokeDasharray="5 4"
             />
 
             {/* Shaded Growth Gain Area Above Age 2 */}
-            {areaPath && <path d={areaPath} fill="#10b981" opacity={0.12} />}
+            {areaPath && (
+              <path
+                d={areaPath}
+                fill={chartMetric === 'height' ? '#38bdf8' : '#fb7185'}
+                opacity={0.2}
+              />
+            )}
 
             {/* Main Growth Trajectory Line */}
             {curvePoints.length >= 2 && (
               <polyline
                 fill="none"
-                stroke="#059669"
-                strokeWidth={3}
+                stroke={chartMetric === 'height' ? '#0284c7' : '#e11d48'}
+                strokeWidth={3.5}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 points={polylineCoords}
@@ -245,10 +253,10 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                   <circle
                     cx={cx}
                     cy={cy}
-                    r={6}
-                    fill="#ffffff"
-                    stroke="#059669"
-                    strokeWidth={2.8}
+                    r={7}
+                    fill="#facc15"
+                    stroke={chartMetric === 'height' ? '#0284c7' : '#e11d48'}
+                    strokeWidth={3}
                   />
                   <text
                     x={cx}
@@ -280,13 +288,13 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
       </div>
 
       {/* Tabular Milestone History Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+      <div className="bg-white border-2 border-sky-200 rounded-2xl overflow-hidden shadow-xs">
         {sortedDesc.length === 0 ? (
           <div className="p-8 text-center space-y-2">
             <p className="text-sm font-semibold text-slate-800">
               No extra wall marks saved yet for {childProfile.name}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               Use the Mark Height & Weight panel above to pencil their first milestone onto the wall.
             </p>
           </div>
@@ -294,7 +302,7 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-600">
+                <tr className="border-b border-sky-200 bg-sky-50 text-xs font-bold text-indigo-950">
                   <th className="py-3.5 px-5">Age & Date</th>
                   <th className="py-3.5 px-4">Height</th>
                   <th className="py-3.5 px-4">Weight</th>

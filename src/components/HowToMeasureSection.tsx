@@ -8,10 +8,10 @@ export const HowToMeasureSection: React.FC = () => {
   return (
     <section id="how-to-measure" className="pt-8 pb-12 space-y-8">
       <div className="space-y-1">
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-indigo-950">
           How to Measure Together at Home
         </h2>
-        <p className="text-sm text-slate-600 max-w-2xl">
+        <p className="text-sm text-slate-700 max-w-2xl">
           Turn check-in day into a favorite family ritual with a hardcover storybook,
           a flat wall, and a bathroom scale.
         </p>
@@ -19,7 +19,7 @@ export const HowToMeasureSection: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left Visual Card: Scandinavian Playroom Growth Ruler Photo */}
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between">
+        <div className="lg:col-span-7 bg-white border-2 border-sky-200 rounded-2xl overflow-hidden flex flex-col justify-between shadow-xs">
           <div className="relative aspect-video w-full bg-slate-100 overflow-hidden">
             {!heroImgFailed ? (
               <img
@@ -67,7 +67,7 @@ export const HowToMeasureSection: React.FC = () => {
         </div>
 
         {/* Right Companion Card: Storybook Illustration + Why Age 2 Matters */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between">
+        <div className="lg:col-span-5 bg-white border-2 border-amber-200 rounded-2xl overflow-hidden flex flex-col justify-between shadow-xs">
           <div className="aspect-4/3 w-full bg-amber-50/40 overflow-hidden">
             {!cardImgFailed ? (
               <img

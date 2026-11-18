@@ -31,8 +31,17 @@ interface GrowthWallStageProps {
 
 const MIN_RULER_CM = 65;
 const MAX_RULER_CM = 175;
-const RULER_TOP_Y = 46;
+const RULER_TOP_Y = 52;
 const FLOOR_Y = 482;
+
+const RAINBOW_PIN_COLORS = [
+  '#f43f5e',
+  '#f97316',
+  '#eab308',
+  '#10b981',
+  '#0ea5e9',
+  '#8b5cf6',
+];
 
 function heightCmToSvgY(cm: number): number {
   const clamped = clampNumber(cm, MIN_RULER_CM, MAX_RULER_CM);
@@ -81,38 +90,38 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   const sortedMarks = [...measurements].sort((a, b) => a.ageMonths - b.ageMonths);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5">
+    <div className="bg-white border-2 border-sky-200 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5 shadow-xs">
       {/* Stage Top Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-100 pb-4">
         <div className="space-y-0.5">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="font-semibold text-slate-800">{childProfile.name}’s Growth Wall</span>
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <span className="font-bold text-indigo-950">{childProfile.name}’s Growth Wall</span>
             <span aria-hidden="true">·</span>
-            <span>{stageInfo.stageName}</span>
+            <span className="font-semibold text-sky-700">{stageInfo.stageName}</span>
             {isPreviewDirty && (
               <>
                 <span aria-hidden="true">·</span>
-                <span className="text-emerald-700 font-medium">Live Preview</span>
+                <span className="text-orange-600 font-bold">Live Preview</span>
               </>
             )}
           </div>
-          <p className="text-xs text-slate-500">{stageInfo.description}</p>
+          <p className="text-xs text-slate-600">{stageInfo.description}</p>
         </div>
 
         <div className="flex items-center gap-2.5">
           <button
             type="button"
             onClick={onToggleTimelapse}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             {isPlayingTimelapse ? (
               <>
-                <Pause className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+                <Pause className="w-3.5 h-3.5 text-slate-950" aria-hidden="true" />
                 Pause Growth Story
               </>
             ) : (
               <>
-                <Play className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+                <Play className="w-3.5 h-3.5 text-slate-950" aria-hidden="true" />
                 Play Growth from Age 2
               </>
             )}
@@ -122,15 +131,15 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           <div
             role="group"
             aria-label="Measurement units"
-            className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg"
+            className="flex items-center gap-1 p-1 bg-sky-100 rounded-lg"
           >
             <button
               type="button"
               onClick={() => onUnitsChange('metric')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-2.5 py-1 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 units === 'metric'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-sky-900 hover:text-indigo-950'
               }`}
             >
               cm · kg
@@ -138,10 +147,10 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             <button
               type="button"
               onClick={() => onUnitsChange('imperial')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+              className={`px-2.5 py-1 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 units === 'imperial'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-sky-900 hover:text-indigo-950'
               }`}
             >
               ft/in · lb
@@ -150,15 +159,78 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
         </div>
       </div>
 
-      {/* Main Interactive Growth Wall & Wooden Floor Scale Canvas */}
-      <div className="w-full overflow-hidden rounded-xl bg-slate-50 border border-slate-200/80">
+      {/* Main Interactive Bright Storybook Playroom Wall & Scale Canvas */}
+      <div className="w-full overflow-hidden rounded-xl border-2 border-sky-200">
         <svg
           viewBox="0 0 680 590"
           className="w-full h-auto select-none"
           role="img"
           aria-label={`Interactive height and weight growth chart comparing ${childProfile.name} at Age 2 (${formatHeight(childProfile.ageTwoHeightCm, units)}) with ${formatAgeLabel(activeAgeMonths)} (${formatHeight(activeHeightCm, units)} and ${formatWeight(activeWeightKg, units)}).`}
         >
-          {/* Subtle Playroom Wall Grid Horizontal Reference Lines */}
+          <defs>
+            <linearGradient id="sunnySkyWall" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#bae6fd" />
+              <stop offset="55%" stopColor="#e0f2fe" />
+              <stop offset="100%" stopColor="#fef9c3" />
+            </linearGradient>
+            <linearGradient id="honeyWoodRuler" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#fde047" />
+              <stop offset="50%" stopColor="#facc15" />
+              <stop offset="100%" stopColor="#fbbf24" />
+            </linearGradient>
+            <linearGradient id="sunnyFloor" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#fed7aa" />
+              <stop offset="100%" stopColor="#fdba74" />
+            </linearGradient>
+          </defs>
+
+          {/* Bright Sunlit Sky Playroom Wall Background */}
+          <rect x={0} y={0} width={680} height={FLOOR_Y} fill="url(#sunnySkyWall)" />
+
+          {/* Cheerful Corner Sun & Fluffy Playroom Clouds */}
+          <circle cx={46} cy={42} r={28} fill="#fde047" opacity={0.85} />
+          <circle cx={46} cy={42} r={20} fill="#facc15" />
+
+          {/* Cloud 1 */}
+          <g fill="#ffffff" opacity={0.88}>
+            <circle cx={145} cy={74} r={16} />
+            <circle cx={166} cy={68} r={21} />
+            <circle cx={189} cy={75} r={15} />
+            <rect x={144} y={74} width={46} height={16} rx={8} />
+          </g>
+
+          {/* Cloud 2 */}
+          <g fill="#ffffff" opacity={0.82}>
+            <circle cx={385} cy={96} r={14} />
+            <circle cx={404} cy={90} r={18} />
+            <circle cx={424} cy={96} r={13} />
+            <rect x={384} y={96} width={41} height={14} rx={7} />
+          </g>
+
+          {/* Colorful Playroom Bunting Pennant Garland Along Top Left */}
+          <path
+            d="M 88 18 Q 290 48 518 16"
+            fill="none"
+            stroke="#0284c7"
+            strokeWidth={1.6}
+          />
+          {[
+            { x: 125, y: 24, color: '#f43f5e' },
+            { x: 185, y: 31, color: '#f97316' },
+            { x: 245, y: 35, color: '#facc15' },
+            { x: 305, y: 35, color: '#10b981' },
+            { x: 365, y: 32, color: '#0ea5e9' },
+            { x: 425, y: 27, color: '#8b5cf6' },
+            { x: 480, y: 21, color: '#ec4899' },
+          ].map((flag, i) => (
+            <polygon
+              key={`bunting_${i}`}
+              points={`${flag.x - 13},${flag.y} ${flag.x + 13},${flag.y} ${flag.x},${flag.y + 22}`}
+              fill={flag.color}
+            />
+          ))}
+
+          {/* Playroom Wall Grid Horizontal Reference Lines */}
           {rulerTicks
             .filter((cm) => cm % 10 === 0)
             .map((cm) => {
@@ -170,37 +242,35 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
                   y1={y}
                   x2={530}
                   y2={y}
-                  stroke="#e2e8f0"
-                  strokeWidth={1}
-                  strokeDasharray="3 5"
+                  stroke="#7dd3fc"
+                  strokeWidth={1.1}
+                  strokeDasharray="4 5"
+                  opacity={0.75}
                 />
               );
             })}
 
-          {/* Baseboard & Warm Wooden Playroom Floor */}
-          <rect x={0} y={FLOOR_Y - 12} width={680} height={12} fill="#f1f5f9" />
-          <line x1={0} y1={FLOOR_Y - 12} x2={680} y2={FLOOR_Y - 12} stroke="#cbd5e1" strokeWidth={1} />
-          <rect x={0} y={FLOOR_Y} width={680} height={108} fill="#ede8df" />
-          <line x1={0} y1={FLOOR_Y} x2={680} y2={FLOOR_Y} stroke="#cbd5e1" strokeWidth={1.5} />
+          {/* Crisp White Baseboard & Warm Apricot Playroom Floor */}
+          <rect x={0} y={FLOOR_Y - 12} width={680} height={12} fill="#ffffff" />
+          <line x1={0} y1={FLOOR_Y - 12} x2={680} y2={FLOOR_Y - 12} stroke="#bae6fd" strokeWidth={1.5} />
+          <rect x={0} y={FLOOR_Y} width={680} height={108} fill="url(#sunnyFloor)" />
+          <line x1={0} y1={FLOOR_Y} x2={680} y2={FLOOR_Y} stroke="#f97316" strokeWidth={2} />
 
-          {/* Handcrafted Natural Oak Wall Growth Ruler Board (Right Side x=532..648) */}
+          {/* Bright Honey-Gold Wall Growth Ruler Board (Right Side x=532..654) */}
           <rect
             x={532}
-            y={20}
-            width={122}
-            height={FLOOR_Y - 26}
-            rx={8}
-            fill="#dfc39d"
-            stroke="#8c6843"
-            strokeWidth={2}
+            y={18}
+            width={124}
+            height={FLOOR_Y - 24}
+            rx={10}
+            fill="url(#honeyWoodRuler)"
+            stroke="#d97706"
+            strokeWidth={2.5}
           />
-          {/* Subtle Wood Grain Vertical Accent Lines */}
-          <line x1={556} y1={24} x2={556} y2={FLOOR_Y - 8} stroke="#d4b48a" strokeWidth={1} />
-          <line x1={626} y1={24} x2={626} y2={FLOOR_Y - 8} stroke="#d4b48a" strokeWidth={1} />
-          <circle cx={593} cy={33} r={3.5} fill="#f8fafc" stroke="#8c6843" strokeWidth={1.5} />
+          <circle cx={594} cy={32} r={4} fill="#e0f2fe" stroke="#b45309" strokeWidth={1.8} />
 
           {/* Ruler Ticks & Labels */}
-          {rulerTicks.map((cm) => {
+          {rulerTicks.map((cm, idx) => {
             const y = heightCmToSvgY(cm);
             const isMajor = cm % 10 === 0;
             const tickLen = isMajor ? 22 : 12;
@@ -216,31 +286,41 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
                   y1={y}
                   x2={532 + tickLen}
                   y2={y}
-                  stroke="#5c4023"
-                  strokeWidth={isMajor ? 1.8 : 1.1}
+                  stroke={isMajor ? '#78350f' : '#92400e'}
+                  strokeWidth={isMajor ? 2.1 : 1.2}
                 />
                 {isMajor && (
-                  <text
-                    x={560}
-                    y={y + 4}
-                    fill="#4a3319"
-                    fontSize={11}
-                    fontWeight={600}
-                    fontFamily="JetBrains Mono, monospace"
-                  >
-                    {labelText}
-                  </text>
+                  <>
+                    <circle
+                      cx={558}
+                      cy={y}
+                      r={2.5}
+                      fill={RAINBOW_PIN_COLORS[idx % RAINBOW_PIN_COLORS.length]}
+                    />
+                    <text
+                      x={565}
+                      y={y + 4}
+                      fill="#451a03"
+                      fontSize={11}
+                      fontWeight={700}
+                      fontFamily="JetBrains Mono, monospace"
+                    >
+                      {labelText}
+                    </text>
+                  </>
                 )}
               </g>
             );
           })}
 
-          {/* Saved Penciled Milestone Marks on the Wall Ruler (Interactive!) */}
-          {sortedMarks.map((m) => {
+          {/* Saved Colorful Milestone Marks on the Wall Ruler (Interactive!) */}
+          {sortedMarks.map((m, idx) => {
             const markY = heightCmToSvgY(m.heightCm);
             const isCurrentSelected =
               Math.abs(m.heightCm - activeHeightCm) < 0.15 &&
               m.ageMonths === activeAgeMonths;
+            const pinColor = RAINBOW_PIN_COLORS[idx % RAINBOW_PIN_COLORS.length];
+
             return (
               <g
                 key={m.id}
@@ -252,22 +332,24 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
                   y1={markY}
                   x2={550}
                   y2={markY}
-                  stroke={isCurrentSelected ? '#059669' : '#0f172a'}
-                  strokeWidth={isCurrentSelected ? 2.6 : 1.6}
+                  stroke={isCurrentSelected ? '#e11d48' : pinColor}
+                  strokeWidth={isCurrentSelected ? 3 : 2}
                 />
                 <circle
-                  cx={635}
+                  cx={640}
                   cy={markY}
-                  r={isCurrentSelected ? 5 : 3.5}
-                  fill={isCurrentSelected ? '#059669' : '#785532'}
+                  r={isCurrentSelected ? 5.5 : 4}
+                  fill={isCurrentSelected ? '#e11d48' : pinColor}
+                  stroke="#ffffff"
+                  strokeWidth={1.2}
                 />
                 <text
-                  x={626}
+                  x={630}
                   y={markY + 3.5}
                   textAnchor="end"
-                  fill={isCurrentSelected ? '#065f46' : '#5c4023'}
+                  fill={isCurrentSelected ? '#881337' : '#451a03'}
                   fontSize={9.5}
-                  fontWeight={isCurrentSelected ? 700 : 600}
+                  fontWeight={700}
                   fontFamily="Plus Jakarta Sans, sans-serif"
                 >
                   {`${Math.floor(m.ageMonths / 12)}y${m.ageMonths % 12 ? `${m.ageMonths % 12}m` : ''}`}
@@ -276,15 +358,15 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             );
           })}
 
-          {/* LEFT LANE: Age 2 Baseline Toddler Silhouette (x=135) */}
+          {/* LEFT LANE: Age 2 Baseline Toddler Figure (x=138) */}
           <line
-            x1={95}
+            x1={92}
             y1={ageTwoCrownY}
             x2={532}
             y2={ageTwoCrownY}
-            stroke="#94a3b8"
-            strokeWidth={1.4}
-            strokeDasharray="5 4"
+            stroke="#0284c7"
+            strokeWidth={1.8}
+            strokeDasharray="6 4"
           />
           <CharacterFigureGroup
             centerX={138}
@@ -300,11 +382,21 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           />
 
           {/* Age 2 Baseline Floor Label */}
+          <rect
+            x={64}
+            y={FLOOR_Y + 12}
+            width={148}
+            height={42}
+            rx={10}
+            fill="#ffffff"
+            stroke="#38bdf8"
+            strokeWidth={1.8}
+          />
           <text
             x={138}
-            y={FLOOR_Y + 24}
+            y={FLOOR_Y + 29}
             textAnchor="middle"
-            fill="#475569"
+            fill="#0369a1"
             fontSize={12}
             fontWeight={700}
             fontFamily="Plus Jakarta Sans, sans-serif"
@@ -313,11 +405,11 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           </text>
           <text
             x={138}
-            y={FLOOR_Y + 42}
+            y={FLOOR_Y + 46}
             textAnchor="middle"
-            fill="#64748b"
-            fontSize={11.5}
-            fontWeight={600}
+            fill="#0f172a"
+            fontSize={11}
+            fontWeight={700}
             fontFamily="JetBrains Mono, monospace"
           >
             {`${formatHeight(childProfile.ageTwoHeightCm, units)} · ${formatWeight(childProfile.ageTwoWeightKg, units)}`}
@@ -331,41 +423,41 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
                 y1={ageTwoCrownY}
                 x2={236}
                 y2={currentCrownY}
-                stroke="#059669"
-                strokeWidth={2}
+                stroke="#e11d48"
+                strokeWidth={2.5}
               />
               <line
-                x1={229}
+                x1={228}
                 y1={ageTwoCrownY}
-                x2={243}
+                x2={244}
                 y2={ageTwoCrownY}
-                stroke="#059669"
-                strokeWidth={2}
+                stroke="#e11d48"
+                strokeWidth={2.5}
               />
               <line
-                x1={229}
+                x1={228}
                 y1={currentCrownY}
-                x2={243}
+                x2={244}
                 y2={currentCrownY}
-                stroke="#059669"
-                strokeWidth={2}
+                stroke="#e11d48"
+                strokeWidth={2.5}
               />
               <rect
-                x={194}
-                y={(ageTwoCrownY + currentCrownY) / 2 - 13}
-                width={84}
-                height={24}
-                rx={6}
-                fill="#ecfdf5"
-                stroke="#10b981"
-                strokeWidth={1.2}
+                x={190}
+                y={(ageTwoCrownY + currentCrownY) / 2 - 14}
+                width={92}
+                height={26}
+                rx={8}
+                fill="#f43f5e"
+                stroke="#ffffff"
+                strokeWidth={1.5}
               />
               <text
                 x={236}
                 y={(ageTwoCrownY + currentCrownY) / 2 + 3}
                 textAnchor="middle"
-                fill="#065f46"
-                fontSize={11}
+                fill="#ffffff"
+                fontSize={11.5}
                 fontWeight={700}
                 fontFamily="JetBrains Mono, monospace"
               >
@@ -374,58 +466,58 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             </g>
           )}
 
-          {/* CENTER-RIGHT LANE: Active Growing Kid Standing on Floor Scale (x=368) */}
-          {/* Scale Step Platform sits cleanly with top surface at FLOOR_Y */}
+          {/* CENTER-RIGHT LANE: Active Growing Kid Standing on Bright Coral-Turquoise Floor Scale */}
           <rect
-            x={292}
+            x={290}
             y={FLOOR_Y}
-            width={152}
+            width={156}
             height={16}
-            rx={5}
-            fill="#cfa97e"
-            stroke="#6b4c2a"
-            strokeWidth={1.8}
+            rx={6}
+            fill="#06b6d4"
+            stroke="#0e7490"
+            strokeWidth={2}
           />
           <rect
             x={304}
             y={FLOOR_Y + 16}
             width={128}
             height={10}
-            rx={3}
-            fill="#475569"
+            rx={4}
+            fill="#0f172a"
           />
 
-          {/* Current Height Measurement Line & Sliding Wooden Stadiometer Head Paddle */}
+          {/* Current Height Measurement Line & Bright Coral-Red Sliding Stadiometer Paddle */}
           <line
             x1={320}
             y1={currentCrownY}
             x2={532}
             y2={currentCrownY}
-            stroke="#059669"
-            strokeWidth={2}
+            stroke="#16a34a"
+            strokeWidth={2.5}
           />
-          {/* Stadiometer Sliding Head Paddle */}
           <path
-            d={`M 488 ${currentCrownY} L 534 ${currentCrownY} L 534 ${currentCrownY - 12} L 520 ${currentCrownY - 12} Z`}
-            fill="#059669"
+            d={`M 484 ${currentCrownY} L 534 ${currentCrownY} L 534 ${currentCrownY - 14} L 516 ${currentCrownY - 14} Z`}
+            fill="#16a34a"
           />
 
-          {/* Current Height Callout Tag */}
+          {/* Current Height Bright Callout Tag */}
           <g>
             <rect
-              x={408}
-              y={Math.max(18, currentCrownY - 30)}
-              width={116}
-              height={24}
-              rx={6}
-              fill="#0f172a"
+              x={404}
+              y={Math.max(18, currentCrownY - 32)}
+              width={120}
+              height={26}
+              rx={8}
+              fill="#16a34a"
+              stroke="#ffffff"
+              strokeWidth={1.5}
             />
             <text
-              x={466}
-              y={Math.max(18, currentCrownY - 30) + 16}
+              x={464}
+              y={Math.max(18, currentCrownY - 32) + 17}
               textAnchor="middle"
               fill="#ffffff"
-              fontSize={11.5}
+              fontSize={12}
               fontWeight={700}
               fontFamily="JetBrains Mono, monospace"
             >
@@ -448,10 +540,20 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             isWaveActive={isPlayingTimelapse || isPreviewDirty}
           />
 
-          {/* Active Age Label Under Scale */}
+          {/* Active Kid Name & Growth Summary Card Under Scale */}
+          <rect
+            x={250}
+            y={FLOOR_Y + 32}
+            width={236}
+            height={44}
+            rx={10}
+            fill="#ffffff"
+            stroke="#f59e0b"
+            strokeWidth={1.8}
+          />
           <text
             x={368}
-            y={FLOOR_Y + 46}
+            y={FLOOR_Y + 50}
             textAnchor="middle"
             fill="#0f172a"
             fontSize={12.5}
@@ -462,62 +564,62 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           </text>
           <text
             x={368}
-            y={FLOOR_Y + 64}
+            y={FLOOR_Y + 67}
             textAnchor="middle"
             fill="#047857"
-            fontSize={11.5}
-            fontWeight={600}
+            fontSize={11}
+            fontWeight={700}
             fontFamily="JetBrains Mono, monospace"
           >
-            {`${formatHeightDelta(heightGainCm, units)} taller · ${formatWeightDelta(weightGainKg, units)} since Age 2`}
+            {`${formatHeightDelta(heightGainCm, units)} taller · ${formatWeightDelta(weightGainKg, units)}`}
           </text>
 
-          {/* INTERACTIVE BRASS & OAK WEIGHT DIAL GAUGE (Bottom Right x=568, y=534) */}
+          {/* BRIGHT TURQUOISE & SUNSHINE WEIGHT DIAL GAUGE (Bottom Right x=578, y=534) */}
           <g>
             <circle
-              cx={568}
+              cx={578}
               cy={535}
-              r={44}
+              r={45}
               fill="#ffffff"
-              stroke="#b48a5a"
-              strokeWidth={4}
+              stroke="#06b6d4"
+              strokeWidth={4.5}
             />
             <circle
-              cx={568}
+              cx={578}
               cy={535}
               r={38}
               fill="none"
-              stroke="#e2e8f0"
-              strokeWidth={1.2}
-              strokeDasharray="2 4"
+              stroke="#fde047"
+              strokeWidth={3}
+              strokeDasharray="6 4"
             />
-            {/* Age 2 Weight Reference Needle (Muted) */}
-            <g transform={`rotate(${ageTwoScaleAngle}, 568, 535)`}>
+            {/* Age 2 Weight Reference Needle */}
+            <g transform={`rotate(${ageTwoScaleAngle}, 578, 535)`}>
               <line
-                x1={568}
+                x1={578}
                 y1={535}
-                x2={568}
-                y2={505}
-                stroke="#94a3b8"
-                strokeWidth={1.6}
+                x2={578}
+                y2={504}
+                stroke="#38bdf8"
+                strokeWidth={2}
                 strokeDasharray="2 2"
               />
             </g>
-            {/* Active Weight Needle */}
-            <g transform={`rotate(${scaleAngle}, 568, 535)`}>
+            {/* Active Ruby-Coral Weight Needle */}
+            <g transform={`rotate(${scaleAngle}, 578, 535)`}>
               <line
-                x1={568}
+                x1={578}
                 y1={540}
-                x2={568}
-                y2={499}
-                stroke="#059669"
-                strokeWidth={2.6}
+                x2={578}
+                y2={498}
+                stroke="#f43f5e"
+                strokeWidth={3}
                 strokeLinecap="round"
               />
             </g>
-            <circle cx={568} cy={535} r={4.5} fill="#0f172a" />
+            <circle cx={578} cy={535} r={5} fill="#0f172a" />
             <text
-              x={568}
+              x={578}
               y={557}
               textAnchor="middle"
               fill="#0f172a"
@@ -528,38 +630,38 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
               {formatWeight(activeWeightKg, units)}
             </text>
             <text
-              x={568}
+              x={578}
               y={570}
               textAnchor="middle"
-              fill="#64748b"
+              fill="#0284c7"
               fontSize={8.5}
-              fontWeight={600}
+              fontWeight={700}
               fontFamily="Plus Jakarta Sans, sans-serif"
             >
-              SCALE
+              WEIGHT
             </text>
           </g>
         </svg>
       </div>
 
-      {/* Kid-Friendly Size Discovery Strip */}
+      {/* Bright Kid-Friendly Size Discovery Strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" aria-hidden="true" />
+          <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-hidden="true" />
             <span>How Tall Is That?</span>
           </div>
-          <p className="text-xs text-slate-600 leading-relaxed">{funFacts.heightFact}</p>
+          <p className="text-xs text-slate-700 leading-relaxed">{funFacts.heightFact}</p>
         </div>
 
-        <div className="space-y-1 md:border-l md:border-slate-200 md:pl-4">
-          <p className="text-xs font-semibold text-slate-800">Sprouted Since Age 2</p>
-          <p className="text-xs text-slate-600 leading-relaxed">{funFacts.growthFact}</p>
+        <div className="space-y-1 md:border-l md:border-sky-200 md:pl-4">
+          <p className="text-xs font-bold text-emerald-800">Sprouted Since Age 2</p>
+          <p className="text-xs text-slate-700 leading-relaxed">{funFacts.growthFact}</p>
         </div>
 
-        <div className="space-y-1 md:border-l md:border-slate-200 md:pl-4">
-          <p className="text-xs font-semibold text-slate-800">Scale Fun Fact</p>
-          <p className="text-xs text-slate-600 leading-relaxed">{funFacts.weightFact}</p>
+        <div className="space-y-1 md:border-l md:border-sky-200 md:pl-4">
+          <p className="text-xs font-bold text-rose-700">Scale Fun Fact</p>
+          <p className="text-xs text-slate-700 leading-relaxed">{funFacts.weightFact}</p>
         </div>
       </div>
     </div>

@@ -4,12 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-  User,
-} from 'firebase/auth';
+import { User } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -22,12 +17,14 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { LogIn, LogOut, Plus } from 'lucide-react';
+import { LogOut, Plus } from 'lucide-react';
 import {
-  auth,
+  clearAccessToken,
   db,
-  googleProvider,
+  googleSignIn,
   handleFirestoreError,
+  initAuth,
+  logout,
   OperationType,
 } from './firebase';
 import {
@@ -51,6 +48,9 @@ import {
 } from './components/MeasurementControlDeck';
 import { GrowthTimelineSection } from './components/GrowthTimelineSection';
 import { HowToMeasureSection } from './components/HowToMeasureSection';
+import { GoogleSignInButton } from './components/GoogleSignInButton';
+import { GoogleDriveVaultSection } from './components/GoogleDriveVaultSection';
+import { GrowthBackupPayload } from './services/googleDriveService';
 
 function getTodayIsoDate(): string {
   const now = new Date();
@@ -61,8 +61,11 @@ function getTodayIsoDate(): string {
 }
 
 function SproutScaleWorkspace() {
-  // Firebase Auth state
+  // Firebase Auth & In-Memory Google Workspace Token state
   const [user, setUser] = useState<User | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [needsDriveAuth, setNeedsDriveAuth] = useState<boolean>(true);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -136,56 +139,66 @@ function SproutScaleWorkspace() {
     }
   }, [activeChild.id, latestMilestone.heightCm, latestMilestone.weightKg, latestMilestone.ageMonths, isPlayingTimelapse]);
 
-  // 1. Listen to Firebase Auth state
+  // 1. Initialize Firebase Auth & In-Memory OAuth Token state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      setIsAuthReady(true);
+    const seedInitialProfileIfEmpty = async (currentUser: User) => {
+      if (!currentUser.emailVerified) return;
+      const childrenPath = 'children';
+      try {
+        const existingSnap = await getDocs(
+          query(collection(db, childrenPath), where('ownerId', '==', currentUser.uid)),
+        );
+        if (existingSnap.empty) {
+          const firstChildId = sanitizeId(`child_${currentUser.uid.slice(0, 12)}_1`);
+          await setDoc(doc(db, 'children', firstChildId), {
+            ownerId: currentUser.uid,
+            name: DEMO_CHILD.name,
+            ageTwoHeightCm: DEMO_CHILD.ageTwoHeightCm,
+            ageTwoWeightKg: DEMO_CHILD.ageTwoWeightKg,
+            paletteId: DEMO_CHILD.paletteId,
+            accessoryId: DEMO_CHILD.accessoryId,
+            hairStyle: DEMO_CHILD.hairStyle,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
 
-      if (currentUser && currentUser.emailVerified) {
-        // Seed initial child profile in Firestore if this user has zero profiles yet
-        const childrenPath = 'children';
-        try {
-          const existingSnap = await getDocs(
-            query(collection(db, childrenPath), where('ownerId', '==', currentUser.uid)),
-          );
-          if (existingSnap.empty) {
-            const firstChildId = sanitizeId(`child_${currentUser.uid.slice(0, 12)}_1`);
-            await setDoc(doc(db, 'children', firstChildId), {
-              ownerId: currentUser.uid,
-              name: DEMO_CHILD.name,
-              ageTwoHeightCm: DEMO_CHILD.ageTwoHeightCm,
-              ageTwoWeightKg: DEMO_CHILD.ageTwoWeightKg,
-              paletteId: DEMO_CHILD.paletteId,
-              accessoryId: DEMO_CHILD.accessoryId,
-              hairStyle: DEMO_CHILD.hairStyle,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-
-            // Also seed Age 2 baseline milestone so their timeline starts ready to explore
-            const baselineMId = sanitizeId(`m_${firstChildId}_24m`);
-            await setDoc(
-              doc(db, 'children', firstChildId, 'measurements', baselineMId),
-              {
-                ownerId: currentUser.uid,
-                childId: firstChildId,
-                ageMonths: 24,
-                heightCm: DEMO_CHILD.ageTwoHeightCm,
-                weightKg: DEMO_CHILD.ageTwoWeightKg,
-                recordedDate: getTodayIsoDate(),
-                note: 'Age 2 starting height & weight baseline',
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-              },
-            );
-            setSelectedChildId(firstChildId);
-          }
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, childrenPath);
+          const baselineMId = sanitizeId(`m_${firstChildId}_24m`);
+          await setDoc(doc(db, 'children', firstChildId, 'measurements', baselineMId), {
+            ownerId: currentUser.uid,
+            childId: firstChildId,
+            ageMonths: 24,
+            heightCm: DEMO_CHILD.ageTwoHeightCm,
+            weightKg: DEMO_CHILD.ageTwoWeightKg,
+            recordedDate: getTodayIsoDate(),
+            note: 'Age 2 starting height & weight baseline',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          setSelectedChildId(firstChildId);
         }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, childrenPath);
       }
-    });
+    };
+
+    const unsubscribe = initAuth(
+      (authedUser, token) => {
+        setUser(authedUser);
+        setAccessToken(token);
+        setNeedsDriveAuth(false);
+        setIsAuthReady(true);
+        void seedInitialProfileIfEmpty(authedUser);
+      },
+      (maybeUser) => {
+        setUser(maybeUser);
+        setAccessToken(null);
+        setNeedsDriveAuth(true);
+        setIsAuthReady(true);
+        if (maybeUser) {
+          void seedInitialProfileIfEmpty(maybeUser);
+        }
+      },
+    );
 
     return () => unsubscribe();
   }, []);
@@ -356,20 +369,129 @@ function SproutScaleWorkspace() {
 
   const handleGoogleSignIn = async () => {
     setAuthError(null);
+    setIsLoggingIn(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await googleSignIn();
+      if (result) {
+        setUser(result.user);
+        setAccessToken(result.accessToken);
+        setNeedsDriveAuth(false);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Sign-in was cancelled.';
       if (!msg.includes('popup-closed-by-user')) {
         setAuthError('Could not complete Google sign-in. Please try again.');
       }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
   const handleSignOut = async () => {
-    await signOut(auth);
+    await logout();
+    setAccessToken(null);
+    setNeedsDriveAuth(true);
     setSelectedChildId(DEMO_CHILD.id);
     setStatusBanner(null);
+  };
+
+  const handleImportBackupPayload = async (payload: GrowthBackupPayload) => {
+    const incomingList = Array.isArray(payload.measurements) ? payload.measurements : [];
+    if (user) {
+      for (let i = 0; i < incomingList.length; i += 1) {
+        const item = incomingList[i];
+        const safeAgeMonths = Math.round(
+          clampNumber(
+            Number(item.ageMonths ?? 24),
+            VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+            VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+          ),
+        );
+        const safeHeightCm = Number(
+          clampNumber(
+            Number(item.heightCm ?? activeChild.ageTwoHeightCm),
+            VALIDATION_BOUNDS.HEIGHT_CM_MIN,
+            VALIDATION_BOUNDS.HEIGHT_CM_MAX,
+          ).toFixed(1),
+        );
+        const safeWeightKg = Number(
+          clampNumber(
+            Number(item.weightKg ?? activeChild.ageTwoWeightKg),
+            VALIDATION_BOUNDS.WEIGHT_KG_MIN,
+            VALIDATION_BOUNDS.WEIGHT_KG_MAX,
+          ).toFixed(1),
+        );
+        const rawDate = String(item.recordedDate ?? '');
+        const safeDate = VALIDATION_BOUNDS.DATE_PATTERN.test(rawDate)
+          ? rawDate
+          : getTodayIsoDate();
+        const safeNote = String(item.note ?? '')
+          .trim()
+          .slice(0, VALIDATION_BOUNDS.NOTE_MAX_LEN);
+
+        const measurementId = sanitizeId(`m_imp_${safeAgeMonths}_${Date.now()}_${i}`);
+        const path = `children/${activeChild.id}/measurements/${measurementId}`;
+        try {
+          await setDoc(
+            doc(db, 'children', activeChild.id, 'measurements', measurementId),
+            {
+              ownerId: user.uid,
+              childId: activeChild.id,
+              ageMonths: safeAgeMonths,
+              heightCm: safeHeightCm,
+              weightKg: safeWeightKg,
+              recordedDate: safeDate,
+              note: safeNote,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+          );
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, path);
+        }
+      }
+    } else {
+      const sanitizedEntries: GrowthMeasurement[] = incomingList.map((item, i) => ({
+        id: sanitizeId(`demo_imp_${Date.now()}_${i}`),
+        ownerId: 'demo_family',
+        childId: activeChild.id,
+        ageMonths: Math.round(
+          clampNumber(
+            Number(item.ageMonths ?? 24),
+            VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+            VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+          ),
+        ),
+        heightCm: Number(
+          clampNumber(
+            Number(item.heightCm ?? activeChild.ageTwoHeightCm),
+            VALIDATION_BOUNDS.HEIGHT_CM_MIN,
+            VALIDATION_BOUNDS.HEIGHT_CM_MAX,
+          ).toFixed(1),
+        ),
+        weightKg: Number(
+          clampNumber(
+            Number(item.weightKg ?? activeChild.ageTwoWeightKg),
+            VALIDATION_BOUNDS.WEIGHT_KG_MIN,
+            VALIDATION_BOUNDS.WEIGHT_KG_MAX,
+          ).toFixed(1),
+        ),
+        recordedDate: VALIDATION_BOUNDS.DATE_PATTERN.test(String(item.recordedDate ?? ''))
+          ? String(item.recordedDate)
+          : getTodayIsoDate(),
+        note: String(item.note ?? '')
+          .trim()
+          .slice(0, VALIDATION_BOUNDS.NOTE_MAX_LEN),
+      }));
+      setDemoMeasurementsMap((prev) => ({
+        ...prev,
+        [activeChild.id]: sanitizedEntries,
+      }));
+    }
+    showTransientBanner(
+      'success',
+      `Imported ${incomingList.length} milestone(s) onto ${activeChild.name}’s Growth Wall!`,
+    );
   };
 
   const showTransientBanner = (type: 'success' | 'error', message: string) => {
@@ -612,46 +734,53 @@ function SproutScaleWorkspace() {
     draftAgeMonths !== latestMilestone.ageMonths;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-sky-100 via-amber-50/80 to-emerald-50/80 text-slate-900 flex flex-col">
       {/* Strict 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b border-slate-200">
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b-2 border-amber-300">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-8 px-6 py-3.5">
           {/* Zone 1: Single Wordmark Element */}
           <a
             href="#measure"
-            className="text-xl font-bold tracking-tight text-slate-900 font-display whitespace-nowrap shrink-0"
+            className="text-xl font-bold tracking-tight text-indigo-950 font-display whitespace-nowrap shrink-0"
           >
             SproutScale
           </a>
 
-          {/* Zone 2: 4 Concise Single-Line Navigation Links */}
+          {/* Zone 2: 5 Concise Single-Line Navigation Links */}
           <nav
             aria-label="Primary navigation"
-            className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600"
+            className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-700"
           >
             <a
               href="#measure"
               onClick={() => setActiveDeckTab('measure')}
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
               Growth Wall
             </a>
             <a
               href="#measure"
               onClick={() => setActiveDeckTab('character')}
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
               Character
             </a>
             <a
               href="#timeline"
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
               Milestones
             </a>
             <a
+              href="#drive-vault"
+              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            >
+              Google Drive
+            </a>
+            <a
               href="#how-to-measure"
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+              onClick={() => setActiveDeckTab('measure')}
+              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
               How to Measure
             </a>
@@ -660,19 +789,16 @@ function SproutScaleWorkspace() {
           {/* Zone 3: 1 Primary Action */}
           <div className="flex items-center shrink-0">
             {!user ? (
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
-              >
-                <LogIn className="w-3.5 h-3.5" aria-hidden="true" />
-                Sign in to Save
-              </button>
+              <GoogleSignInButton
+                onClick={() => void handleGoogleSignIn()}
+                disabled={isLoggingIn}
+                compact
+              />
             ) : (
               <a
                 href="#measure"
                 onClick={() => setActiveDeckTab('measure')}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-xs transition-colors whitespace-nowrap shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                 Mark Measurement
@@ -688,10 +814,10 @@ function SproutScaleWorkspace() {
         <section id="measure" className="space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
             <div className="space-y-2 max-w-2xl">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-indigo-950 [text-wrap:balance]">
                 Watch how tall they’ve grown since turning two.
               </h1>
-              <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-700 leading-relaxed">
                 Slide or mark your kid’s height and weight to watch their character sprout
                 right beside their 2-year-old self on the playroom ruler.
               </p>
@@ -702,17 +828,17 @@ function SproutScaleWorkspace() {
               <div
                 role="group"
                 aria-label="Select child profile"
-                className="flex items-center gap-1 p-1 bg-slate-200/75 rounded-lg"
+                className="flex items-center gap-1 p-1 bg-sky-200/80 rounded-lg border border-sky-300/70"
               >
                 {activeChildrenList.map((kid) => (
                   <button
                     key={kid.id}
                     type="button"
                     onClick={() => setSelectedChildId(kid.id)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                       kid.id === activeChild.id
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
+                        ? 'bg-amber-400 text-slate-950 shadow-xs'
+                        : 'text-indigo-950/80 hover:text-indigo-950 hover:bg-white/60'
                     }`}
                   >
                     {kid.name}
@@ -721,33 +847,33 @@ function SproutScaleWorkspace() {
                 <button
                   type="button"
                   onClick={() => setActiveDeckTab('character')}
-                  className="px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 rounded-md transition-colors whitespace-nowrap shrink-0"
+                  className="px-2.5 py-1.5 text-xs font-bold text-sky-800 hover:text-indigo-950 hover:bg-white/60 rounded-md transition-colors whitespace-nowrap shrink-0"
                 >
                   + Kid
                 </button>
               </div>
 
               {user ? (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="flex items-center gap-2 text-xs text-slate-700">
                   <span>Saved to {user.displayName?.split(' ')[0] ?? 'Family'}</span>
                   <span aria-hidden="true">·</span>
                   <button
                     type="button"
                     onClick={handleSignOut}
-                    className="inline-flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-1 font-bold text-indigo-950 hover:text-sky-700 whitespace-nowrap shrink-0"
                   >
                     <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
                     Sign out
                   </button>
                 </div>
               ) : (
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-slate-700">
                   <span>Interactive Playground</span>
                   <span className="mx-1.5" aria-hidden="true">·</span>
                   <button
                     type="button"
                     onClick={handleGoogleSignIn}
-                    className="font-semibold text-emerald-700 hover:underline whitespace-nowrap shrink-0"
+                    className="font-bold text-sky-800 hover:text-indigo-950 hover:underline whitespace-nowrap shrink-0"
                   >
                     Sign in with Google to keep records
                   </button>
@@ -766,8 +892,8 @@ function SproutScaleWorkspace() {
           )}
 
           {isLoadingCloud ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
-              <p className="text-sm font-medium text-slate-600">
+            <div className="bg-white border-2 border-sky-200 rounded-2xl p-12 text-center shadow-xs">
+              <p className="text-sm font-semibold text-indigo-950">
                 Loading your family’s growth wall...
               </p>
             </div>
@@ -841,22 +967,44 @@ function SproutScaleWorkspace() {
           onDeleteMeasurement={handleDeleteMeasurement}
         />
 
-        {/* Section 3: Home Measuring Guide */}
+        {/* Section 3: Google Drive Keepsake Vault & Google Picker */}
+        <GoogleDriveVaultSection
+          childProfile={activeChild}
+          measurements={activeMeasurements}
+          units={units}
+          accessToken={accessToken}
+          needsDriveAuth={needsDriveAuth}
+          isSigningIn={isLoggingIn}
+          onSignInForDrive={handleGoogleSignIn}
+          onRequireReauth={() => {
+            clearAccessToken();
+            setAccessToken(null);
+            setNeedsDriveAuth(true);
+          }}
+          onImportBackupPayload={handleImportBackupPayload}
+        />
+
+        {/* Section 4: Home Measuring Guide */}
         <HowToMeasureSection />
       </main>
 
       {/* Clean Quiet Footer */}
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <p>SproutScale — Family Height & Weight Growth Wall</p>
+      <footer className="border-t-2 border-amber-200 bg-white/95">
+        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
+          <p className="font-medium text-indigo-950">
+            SproutScale — Family Height &amp; Weight Growth Wall
+          </p>
           <div className="flex items-center gap-4">
-            <a href="#measure" className="hover:text-slate-900 transition-colors">
+            <a href="#measure" className="hover:text-sky-700 transition-colors whitespace-nowrap">
               Growth Wall
             </a>
-            <a href="#timeline" className="hover:text-slate-900 transition-colors">
+            <a href="#timeline" className="hover:text-sky-700 transition-colors whitespace-nowrap">
               Milestones
             </a>
-            <a href="#how-to-measure" className="hover:text-slate-900 transition-colors">
+            <a href="#drive-vault" className="hover:text-sky-700 transition-colors whitespace-nowrap">
+              Google Drive
+            </a>
+            <a href="#how-to-measure" className="hover:text-sky-700 transition-colors whitespace-nowrap">
               Measuring Tips
             </a>
           </div>
