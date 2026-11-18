@@ -1,0 +1,155 @@
+{
+  "entities": {
+    "ChildProfile": {
+      "title": "ChildProfile",
+      "description": "Represents a child's growth tracker profile including their Age 2 baseline height/weight and character customization.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the parent/guardian who owns this profile.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name or nickname of the child.",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "ageTwoHeightCm": {
+          "type": "number",
+          "description": "Child's baseline height at age 2 in centimeters (70 to 115 cm)."
+        },
+        "ageTwoWeightKg": {
+          "type": "number",
+          "description": "Child's baseline weight at age 2 in kilograms (8 to 25 kg)."
+        },
+        "paletteId": {
+          "type": "string",
+          "description": "Selected visual color theme for the growing character.",
+          "enum": ["sunny", "meadow", "ocean", "berry"],
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "accessoryId": {
+          "type": "string",
+          "description": "Selected head accessory for the growing character.",
+          "enum": ["sprout", "cap", "crown", "dino"],
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "hairStyle": {
+          "type": "string",
+          "description": "Selected hairstyle for the growing character.",
+          "enum": ["curls", "bob", "spiky", "puffs"],
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the child profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the child profile was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "ageTwoHeightCm",
+        "ageTwoWeightKg",
+        "paletteId",
+        "accessoryId",
+        "hairStyle",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GrowthMeasurement": {
+      "title": "GrowthMeasurement",
+      "description": "A recorded height and weight milestone for a specific child at a given age.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the parent/guardian who owns this measurement.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "childId": {
+          "type": "string",
+          "description": "ID of the parent ChildProfile document.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ageMonths": {
+          "type": "number",
+          "description": "Age of the child in months at the time of measurement (24 to 216 months)."
+        },
+        "heightCm": {
+          "type": "number",
+          "description": "Measured height in centimeters (65 to 210 cm)."
+        },
+        "weightKg": {
+          "type": "number",
+          "description": "Measured weight in kilograms (7 to 120 kg)."
+        },
+        "recordedDate": {
+          "type": "string",
+          "description": "ISO date YYYY-MM-DD when the measurement was taken.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional short milestone note (up to 120 characters).",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the measurement record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the measurement record was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "childId",
+        "ageMonths",
+        "heightCm",
+        "weightKg",
+        "recordedDate",
+        "note",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/children/{childId}": {
+      "schema": {
+        "$ref": "#/entities/ChildProfile"
+      },
+      "description": "Stores child profiles owned by authenticated parents/guardians."
+    },
+    "/children/{childId}/measurements/{measurementId}": {
+      "schema": {
+        "$ref": "#/entities/GrowthMeasurement"
+      },
+      "description": "Stores height and weight milestones belonging to a specific child profile."
+    }
+  }
+}

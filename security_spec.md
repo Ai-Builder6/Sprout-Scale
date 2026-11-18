@@ -1,0 +1,40 @@
+# Security Specification — SproutScale
+
+## 1. Data Invariants
+
+1. **Verified Authentication Gate**: Every read and write operation requires an authenticated user (`request.auth != null`) with `request.auth.token.email_verified == true`.
+2. **Strict Ownership Isolation**: A `ChildProfile` at `/children/{childId}` may only be created, read, listed, updated, or deleted by the user whose `request.auth.uid` matches `ownerId`.
+3. **Master Gate Relational Integrity**: A `GrowthMeasurement` at `/children/{childId}/measurements/{measurementId}` cannot exist or be accessed unless `/children/{childId}` exists and its `ownerId` matches `request.auth.uid`, AND the measurement's `childId` matches `{childId}` and `ownerId` matches `request.auth.uid`.
+4. **Path Variable Hardening**: Every single-document path ID (`{childId}`, `{measurementId}`) must match `^[a-zA-Z0-9_\-]+$` and have length `1..128`.
+5. **Temporal & Immutable Integrity**: `createdAt` and `updatedAt` must strictly equal `request.time` on creation; `ownerId`, `childId`, and `createdAt` are strictly immutable on update, while `updatedAt` must equal `request.time`.
+6. **Volumetric & Domain Bounds**:
+   - `ChildProfile`: `name` (1..50 chars), `ageTwoHeightCm` (70..115), `ageTwoWeightKg` (8..25), `paletteId` in `['sunny','meadow','ocean','berry']`, `accessoryId` in `['sprout','cap','crown','dino']`, `hairStyle` in `['curls','bob','spiky','puffs']`.
+   - `GrowthMeasurement`: `ageMonths` (24..216), `heightCm` (65..210), `weightKg` (7..120), `recordedDate` matching `^[0-9]{4}-[0-9]{2}-[0-9]{2}$`, `note` (0..120 chars).
+7. **Zero Shadow Fields**: `hasAll` and `hasOnly` enforce exact schema keys on creation, and action-scoped `affectedKeys().hasOnly(...)` combined with full `isValid[Entity](incoming())` prevents update-gap and value-poisoning attacks.
+
+## 2. The "Dirty Dozen" Adversarial Payloads
+
+1. **Unverified Email Spoof**: Authenticated user with `email_verified: false` attempting to create `/children/child_1`.
+2. **Identity Spoofing on Child Create**: `user_a` creates `/children/child_1` with `ownerId: "user_b"`.
+3. **Shadow / Ghost Field Injection**: `user_a` creates `/children/child_1` including unauthorized field `isAdmin: true`.
+4. **ID Poisoning Attack**: `user_a` attempts to write to `/children/bad$id!with spaces` or >128 character ID.
+5. **Orphaned Subcollection Write (Master Gate Bypass)**: `user_a` creates `/children/nonexistent_child/measurements/m_1`.
+6. **Cross-Tenant Subcollection Injection**: `user_b` creates a measurement under `user_a`'s `/children/child_1/measurements/m_2` with `ownerId: "user_b"`.
+7. **Update-Gap Value Poisoning**: `user_a` updates whitelisted key `name` on `/children/child_1` with a 5,000-character string or boolean `true`.
+8. **Immutable Field Mutation**: `user_a` updates `ownerId` or `createdAt` on `/children/child_1`.
+9. **Client Timestamp Forgery**: `user_a` creates a measurement with a forged past/future `createdAt` instead of `serverTimestamp()` (`request.time`).
+10. **Out-of-Bounds Biological Values**: `user_a` logs `heightCm: 99999` or `ageMonths: -5` on `/children/child_1/measurements/m_1`.
+11. **Path/Payload Mismatch**: `user_a` creates `/children/child_1/measurements/m_1` where payload `childId` is `"child_2"`.
+12. **Blanket List Scraping Attack**: `user_b` executes an unfiltered `collection(db, 'children')` list query without `where('ownerId', '==', 'user_b')` or tries to list `user_a`'s measurements.
+
+## 3. Red Team Audit Summary
+
+- **Shadow Update Test**: PASS — `data.keys().hasOnly(...)` inside `isValidChildProfile` and `isValidGrowthMeasurement` plus `affectedKeys().hasOnly(...)` in every update branch rejects any ghost key.
+- **Email Spoofing Test**: PASS — `isVerifiedUser()` enforces `request.auth != null && request.auth.token.email_verified == true` across reads and writes.
+- **PII Blanket Test**: PASS — No PII (`email`, `phone`, `address`) is stored in documents, and `get`/`list` strictly require `ownerId == request.auth.uid`.
+- **Query Trust Test**: PASS — `allow list` explicitly checks `resource.data.ownerId == request.auth.uid` (and `resource.data.childId == childId` on subcollections) with zero `get()` calls inside `list`.
+- **Conflict Report**:
+  - Identity Spoofing: Blocked (`data.ownerId == request.auth.uid` + immutable check).
+  - State Shortcutting: Blocked (strict action branches for profile customization vs baseline update vs measurement edit).
+  - Resource Poisoning: Blocked (`isValidId` regex + `.size()` caps on every string).
+  - Value Poisoning: Blocked (`isValidChildProfile(incoming())` and `isValidGrowthMeasurement(incoming(), childId)` wrap the entire `allow update` block).
