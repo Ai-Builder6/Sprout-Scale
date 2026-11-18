@@ -29,6 +29,7 @@ import {
 } from './firebase';
 import {
   AccessoryId,
+  BiologicalSex,
   calculateExactAgeFromDob,
   ChildProfile,
   clampNumber,
@@ -40,6 +41,7 @@ import {
   HAIR_COLOR_PRESETS,
   HairStyle,
   PaletteId,
+  sanitizeBiologicalSex,
   sanitizeHexColor,
   sanitizeId,
   SKIN_TONE_PRESETS,
@@ -52,6 +54,7 @@ import {
   ControlDeckTab,
   MeasurementControlDeck,
 } from './components/MeasurementControlDeck';
+import { WhoPeerComparisonSection } from './components/WhoPeerComparisonSection';
 import { GrowthTimelineSection } from './components/GrowthTimelineSection';
 import { HowToMeasureSection } from './components/HowToMeasureSection';
 import { GoogleSignInButton } from './components/GoogleSignInButton';
@@ -232,6 +235,7 @@ function SproutScaleWorkspace() {
             ownerId: currentUser.uid,
             name: DEMO_CHILD.name,
             birthDate: DEMO_CHILD.birthDate,
+            sex: DEMO_CHILD.sex,
             ageTwoHeightCm: DEMO_CHILD.ageTwoHeightCm,
             ageTwoWeightKg: DEMO_CHILD.ageTwoWeightKg,
             paletteId: DEMO_CHILD.paletteId,
@@ -308,6 +312,7 @@ function SproutScaleWorkspace() {
             ownerId: String(d.ownerId ?? user.uid),
             name: String(d.name ?? 'Sprout'),
             birthDate: VALIDATION_BOUNDS.DATE_PATTERN.test(rawBirthDate) ? rawBirthDate : '',
+            sex: sanitizeBiologicalSex(d.sex),
             ageTwoHeightCm: Number(d.ageTwoHeightCm ?? 86.5),
             ageTwoWeightKg: Number(d.ageTwoWeightKg ?? 12.5),
             paletteId: (d.paletteId as PaletteId) ?? 'meadow',
@@ -790,9 +795,31 @@ function SproutScaleWorkspace() {
     showTransientBanner('success', `Switched ${activeChild.name} to illustrated face.`);
   };
 
+  const handleSelectBiologicalSex = async (nextSex: BiologicalSex) => {
+    const safeSex = sanitizeBiologicalSex(nextSex);
+    if (safeSex === activeChild.sex) return;
+
+    if (user) {
+      const path = `children/${activeChild.id}`;
+      try {
+        await updateDoc(doc(db, 'children', activeChild.id), {
+          sex: safeSex,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, path);
+      }
+    } else {
+      setDemoChildren((prev) =>
+        prev.map((c) => (c.id === activeChild.id ? { ...c, sex: safeSex } : c)),
+      );
+    }
+  };
+
   const handleSaveCharacterProfile = async (updates: {
     name: string;
     birthDate: string;
+    sex: BiologicalSex;
     ageTwoHeightCm: number;
     ageTwoWeightKg: number;
     paletteId: PaletteId;
@@ -805,6 +832,7 @@ function SproutScaleWorkspace() {
     const safeBirthDate = VALIDATION_BOUNDS.DATE_PATTERN.test(updates.birthDate)
       ? updates.birthDate
       : '';
+    const safeSex = sanitizeBiologicalSex(updates.sex);
     const safeSkinTone = sanitizeHexColor(updates.skinTone, SKIN_TONE_PRESETS[1].hex);
     const safeHairColor = sanitizeHexColor(updates.hairColor, HAIR_COLOR_PRESETS[1].hex);
 
@@ -815,6 +843,7 @@ function SproutScaleWorkspace() {
           await updateDoc(doc(db, 'children', activeChild.id), {
             name: updates.name.slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN),
             birthDate: safeBirthDate,
+            sex: safeSex,
             ageTwoHeightCm: updates.ageTwoHeightCm,
             ageTwoWeightKg: updates.ageTwoWeightKg,
             paletteId: updates.paletteId,
@@ -835,6 +864,7 @@ function SproutScaleWorkspace() {
                   ...c,
                   ...updates,
                   birthDate: safeBirthDate,
+                  sex: safeSex,
                   skinTone: safeSkinTone,
                   hairColor: safeHairColor,
                 }
@@ -858,6 +888,7 @@ function SproutScaleWorkspace() {
   const handleCreateNewChild = async (newChild: {
     name: string;
     birthDate: string;
+    sex: BiologicalSex;
     ageTwoHeightCm: number;
     ageTwoWeightKg: number;
     paletteId: PaletteId;
@@ -870,6 +901,7 @@ function SproutScaleWorkspace() {
     const safeBirthDate = VALIDATION_BOUNDS.DATE_PATTERN.test(newChild.birthDate)
       ? newChild.birthDate
       : '';
+    const safeSex = sanitizeBiologicalSex(newChild.sex);
     const safeSkinTone = sanitizeHexColor(newChild.skinTone, SKIN_TONE_PRESETS[1].hex);
     const safeHairColor = sanitizeHexColor(newChild.hairColor, HAIR_COLOR_PRESETS[1].hex);
 
@@ -882,6 +914,7 @@ function SproutScaleWorkspace() {
             ownerId: user.uid,
             name: newChild.name.slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN),
             birthDate: safeBirthDate,
+            sex: safeSex,
             ageTwoHeightCm: newChild.ageTwoHeightCm,
             ageTwoWeightKg: newChild.ageTwoWeightKg,
             paletteId: newChild.paletteId,
@@ -919,6 +952,7 @@ function SproutScaleWorkspace() {
           ownerId: 'demo_family',
           ...newChild,
           birthDate: safeBirthDate,
+          sex: safeSex,
           skinTone: safeSkinTone,
           hairColor: safeHairColor,
           avatarDriveFileId: '',
@@ -1020,11 +1054,10 @@ function SproutScaleWorkspace() {
               Growth Wall
             </a>
             <a
-              href="#measure"
-              onClick={() => setActiveDeckTab('character')}
+              href="#who-percentiles"
               className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
-              Child Info
+              WHO Percentiles
             </a>
             <a
               href="#timeline"
@@ -1259,7 +1292,18 @@ function SproutScaleWorkspace() {
           )}
         </section>
 
-        {/* Section 2: Growth Trajectory Curve & Wall Marks Table */}
+        {/* Section 2: WHO Growth Chart Percentiles & 10-Peer Classroom Stack-Up */}
+        <WhoPeerComparisonSection
+          childProfile={activeChild}
+          activeHeightCm={draftHeightCm}
+          activeWeightKg={draftWeightKg}
+          activeAgeMonths={draftAgeMonths}
+          isPreviewDirty={isPreviewDirty}
+          units={units}
+          onSelectBiologicalSex={(sex) => void handleSelectBiologicalSex(sex)}
+        />
+
+        {/* Section 3: Growth Trajectory Curve & Wall Marks Table */}
         <GrowthTimelineSection
           childProfile={activeChild}
           measurements={activeMeasurements}

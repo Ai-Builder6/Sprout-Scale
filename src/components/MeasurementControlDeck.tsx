@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import {
   AccessoryId,
+  BiologicalSex,
   calculateExactAgeFromDob,
   CHARACTER_PALETTES,
   ChildProfile,
@@ -24,10 +25,12 @@ import {
   HAIR_COLOR_PRESETS,
   HairStyle,
   PaletteId,
+  sanitizeBiologicalSex,
   SKIN_TONE_PRESETS,
   UnitSystem,
   VALIDATION_BOUNDS,
 } from '../types';
+import { evaluateChildWhoPercentiles } from '../services/whoGrowthService';
 
 export type ControlDeckTab = 'measure' | 'character';
 
@@ -57,6 +60,7 @@ interface MeasurementControlDeckProps {
   onSaveCharacterProfile: (updates: {
     name: string;
     birthDate: string;
+    sex: BiologicalSex;
     ageTwoHeightCm: number;
     ageTwoWeightKg: number;
     paletteId: PaletteId;
@@ -68,6 +72,7 @@ interface MeasurementControlDeckProps {
   onCreateNewChild: (newChild: {
     name: string;
     birthDate: string;
+    sex: BiologicalSex;
     ageTwoHeightCm: number;
     ageTwoWeightKg: number;
     paletteId: PaletteId;
@@ -119,9 +124,10 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   onSaveCharacterProfile,
   onCreateNewChild,
 }) => {
-  // Local state for Child Info, DOB & Avatar customization form synced when childProfile changes
+  // Local state for Child Info, DOB, WHO sex & Avatar customization form synced when childProfile changes
   const [editName, setEditName] = useState(childProfile.name);
   const [editBirthDate, setEditBirthDate] = useState(childProfile.birthDate || '');
+  const [editSex, setEditSex] = useState<BiologicalSex>(childProfile.sex || 'unspecified');
   const [editAgeTwoHeight, setEditAgeTwoHeight] = useState(childProfile.ageTwoHeightCm);
   const [editAgeTwoWeight, setEditAgeTwoWeight] = useState(childProfile.ageTwoWeightKg);
   const [editPalette, setEditPalette] = useState<PaletteId>(childProfile.paletteId);
@@ -140,6 +146,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
     if (!isAddingNewKid) {
       setEditName(childProfile.name);
       setEditBirthDate(childProfile.birthDate || '');
+      setEditSex(childProfile.sex || 'unspecified');
       setEditAgeTwoHeight(childProfile.ageTwoHeightCm);
       setEditAgeTwoWeight(childProfile.ageTwoWeightKg);
       setEditPalette(childProfile.paletteId);
@@ -152,6 +159,13 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
   const draftYears = Math.floor(draftAgeMonths / 12);
   const draftRemMonths = draftAgeMonths % 12;
+
+  const whoDraftEval = evaluateChildWhoPercentiles({
+    heightCm: draftHeightCm,
+    weightKg: draftWeightKg,
+    ageMonths: draftAgeMonths,
+    sex: childProfile.sex,
+  });
 
   // Exact age calculated from child's Date of Birth relative to the selected measurement date
   const dobCalculatedOnDraftDate = childProfile.birthDate
@@ -177,6 +191,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
     const payload = {
       name: trimmedName,
       birthDate: cleanDob,
+      sex: sanitizeBiologicalSex(editSex),
       ageTwoHeightCm: Number(
         clampNumber(
           editAgeTwoHeight,
@@ -214,6 +229,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
     setIsAddingNewKid(true);
     setEditName('');
     setEditBirthDate('');
+    setEditSex('unspecified');
     setEditAgeTwoHeight(86.5);
     setEditAgeTwoWeight(12.5);
     setEditPalette('sunny');
@@ -331,9 +347,15 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
-            <p className="text-xs text-slate-600">
-              Slide to watch {childProfile.name} stretch up the sunny ruler
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-600">
+              <span>
+                WHO <strong className="font-mono text-sky-800">{whoDraftEval.height.ordinalLabel}</strong>{' '}
+                percentile
+              </span>
+              <span className="font-mono tabular-nums text-slate-500">
+                Peer avg {formatHeight(whoDraftEval.height.medianValue, units)}
+              </span>
+            </div>
           </div>
 
           {/* Weight Slider + Fine Controls */}
@@ -387,6 +409,15 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-600">
+              <span>
+                WHO <strong className="font-mono text-rose-700">{whoDraftEval.weight.ordinalLabel}</strong>{' '}
+                percentile
+              </span>
+              <span className="font-mono tabular-nums text-slate-500">
+                Peer avg {formatWeight(whoDraftEval.weight.medianValue, units)}
+              </span>
             </div>
           </div>
 
@@ -689,6 +720,35 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               </span>
             </div>
           )}
+
+          {/* WHO Growth Standard Reference Curve Selector */}
+          <div className="space-y-1.5 pt-2 border-t border-slate-100">
+            <span className="block text-xs font-semibold text-slate-700">
+              WHO Growth Chart Reference Curve
+            </span>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(
+                [
+                  { id: 'boy', label: 'Boy' },
+                  { id: 'girl', label: 'Girl' },
+                  { id: 'unspecified', label: 'Combined' },
+                ] as { id: BiologicalSex; label: string }[]
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setEditSex(opt.id)}
+                  className={`px-2.5 py-2 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    editSex === opt.id
+                      ? 'border-sky-600 bg-sky-50 text-indigo-950'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Age 2 Baseline Height & Weight */}
           <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">

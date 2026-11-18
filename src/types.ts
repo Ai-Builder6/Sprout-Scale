@@ -1,4 +1,5 @@
 export type UnitSystem = 'metric' | 'imperial';
+export type BiologicalSex = 'boy' | 'girl' | 'unspecified';
 export type PaletteId = 'meadow' | 'sunny' | 'ocean' | 'berry';
 export type AccessoryId = 'none' | 'sprout' | 'cap' | 'crown' | 'dino';
 export type HairStyle = 'curls' | 'bob' | 'spiky' | 'puffs';
@@ -29,6 +30,7 @@ export interface ChildProfile {
   ownerId: string;
   name: string;
   birthDate: string;
+  sex: BiologicalSex;
   ageTwoHeightCm: number;
   ageTwoWeightKg: number;
   paletteId: PaletteId;
@@ -137,6 +139,7 @@ export const DEMO_CHILD: ChildProfile = {
   ownerId: 'demo_family',
   name: 'Leo',
   birthDate: '2020-11-18',
+  sex: 'boy',
   ageTwoHeightCm: 86.5,
   ageTwoWeightKg: 12.5,
   paletteId: 'meadow',
@@ -340,6 +343,13 @@ export function sanitizeHexColor(raw: string | undefined, fallback: string): str
     return raw.toLowerCase();
   }
   return fallback;
+}
+
+export function sanitizeBiologicalSex(raw: unknown): BiologicalSex {
+  if (raw === 'boy' || raw === 'girl' || raw === 'unspecified') {
+    return raw;
+  }
+  return 'unspecified';
 }
 
 export function sanitizeId(raw: string): string {

@@ -25,6 +25,13 @@
           "maxLength": 10,
           "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2})?$"
         },
+        "sex": {
+          "type": "string",
+          "description": "Biological sex reference curve used for WHO height-for-age and weight-for-age percentile calculations.",
+          "enum": ["boy", "girl", "unspecified"],
+          "minLength": 3,
+          "maxLength": 16
+        },
         "ageTwoHeightCm": {
           "type": "number",
           "description": "Child's baseline height at age 2 in centimeters (70 to 115 cm)."

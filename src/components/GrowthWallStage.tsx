@@ -15,6 +15,7 @@ import {
   GrowthMeasurement,
   UnitSystem,
 } from '../types';
+import { evaluateChildWhoPercentiles } from '../services/whoGrowthService';
 import { CharacterFigureGroup } from './GrowingCharacterSvg';
 
 interface GrowthWallStageProps {
@@ -79,6 +80,14 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
     ? calculateExactAgeFromDob(childProfile.birthDate)
     : null;
 
+  const whoEval = evaluateChildWhoPercentiles({
+    heightCm: activeHeightCm,
+    weightKg: activeWeightKg,
+    ageMonths: activeAgeMonths,
+    sex: childProfile.sex,
+  });
+  const whoPeerMedianY = heightCmToSvgY(whoEval.height.medianValue);
+
   const funFacts = getFunComparison(
     activeHeightCm,
     activeWeightKg,
@@ -108,6 +117,10 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             <span className="font-bold text-indigo-950">{childProfile.name}’s Growth Wall</span>
             <span aria-hidden="true">·</span>
             <span className="font-semibold text-sky-700">{stageInfo.stageName}</span>
+            <span aria-hidden="true">·</span>
+            <span className="font-mono tabular-nums font-semibold text-indigo-900">
+              WHO Height {whoEval.height.ordinalLabel} · Weight {whoEval.weight.ordinalLabel}
+            </span>
             {exactDobAge && (
               <>
                 <span aria-hidden="true">·</span>
@@ -386,6 +399,30 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
               </g>
             );
           })}
+
+          {/* WHO 50th Percentile Peer Median Reference Marker on Ruler */}
+          <g>
+            <line
+              x1={474}
+              y1={whoPeerMedianY}
+              x2={536}
+              y2={whoPeerMedianY}
+              stroke="#4338ca"
+              strokeWidth={1.6}
+              strokeDasharray="3 3"
+            />
+            <text
+              x={526}
+              y={whoPeerMedianY - 4}
+              textAnchor="end"
+              fill="#312e81"
+              fontSize={8.5}
+              fontWeight={700}
+              fontFamily="JetBrains Mono, monospace"
+            >
+              WHO 50th ({formatHeight(whoEval.height.medianValue, units)})
+            </text>
+          </g>
 
           {/* LEFT LANE: Age 2 Baseline Toddler Figure (x=138) */}
           <line

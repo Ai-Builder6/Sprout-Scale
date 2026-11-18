@@ -185,10 +185,16 @@ export async function runDirtyDozenSecuritySuite() {
       }),
     );
 
-    // 10. Malformed Date of Birth / Out-of-Bounds Biological Values
+    // 10. Malformed Date of Birth / Invalid WHO Sex Enum / Out-of-Bounds Biological Values
     await assertFails(
       updateDoc(doc(aliceDb, 'children', 'child_alice'), {
         birthDate: '11/18/2020',
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    await assertFails(
+      updateDoc(doc(aliceDb, 'children', 'child_alice'), {
+        sex: 'invalid_enum_value',
         updatedAt: serverTimestamp(),
       }),
     );
