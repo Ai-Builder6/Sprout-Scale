@@ -35,8 +35,11 @@ import {
   clampNumber,
   DEMO_CHILD,
   DEMO_MEASUREMENTS,
-  formatHeight,
+  formatFeetInches,
   formatHumanDate,
+  formatMetricHeight,
+  formatPounds,
+  formatTotalInches,
   getLocalTodayIso,
   GrowthMeasurement,
   HAIR_COLOR_PRESETS,
@@ -46,7 +49,6 @@ import {
   sanitizeHexColor,
   sanitizeId,
   SKIN_TONE_PRESETS,
-  UnitSystem,
   VALIDATION_BOUNDS,
 } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -100,7 +102,6 @@ function SproutScaleWorkspace() {
 
   // Active child & UI controls
   const [selectedChildId, setSelectedChildId] = useState<string>(DEMO_CHILD.id);
-  const [units, setUnits] = useState<UnitSystem>('imperial');
   const [activeDeckTab, setActiveDeckTab] = useState<ControlDeckTab>('measure');
   const [isSaving, setIsSaving] = useState(false);
   const [statusBanner, setStatusBanner] = useState<{
@@ -658,7 +659,10 @@ function SproutScaleWorkspace() {
           handleFirestoreError(err, OperationType.CREATE, path);
         }
         setDraftNote('');
-        showTransientBanner('success', `Marked ${activeChild.name}’s height & weight on the wall!`);
+        showTransientBanner(
+          'success',
+          `Marked ${activeChild.name} at ${formatFeetInches(safeHeightCm)} (${formatTotalInches(safeHeightCm)}) & ${formatPounds(safeWeightKg)} on the wall!`,
+        );
       } else {
         // Playground session save
         const newEntry: GrowthMeasurement = {
@@ -678,7 +682,7 @@ function SproutScaleWorkspace() {
         setDraftNote('');
         showTransientBanner(
           'success',
-          `Marked on ${activeChild.name}’s playground wall! Sign in to save across devices.`,
+          `Marked ${formatFeetInches(safeHeightCm)} (${formatTotalInches(safeHeightCm)}) & ${formatPounds(safeWeightKg)} on ${activeChild.name}’s wall! Sign in to save across devices.`,
         );
       }
     } finally {
@@ -811,7 +815,7 @@ function SproutScaleWorkspace() {
     setActiveDeckTab('measure');
     showTransientBanner(
       'success',
-      `Applied ${inches.toFixed(1)} in (${formatHeight(heightCm, 'imperial')}) from ${sourceLabel} — click Mark Height & Weight to save!`,
+      `Applied ${formatFeetInches(heightCm)} (${inches.toFixed(1)} in · ${formatMetricHeight(heightCm)}) from ${sourceLabel} — click Mark Height & Weight to save!`,
     );
   };
 
@@ -1247,8 +1251,6 @@ function SproutScaleWorkspace() {
                   activeWeightKg={draftWeightKg}
                   activeAgeMonths={draftAgeMonths}
                   isPreviewDirty={isPreviewDirty}
-                  units={units}
-                  onUnitsChange={setUnits}
                   onSelectMilestoneOnWall={handleInspectMilestone}
                   isPlayingTimelapse={isPlayingTimelapse}
                   onToggleTimelapse={handleToggleTimelapse}
@@ -1263,7 +1265,6 @@ function SproutScaleWorkspace() {
                   onTabChange={setActiveDeckTab}
                   childProfile={activeChild}
                   avatarPhotoUrl={activeAvatarPhotoUrl}
-                  units={units}
                   draftHeightCm={draftHeightCm}
                   draftWeightKg={draftWeightKg}
                   draftAgeMonths={draftAgeMonths}
@@ -1307,7 +1308,6 @@ function SproutScaleWorkspace() {
         <GrowthTimelineSection
           childProfile={activeChild}
           measurements={activeMeasurements}
-          units={units}
           onInspectMilestone={handleInspectMilestone}
           onDeleteMeasurement={handleDeleteMeasurement}
         />
@@ -1316,7 +1316,6 @@ function SproutScaleWorkspace() {
         <GoogleDriveVaultSection
           childProfile={activeChild}
           measurements={activeMeasurements}
-          units={units}
           accessToken={accessToken}
           needsDriveAuth={needsDriveAuth}
           isSigningIn={isLoggingIn}

@@ -1,19 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Camera, Play, Pause, Ruler, Sparkles } from 'lucide-react';
 import {
   calculateExactAgeFromDob,
   ChildProfile,
   clampNumber,
+  cmToInches,
   formatAgeLabel,
-  formatHeight,
+  formatFeetInches,
   formatHeightDelta,
   formatHumanDate,
-  formatWeight,
+  formatMetricHeight,
+  formatMetricWeight,
+  formatPounds,
+  formatTotalInches,
   formatWeightDelta,
   getFunComparison,
   getGrowthStageInfo,
   GrowthMeasurement,
-  UnitSystem,
+  inchesToCm,
+  kgToLbs,
 } from '../types';
 import { CharacterFigureGroup } from './GrowingCharacterSvg';
 
@@ -25,8 +30,6 @@ interface GrowthWallStageProps {
   activeWeightKg: number;
   activeAgeMonths: number;
   isPreviewDirty: boolean;
-  units: UnitSystem;
-  onUnitsChange: (units: UnitSystem) => void;
   onSelectMilestoneOnWall: (measurement: GrowthMeasurement) => void;
   isPlayingTimelapse: boolean;
   onToggleTimelapse: () => void;
@@ -34,9 +37,9 @@ interface GrowthWallStageProps {
   onOpenWallHeightEstimator: () => void;
 }
 
-const MIN_RULER_CM = 65;
-const MAX_RULER_CM = 175;
-const RULER_TOP_Y = 52;
+const MIN_RULER_INCHES = 26; // 2' 2" (~66 cm)
+const MAX_RULER_INCHES = 68; // 5' 8" (~172.7 cm)
+const RULER_TOP_Y = 54;
 const FLOOR_Y = 482;
 
 const RAINBOW_PIN_COLORS = [
@@ -49,8 +52,14 @@ const RAINBOW_PIN_COLORS = [
 ];
 
 function heightCmToSvgY(cm: number): number {
-  const clamped = clampNumber(cm, MIN_RULER_CM, MAX_RULER_CM);
-  const ratio = (clamped - MIN_RULER_CM) / (MAX_RULER_CM - MIN_RULER_CM);
+  const inches = clampNumber(cmToInches(cm), MIN_RULER_INCHES, MAX_RULER_INCHES);
+  const ratio = (inches - MIN_RULER_INCHES) / (MAX_RULER_INCHES - MIN_RULER_INCHES);
+  return FLOOR_Y - ratio * (FLOOR_Y - RULER_TOP_Y);
+}
+
+function inchesToSvgY(inchesVal: number): number {
+  const clamped = clampNumber(inchesVal, MIN_RULER_INCHES, MAX_RULER_INCHES);
+  const ratio = (clamped - MIN_RULER_INCHES) / (MAX_RULER_INCHES - MIN_RULER_INCHES);
   return FLOOR_Y - ratio * (FLOOR_Y - RULER_TOP_Y);
 }
 
@@ -62,14 +71,14 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   activeWeightKg,
   activeAgeMonths,
   isPreviewDirty,
-  units,
-  onUnitsChange,
   onSelectMilestoneOnWall,
   isPlayingTimelapse,
   onToggleTimelapse,
   onOpenPhotoStudio,
   onOpenWallHeightEstimator,
 }) => {
+  const [showSecondaryMetric, setShowSecondaryMetric] = useState<boolean>(true);
+
   const ageTwoCrownY = heightCmToSvgY(childProfile.ageTwoHeightCm);
   const currentCrownY = heightCmToSvgY(activeHeightCm);
 
@@ -80,7 +89,6 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   const exactDobAge = childProfile.birthDate
     ? calculateExactAgeFromDob(childProfile.birthDate)
     : null;
-  const activeTotalInches = (activeHeightCm / 2.54).toFixed(1);
 
   const funFacts = getFunComparison(
     activeHeightCm,
@@ -88,15 +96,16 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
     childProfile.ageTwoHeightCm,
   );
 
-  // Scale dial rotation (-135 deg at 0 kg up to +135 deg at 60 kg)
-  const scaleAngle = -135 + clampNumber(activeWeightKg / 60, 0, 1) * 270;
-  const ageTwoScaleAngle =
-    -135 + clampNumber(childProfile.ageTwoWeightKg / 60, 0, 1) * 270;
+  // Scale dial rotation (-135 deg at 0 lb up to +135 deg at 135 lb)
+  const activeWeightLbs = kgToLbs(activeWeightKg);
+  const ageTwoWeightLbs = kgToLbs(childProfile.ageTwoWeightKg);
+  const scaleAngle = -135 + clampNumber(activeWeightLbs / 135, 0, 1) * 270;
+  const ageTwoScaleAngle = -135 + clampNumber(ageTwoWeightLbs / 135, 0, 1) * 270;
 
-  // Generate ruler ticks every 5 cm from 70 to 175
-  const rulerTicks: number[] = [];
-  for (let cm = 70; cm <= 175; cm += 5) {
-    rulerTicks.push(cm);
+  // Generate ruler ticks natively in INCHES every 2 inches from 26" to 68"
+  const rulerInchTicks: number[] = [];
+  for (let inch = 26; inch <= 68; inch += 2) {
+    rulerInchTicks.push(inch);
   }
 
   // Sort measurements ascending by ageMonths for clean wall display
@@ -112,9 +121,18 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             <span aria-hidden="true">·</span>
             <span className="font-semibold text-sky-700">{stageInfo.stageName}</span>
             <span aria-hidden="true">·</span>
-            <span className="font-mono tabular-nums font-semibold text-indigo-900">
-              {activeTotalInches} in ({formatHeight(activeHeightCm, 'imperial')})
+            <span className="font-mono tabular-nums font-bold text-indigo-950">
+              {formatFeetInches(activeHeightCm)} ({formatTotalInches(activeHeightCm)}) ·{' '}
+              {formatPounds(activeWeightKg)}
             </span>
+            {showSecondaryMetric && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono tabular-nums text-slate-500">
+                  {formatMetricHeight(activeHeightCm)} · {formatMetricWeight(activeWeightKg)}
+                </span>
+              </>
+            )}
             {exactDobAge && (
               <>
                 <span aria-hidden="true">·</span>
@@ -170,45 +188,28 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             )}
           </button>
 
-          {/* Interactive Unit Segmented Switch */}
-          <div
-            role="group"
-            aria-label="Measurement units"
-            className="flex items-center gap-1 p-1 bg-sky-100 rounded-lg"
+          {/* Toggle Secondary Metric Subtitles (Feet/Inches & Pounds always remain primary) */}
+          <button
+            type="button"
+            onClick={() => setShowSecondaryMetric((prev) => !prev)}
+            className={`px-2.5 py-2 text-xs font-bold rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              showSecondaryMetric
+                ? 'bg-sky-50 border-sky-200 text-sky-900'
+                : 'bg-white border-slate-200 text-slate-500 hover:text-slate-800'
+            }`}
           >
-            <button
-              type="button"
-              onClick={() => onUnitsChange('metric')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                units === 'metric'
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-sky-900 hover:text-indigo-950'
-              }`}
-            >
-              cm · kg
-            </button>
-            <button
-              type="button"
-              onClick={() => onUnitsChange('imperial')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                units === 'imperial'
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-sky-900 hover:text-indigo-950'
-              }`}
-            >
-              ft/in · lb
-            </button>
-          </div>
+            {showSecondaryMetric ? 'cm · kg sub: On' : 'cm · kg sub: Off'}
+          </button>
         </div>
       </div>
 
       {/* Main Interactive Bright Storybook Playroom Wall & Scale Canvas */}
       <div className="w-full overflow-hidden rounded-xl border-2 border-sky-200">
         <svg
-          viewBox="0 0 680 590"
+          viewBox="0 0 680 604"
           className="w-full h-auto select-none"
           role="img"
-          aria-label={`Interactive height and weight growth chart comparing ${childProfile.name} at Age 2 (${formatHeight(childProfile.ageTwoHeightCm, units)}) with ${formatAgeLabel(activeAgeMonths)} (${formatHeight(activeHeightCm, units)} and ${formatWeight(activeWeightKg, units)}).`}
+          aria-label={`Interactive height and weight growth chart comparing ${childProfile.name} at Age 2 (${formatFeetInches(childProfile.ageTwoHeightCm)}, ${formatPounds(childProfile.ageTwoWeightKg)}) with ${formatAgeLabel(activeAgeMonths)} (${formatFeetInches(activeHeightCm)}, ${formatPounds(activeWeightKg)}).`}
         >
           <defs>
             <linearGradient id="sunnySkyWall" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -273,22 +274,22 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             />
           ))}
 
-          {/* Playroom Wall Grid Horizontal Reference Lines */}
-          {rulerTicks
-            .filter((cm) => cm % 10 === 0)
-            .map((cm) => {
-              const y = heightCmToSvgY(cm);
+          {/* Playroom Wall Grid Horizontal Reference Lines (Every 6 Inches / Half-Foot) */}
+          {rulerInchTicks
+            .filter((inch) => inch % 6 === 0)
+            .map((inch) => {
+              const y = inchesToSvgY(inch);
               return (
                 <line
-                  key={`grid_${cm}`}
+                  key={`grid_in_${inch}`}
                   x1={24}
                   y1={y}
                   x2={530}
                   y2={y}
                   stroke="#7dd3fc"
-                  strokeWidth={1.1}
+                  strokeWidth={inch % 12 === 0 ? 1.4 : 1.0}
                   strokeDasharray="4 5"
-                  opacity={0.75}
+                  opacity={0.78}
                 />
               );
             })}
@@ -296,60 +297,84 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           {/* Crisp White Baseboard & Warm Apricot Playroom Floor */}
           <rect x={0} y={FLOOR_Y - 12} width={680} height={12} fill="#ffffff" />
           <line x1={0} y1={FLOOR_Y - 12} x2={680} y2={FLOOR_Y - 12} stroke="#bae6fd" strokeWidth={1.5} />
-          <rect x={0} y={FLOOR_Y} width={680} height={108} fill="url(#sunnyFloor)" />
+          <rect x={0} y={FLOOR_Y} width={680} height={122} fill="url(#sunnyFloor)" />
           <line x1={0} y1={FLOOR_Y} x2={680} y2={FLOOR_Y} stroke="#f97316" strokeWidth={2} />
 
-          {/* Bright Honey-Gold Wall Growth Ruler Board (Right Side x=532..654) */}
+          {/* Bright Honey-Gold Wall Growth Ruler Board (Feet & Inches Primary!) */}
           <rect
             x={532}
             y={18}
-            width={124}
+            width={132}
             height={FLOOR_Y - 24}
             rx={10}
             fill="url(#honeyWoodRuler)"
             stroke="#d97706"
             strokeWidth={2.5}
           />
-          <circle cx={594} cy={32} r={4} fill="#e0f2fe" stroke="#b45309" strokeWidth={1.8} />
+          <circle cx={598} cy={31} r={4} fill="#e0f2fe" stroke="#b45309" strokeWidth={1.8} />
+          <text
+            x={598}
+            y={45}
+            textAnchor="middle"
+            fill="#78350f"
+            fontSize={8.5}
+            fontWeight={700}
+            fontFamily="JetBrains Mono, monospace"
+          >
+            FEET &amp; INCHES
+          </text>
 
-          {/* Ruler Ticks & Labels */}
-          {rulerTicks.map((cm, idx) => {
-            const y = heightCmToSvgY(cm);
-            const isMajor = cm % 10 === 0;
-            const tickLen = isMajor ? 22 : 12;
-            const labelText =
-              units === 'metric'
-                ? `${cm}`
-                : `${Math.floor(cm / 2.54 / 12)}'${Math.round((cm / 2.54) % 12)}"`;
+          {/* Ruler Ticks & Feet/Inches Labels */}
+          {rulerInchTicks.map((inch, idx) => {
+            const y = inchesToSvgY(inch);
+            const isFullFoot = inch % 12 === 0;
+            const isHalfFoot = inch % 6 === 0;
+            const tickLen = isFullFoot ? 22 : isHalfFoot ? 16 : 9;
+            const ft = Math.floor(inch / 12);
+            const remIn = inch % 12;
+            const labelPrimary = `${ft}'${remIn}"`;
+            const cmSub = Math.round(inchesToCm(inch));
 
             return (
-              <g key={`tick_${cm}`}>
+              <g key={`tick_in_${inch}`}>
                 <line
                   x1={532}
                   y1={y}
                   x2={532 + tickLen}
                   y2={y}
-                  stroke={isMajor ? '#78350f' : '#92400e'}
-                  strokeWidth={isMajor ? 2.1 : 1.2}
+                  stroke={isFullFoot ? '#451a03' : isHalfFoot ? '#78350f' : '#92400e'}
+                  strokeWidth={isFullFoot ? 2.3 : isHalfFoot ? 1.8 : 1.1}
                 />
-                {isMajor && (
+                {isHalfFoot && (
                   <>
                     <circle
-                      cx={558}
+                      cx={557}
                       cy={y}
                       r={2.5}
                       fill={RAINBOW_PIN_COLORS[idx % RAINBOW_PIN_COLORS.length]}
                     />
                     <text
-                      x={565}
-                      y={y + 4}
+                      x={564}
+                      y={y + 3.5}
                       fill="#451a03"
-                      fontSize={11}
+                      fontSize={isFullFoot ? 11 : 10}
                       fontWeight={700}
                       fontFamily="JetBrains Mono, monospace"
                     >
-                      {labelText}
+                      {`${labelPrimary} (${inch}")`}
                     </text>
+                    {showSecondaryMetric && isFullFoot && (
+                      <text
+                        x={564}
+                        y={y + 13}
+                        fill="#78350f"
+                        fontSize={8}
+                        fontWeight={600}
+                        fontFamily="JetBrains Mono, monospace"
+                      >
+                        {`${cmSub} cm`}
+                      </text>
+                    )}
                   </>
                 )}
               </g>
@@ -379,33 +404,20 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
                   strokeWidth={isCurrentSelected ? 3 : 2}
                 />
                 <circle
-                  cx={640}
+                  cx={652}
                   cy={markY}
                   r={isCurrentSelected ? 5.5 : 4}
                   fill={isCurrentSelected ? '#e11d48' : pinColor}
                   stroke="#ffffff"
                   strokeWidth={1.2}
                 />
-                <text
-                  x={630}
-                  y={markY + 3.5}
-                  textAnchor="end"
-                  fill={isCurrentSelected ? '#881337' : '#451a03'}
-                  fontSize={9.5}
-                  fontWeight={700}
-                  fontFamily="Plus Jakarta Sans, sans-serif"
-                >
-                  {m.ageMonths < 12
-                    ? `${m.ageMonths}m`
-                    : `${Math.floor(m.ageMonths / 12)}y${m.ageMonths % 12 ? `${m.ageMonths % 12}m` : ''}`}
-                </text>
               </g>
             );
           })}
 
-          {/* LEFT LANE: Age 2 Baseline Toddler Figure (x=138) */}
+          {/* LEFT LANE: Age 2 Baseline Toddler Figure (x=136) */}
           <line
-            x1={92}
+            x1={84}
             y1={ageTwoCrownY}
             x2={532}
             y2={ageTwoCrownY}
@@ -413,9 +425,35 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             strokeWidth={1.8}
             strokeDasharray="6 4"
           />
+
+          {/* Age 2 Overhead Height Tag on the Child */}
+          <g>
+            <rect
+              x={74}
+              y={Math.max(16, ageTwoCrownY - 26)}
+              width={124}
+              height={22}
+              rx={7}
+              fill="#0284c7"
+              stroke="#ffffff"
+              strokeWidth={1.4}
+            />
+            <text
+              x={136}
+              y={Math.max(16, ageTwoCrownY - 26) + 14.5}
+              textAnchor="middle"
+              fill="#ffffff"
+              fontSize={10.5}
+              fontWeight={700}
+              fontFamily="JetBrains Mono, monospace"
+            >
+              {`${formatFeetInches(childProfile.ageTwoHeightCm)} (${cmToInches(childProfile.ageTwoHeightCm).toFixed(1)}")`}
+            </text>
+          </g>
+
           <CharacterFigureGroup
             instanceId="age_two_wall"
-            centerX={138}
+            centerX={136}
             floorY={FLOOR_Y}
             crownY={ageTwoCrownY}
             ageMonths={24}
@@ -430,110 +468,139 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             mode="age-two-baseline"
           />
 
-          {/* Age 2 Baseline Floor Label */}
+          {/* Age 2 Baseline Card Directly Under Child (Feet & Pounds Primary, cm/kg Secondary) */}
           <rect
-            x={64}
-            y={FLOOR_Y + 12}
-            width={148}
-            height={42}
+            x={48}
+            y={FLOOR_Y + 10}
+            width={176}
+            height={showSecondaryMetric ? 58 : 44}
             rx={10}
             fill="#ffffff"
             stroke="#38bdf8"
             strokeWidth={1.8}
           />
           <text
-            x={138}
-            y={FLOOR_Y + 29}
+            x={136}
+            y={FLOOR_Y + 26}
             textAnchor="middle"
             fill="#0369a1"
-            fontSize={12}
+            fontSize={11.5}
             fontWeight={700}
             fontFamily="Plus Jakarta Sans, sans-serif"
           >
             At Age 2
           </text>
           <text
-            x={138}
-            y={FLOOR_Y + 46}
+            x={136}
+            y={FLOOR_Y + 43}
             textAnchor="middle"
             fill="#0f172a"
-            fontSize={11}
+            fontSize={11.5}
             fontWeight={700}
             fontFamily="JetBrains Mono, monospace"
           >
-            {`${formatHeight(childProfile.ageTwoHeightCm, units)} · ${formatWeight(childProfile.ageTwoWeightKg, units)}`}
+            {`${formatFeetInches(childProfile.ageTwoHeightCm)} · ${formatPounds(childProfile.ageTwoWeightKg)}`}
           </text>
+          {showSecondaryMetric && (
+            <text
+              x={136}
+              y={FLOOR_Y + 58}
+              textAnchor="middle"
+              fill="#64748b"
+              fontSize={9.5}
+              fontWeight={600}
+              fontFamily="JetBrains Mono, monospace"
+            >
+              {`${formatTotalInches(childProfile.ageTwoHeightCm)} · ${formatMetricHeight(childProfile.ageTwoHeightCm)} · ${formatMetricWeight(childProfile.ageTwoWeightKg)}`}
+            </text>
+          )}
 
-          {/* GROWTH DELTA VERTICAL BRACKET (Between Age 2 Crown & Current Crown) */}
+          {/* GROWTH DELTA VERTICAL BRACKET (Inches Primary, cm Secondary) */}
           {Math.abs(ageTwoCrownY - currentCrownY) >= 6 && (
             <g>
               <line
-                x1={236}
+                x1={238}
                 y1={ageTwoCrownY}
-                x2={236}
+                x2={238}
                 y2={currentCrownY}
                 stroke="#e11d48"
                 strokeWidth={2.5}
               />
               <line
-                x1={228}
+                x1={230}
                 y1={ageTwoCrownY}
-                x2={244}
+                x2={246}
                 y2={ageTwoCrownY}
                 stroke="#e11d48"
                 strokeWidth={2.5}
               />
               <line
-                x1={228}
+                x1={230}
                 y1={currentCrownY}
-                x2={244}
+                x2={246}
                 y2={currentCrownY}
                 stroke="#e11d48"
                 strokeWidth={2.5}
               />
               <rect
-                x={190}
-                y={(ageTwoCrownY + currentCrownY) / 2 - 14}
-                width={92}
-                height={26}
+                x={187}
+                y={(ageTwoCrownY + currentCrownY) / 2 - (showSecondaryMetric ? 19 : 14)}
+                width={102}
+                height={showSecondaryMetric ? 36 : 26}
                 rx={8}
                 fill="#f43f5e"
                 stroke="#ffffff"
                 strokeWidth={1.5}
               />
               <text
-                x={236}
-                y={(ageTwoCrownY + currentCrownY) / 2 + 3}
+                x={238}
+                y={(ageTwoCrownY + currentCrownY) / 2 - (showSecondaryMetric ? 3 : -3)}
                 textAnchor="middle"
                 fill="#ffffff"
                 fontSize={11.5}
                 fontWeight={700}
                 fontFamily="JetBrains Mono, monospace"
               >
-                {formatHeightDelta(heightGainCm, units)}
+                {formatHeightDelta(heightGainCm, 'imperial')}
               </text>
+              {showSecondaryMetric && (
+                <text
+                  x={238}
+                  y={(ageTwoCrownY + currentCrownY) / 2 + 11}
+                  textAnchor="middle"
+                  fill="#ffe4e6"
+                  fontSize={9}
+                  fontWeight={600}
+                  fontFamily="JetBrains Mono, monospace"
+                >
+                  {formatHeightDelta(heightGainCm, 'metric')}
+                </text>
+              )}
             </g>
           )}
 
-          {/* CENTER-RIGHT LANE: Active Growing Kid Standing on Bright Coral-Turquoise Floor Scale */}
+          {/* CENTER-RIGHT LANE: Active Growing Kid Standing on Floor Scale */}
           <rect
             x={290}
             y={FLOOR_Y}
             width={156}
-            height={16}
+            height={18}
             rx={6}
             fill="#06b6d4"
             stroke="#0e7490"
             strokeWidth={2}
           />
-          <rect
-            x={304}
-            y={FLOOR_Y + 16}
-            width={128}
-            height={10}
-            rx={4}
-            fill="#0f172a"
-          />
+          <text
+            x={368}
+            y={FLOOR_Y + 12.5}
+            textAnchor="middle"
+            fill="#ffffff"
+            fontSize={9.5}
+            fontWeight={700}
+            fontFamily="JetBrains Mono, monospace"
+          >
+            {formatPounds(activeWeightKg)}
+          </text>
 
           {/* Current Height Measurement Line & Sliding Stadiometer Paddle */}
           <line
@@ -549,29 +616,42 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             fill="#16a34a"
           />
 
-          {/* Current Height Bright Callout Tag */}
+          {/* Current Height Overhead Callout on Active Child (Feet & Inches Primary, cm Secondary) */}
           <g>
             <rect
-              x={404}
-              y={Math.max(18, currentCrownY - 32)}
-              width={120}
-              height={26}
+              x={382}
+              y={Math.max(14, currentCrownY - (showSecondaryMetric ? 42 : 30))}
+              width={144}
+              height={showSecondaryMetric ? 38 : 26}
               rx={8}
               fill="#16a34a"
               stroke="#ffffff"
               strokeWidth={1.5}
             />
             <text
-              x={464}
-              y={Math.max(18, currentCrownY - 32) + 17}
+              x={454}
+              y={Math.max(14, currentCrownY - (showSecondaryMetric ? 42 : 30)) + 16}
               textAnchor="middle"
               fill="#ffffff"
-              fontSize={12}
+              fontSize={11.5}
               fontWeight={700}
               fontFamily="JetBrains Mono, monospace"
             >
-              {formatHeight(activeHeightCm, units)}
+              {`${formatFeetInches(activeHeightCm)} (${cmToInches(activeHeightCm).toFixed(1)}")`}
             </text>
+            {showSecondaryMetric && (
+              <text
+                x={454}
+                y={Math.max(14, currentCrownY - 42) + 30}
+                textAnchor="middle"
+                fill="#dcfce7"
+                fontSize={9.5}
+                fontWeight={600}
+                fontFamily="JetBrains Mono, monospace"
+              >
+                {formatMetricHeight(activeHeightCm)}
+              </text>
+            )}
           </g>
 
           {/* Active Growing Character */}
@@ -593,12 +673,12 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             isWaveActive={isPlayingTimelapse || isPreviewDirty}
           />
 
-          {/* Active Kid Name & Growth Summary Card Under Scale */}
+          {/* Active Kid Name, Feet/Inches & Pounds Card Under Scale (cm & kg Secondary) */}
           <rect
-            x={244}
-            y={FLOOR_Y + 32}
-            width={248}
-            height={44}
+            x={236}
+            y={FLOOR_Y + 24}
+            width={264}
+            height={showSecondaryMetric ? 62 : 46}
             rx={10}
             fill="#ffffff"
             stroke="#f59e0b"
@@ -606,91 +686,118 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           />
           <text
             x={368}
-            y={FLOOR_Y + 50}
+            y={FLOOR_Y + 41}
             textAnchor="middle"
             fill="#0f172a"
-            fontSize={12.5}
+            fontSize={12}
             fontWeight={700}
             fontFamily="Plus Jakarta Sans, sans-serif"
           >
-            {`${childProfile.name} · ${formatAgeLabel(activeAgeMonths)}`}
+            {`${childProfile.name} (${formatAgeLabel(activeAgeMonths)}) — ${formatFeetInches(activeHeightCm)} · ${formatPounds(activeWeightKg)}`}
           </text>
           <text
             x={368}
-            y={FLOOR_Y + 67}
+            y={FLOOR_Y + 57}
             textAnchor="middle"
             fill="#047857"
-            fontSize={11}
+            fontSize={10.5}
             fontWeight={700}
             fontFamily="JetBrains Mono, monospace"
           >
-            {`${formatHeightDelta(heightGainCm, units)} vs Age 2 · ${formatWeightDelta(weightGainKg, units)}`}
+            {`${formatHeightDelta(heightGainCm, 'imperial')} · ${formatWeightDelta(weightGainKg, 'imperial')} since Age 2`}
           </text>
+          {showSecondaryMetric && (
+            <text
+              x={368}
+              y={FLOOR_Y + 73}
+              textAnchor="middle"
+              fill="#64748b"
+              fontSize={9.5}
+              fontWeight={600}
+              fontFamily="JetBrains Mono, monospace"
+            >
+              {`${formatTotalInches(activeHeightCm)} · ${formatMetricHeight(activeHeightCm)} · ${formatMetricWeight(activeWeightKg)}`}
+            </text>
+          )}
 
-          {/* BRIGHT TURQUOISE & SUNSHINE WEIGHT DIAL GAUGE */}
+          {/* BRIGHT TURQUOISE & SUNSHINE WEIGHT DIAL GAUGE (Pounds Primary, kg Secondary) */}
           <g>
             <circle
-              cx={578}
-              cy={535}
-              r={45}
+              cx={588}
+              cy={542}
+              r={48}
               fill="#ffffff"
               stroke="#06b6d4"
               strokeWidth={4.5}
             />
             <circle
-              cx={578}
-              cy={535}
-              r={38}
+              cx={588}
+              cy={542}
+              r={41}
               fill="none"
               stroke="#fde047"
               strokeWidth={3}
               strokeDasharray="6 4"
             />
-            <g transform={`rotate(${ageTwoScaleAngle}, 578, 535)`}>
+            <g transform={`rotate(${ageTwoScaleAngle}, 588, 542)`}>
               <line
-                x1={578}
-                y1={535}
-                x2={578}
-                y2={504}
+                x1={588}
+                y1={542}
+                x2={588}
+                y2={509}
                 stroke="#38bdf8"
                 strokeWidth={2}
                 strokeDasharray="2 2"
               />
             </g>
-            <g transform={`rotate(${scaleAngle}, 578, 535)`}>
+            <g transform={`rotate(${scaleAngle}, 588, 542)`}>
               <line
-                x1={578}
-                y1={540}
-                x2={578}
-                y2={498}
+                x1={588}
+                y1={547}
+                x2={588}
+                y2={503}
                 stroke="#f43f5e"
                 strokeWidth={3}
                 strokeLinecap="round"
               />
             </g>
-            <circle cx={578} cy={535} r={5} fill="#0f172a" />
+            <circle cx={588} cy={542} r={4.5} fill="#0f172a" />
             <text
-              x={578}
-              y={557}
+              x={588}
+              y={561}
               textAnchor="middle"
               fill="#0f172a"
-              fontSize={11}
+              fontSize={11.5}
               fontWeight={700}
               fontFamily="JetBrains Mono, monospace"
             >
-              {formatWeight(activeWeightKg, units)}
+              {formatPounds(activeWeightKg)}
             </text>
-            <text
-              x={578}
-              y={570}
-              textAnchor="middle"
-              fill="#0284c7"
-              fontSize={8.5}
-              fontWeight={700}
-              fontFamily="Plus Jakarta Sans, sans-serif"
-            >
-              WEIGHT
-            </text>
+            {showSecondaryMetric ? (
+              <text
+                x={588}
+                y={574}
+                textAnchor="middle"
+                fill="#64748b"
+                fontSize={9}
+                fontWeight={600}
+                fontFamily="JetBrains Mono, monospace"
+              >
+                {formatMetricWeight(activeWeightKg)}
+              </text>
+            ) : (
+              <text
+                x={588}
+                y={574}
+                textAnchor="middle"
+                fill="#0284c7"
+                fontSize={8.5}
+                fontWeight={700}
+                fontFamily="Plus Jakarta Sans, sans-serif"
+              >
+                POUNDS
+              </text>
+            )}
           </g>
         </svg>
       </div>

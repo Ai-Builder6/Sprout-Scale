@@ -357,44 +357,93 @@ export function sanitizeId(raw: string): string {
   return cleaned.length > 0 ? cleaned : `id_${Date.now()}`;
 }
 
-export function formatHeight(heightCm: number, units: UnitSystem): string {
-  if (units === 'metric') {
-    return `${heightCm.toFixed(1)} cm`;
+export function cmToInches(cm: number): number {
+  return cm / 2.54;
+}
+
+export function inchesToCm(inches: number): number {
+  return inches * 2.54;
+}
+
+export function kgToLbs(kg: number): number {
+  return kg * 2.20462262;
+}
+
+export function lbsToKg(lbs: number): number {
+  return lbs / 2.20462262;
+}
+
+export function splitCmToFeetAndInches(heightCm: number): {
+  feet: number;
+  inches: number;
+  totalInches: number;
+} {
+  const totalInches = Math.max(0, cmToInches(heightCm));
+  let feet = Math.floor(totalInches / 12);
+  let inches = Number((totalInches - feet * 12).toFixed(1));
+  if (inches >= 12) {
+    feet += 1;
+    inches = 0;
   }
-  const totalInches = heightCm / 2.54;
-  const feet = Math.floor(totalInches / 12);
-  const inches = totalInches - feet * 12;
-  if (inches >= 11.95) {
-    return `${feet + 1}' 0.0"`;
-  }
+  return {
+    feet,
+    inches,
+    totalInches: Number(totalInches.toFixed(1)),
+  };
+}
+
+export function formatFeetInches(heightCm: number): string {
+  const { feet, inches } = splitCmToFeetAndInches(heightCm);
   return `${feet}' ${inches.toFixed(1)}"`;
 }
 
-export function formatHeightDelta(deltaCm: number, units: UnitSystem): string {
+export function formatTotalInches(heightCm: number): string {
+  return `${cmToInches(heightCm).toFixed(1)} in`;
+}
+
+export function formatPounds(weightKg: number): string {
+  return `${kgToLbs(weightKg).toFixed(1)} lb`;
+}
+
+export function formatMetricHeight(heightCm: number): string {
+  return `${heightCm.toFixed(1)} cm`;
+}
+
+export function formatMetricWeight(weightKg: number): string {
+  return `${weightKg.toFixed(1)} kg`;
+}
+
+export function formatHeight(heightCm: number, units: UnitSystem = 'imperial'): string {
+  if (units === 'metric') {
+    return `${heightCm.toFixed(1)} cm`;
+  }
+  return formatFeetInches(heightCm);
+}
+
+export function formatHeightDelta(deltaCm: number, units: UnitSystem = 'imperial'): string {
   const sign = deltaCm >= 0 ? '+' : '-';
   const absCm = Math.abs(deltaCm);
   if (units === 'metric') {
     return `${sign}${absCm.toFixed(1)} cm`;
   }
-  const inches = absCm / 2.54;
+  const inches = cmToInches(absCm);
   return `${sign}${inches.toFixed(1)} in`;
 }
 
-export function formatWeight(weightKg: number, units: UnitSystem): string {
+export function formatWeight(weightKg: number, units: UnitSystem = 'imperial'): string {
   if (units === 'metric') {
     return `${weightKg.toFixed(1)} kg`;
   }
-  const lbs = weightKg * 2.20462;
-  return `${lbs.toFixed(1)} lb`;
+  return formatPounds(weightKg);
 }
 
-export function formatWeightDelta(deltaKg: number, units: UnitSystem): string {
+export function formatWeightDelta(deltaKg: number, units: UnitSystem = 'imperial'): string {
   const sign = deltaKg >= 0 ? '+' : '-';
   const absKg = Math.abs(deltaKg);
   if (units === 'metric') {
     return `${sign}${absKg.toFixed(1)} kg`;
   }
-  const lbs = absKg * 2.20462;
+  const lbs = kgToLbs(absKg);
   return `${sign}${lbs.toFixed(1)} lb`;
 }
 
@@ -449,37 +498,39 @@ export function getFunComparison(
 } {
   let heightFact = 'About as tall as an acoustic ukulele stood upright!';
   if (heightCm < 90) {
-    heightFact = 'About as tall as a friendly Golden Retriever sitting proud!';
+    heightFact = 'About as tall as a friendly Golden Retriever sitting proud (~2\' 10")!';
   } else if (heightCm < 102) {
-    heightFact = 'Tall enough to peek right over a standard kitchen chair!';
+    heightFact = 'Tall enough to peek right over a standard 3-foot kitchen chair!';
   } else if (heightCm < 114) {
-    heightFact = 'Nearly eye-to-eye with an Emperor Penguin (115 cm)!';
+    heightFact = 'Nearly eye-to-eye with an Emperor Penguin (3\' 9" · 45 in)!';
   } else if (heightCm < 126) {
-    heightFact = 'About as tall as 5 regulation soccer balls stacked high!';
+    heightFact = 'About as tall as 5 regulation soccer balls stacked high (~3\' 11")!';
   } else if (heightCm < 140) {
-    heightFact = 'Tall enough for many big-kid theme park adventure rides (137 cm)!';
+    heightFact = 'Tall enough for many big-kid theme park adventure rides (4\' 6" · 54 in)!';
   } else {
-    heightFact = 'Standing as tall as a baby giraffe’s shoulder!';
+    heightFact = 'Standing as tall as a baby giraffe’s shoulder (over 4\' 7")!';
   }
 
   const gainedCm = Math.max(0, heightCm - ageTwoHeightCm);
-  const apples = Math.max(1, Math.round(gainedCm / 7.5));
+  const gainedIn = cmToInches(gainedCm);
+  const apples = Math.max(1, Math.round(gainedIn / 3));
   const growthFact =
-    gainedCm < 1
+    gainedIn < 0.4
       ? 'Right at the Age 2 starting mark — ready to sprout upward!'
-      : `Sprouted ${apples} stacked apples taller since turning 2!`;
+      : `Sprouted +${gainedIn.toFixed(1)} in (${apples} stacked apples) taller since turning 2!`;
 
   let weightFact = 'About the weight of a big basket of picnic apples!';
   if (weightKg < 14) {
-    weightFact = 'Weighs about the same as 3 fluffy house cats!';
+    heightFact = heightFact;
+    weightFact = 'Weighs about the same as 3 fluffy house cats (~28 lb)!';
   } else if (weightKg < 18) {
-    weightFact = 'Weighs about as much as 2 large summer watermelons!';
+    weightFact = 'Weighs about as much as 2 large summer watermelons (~36 lb)!';
   } else if (weightKg < 24) {
-    weightFact = 'Weighs about the same as a friendly Corgi pup + backpack!';
+    weightFact = 'Weighs about the same as a friendly Corgi pup + backpack (~46 lb)!';
   } else if (weightKg < 34) {
-    weightFact = 'Weighs about as much as a Golden Retriever puppy!';
+    weightFact = 'Weighs about as much as a Golden Retriever puppy (~65 lb)!';
   } else {
-    weightFact = 'Strong and steady — about the weight of 4 bowling balls!';
+    weightFact = 'Strong and steady — about the weight of 5 ten-pound bowling balls!';
   }
 
   return { heightFact, growthFact, weightFact };

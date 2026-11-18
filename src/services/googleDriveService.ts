@@ -2,8 +2,13 @@ import {
   BiologicalSex,
   ChildProfile,
   formatAgeLabel,
-  formatHeight,
-  formatWeight,
+  formatFeetInches,
+  formatHeightDelta,
+  formatMetricHeight,
+  formatMetricWeight,
+  formatPounds,
+  formatTotalInches,
+  formatWeightDelta,
   GrowthMeasurement,
   UnitSystem,
 } from '../types';
@@ -358,21 +363,21 @@ function buildBackupPayload(
 function buildKeepsakePosterSvg(
   child: ChildProfile,
   measurements: GrowthMeasurement[],
-  units: UnitSystem,
 ): string {
   const sorted = [...measurements].sort((a, b) => a.ageMonths - b.ageMonths);
   const latest = sorted[sorted.length - 1];
   const latestH = latest ? latest.heightCm : child.ageTwoHeightCm;
   const latestW = latest ? latest.weightKg : child.ageTwoWeightKg;
   const latestAge = latest ? latest.ageMonths : 24;
+  const hDelta = latestH - child.ageTwoHeightCm;
+  const wDelta = latestW - child.ageTwoWeightKg;
   const dobLine = child.birthDate ? ` · Born ${child.birthDate.replace(/[<>&"]/g, '')}` : '';
 
   const rowsSvg = sorted
     .slice(-8)
     .map((m, idx) => {
       const y = 272 + idx * 32;
-      const totalInches = (m.heightCm / 2.54).toFixed(1);
-      return `<text x="60" y="${y}" font-family="sans-serif" font-size="13.5" fill="#1e293b">${formatAgeLabel(m.ageMonths)} (${m.recordedDate}) — ${formatHeight(m.heightCm, units)} (${totalInches} in) · ${formatWeight(m.weightKg, units)}${m.note ? ` · ${m.note.replace(/[<>&"]/g, '')}` : ''}</text>`;
+      return `<text x="60" y="${y}" font-family="sans-serif" font-size="13" fill="#1e293b">${formatAgeLabel(m.ageMonths)} (${m.recordedDate}) — ${formatFeetInches(m.heightCm)} (${formatTotalInches(m.heightCm)}) · ${formatPounds(m.weightKg)} [${formatMetricHeight(m.heightCm)}, ${formatMetricWeight(m.weightKg)}]${m.note ? ` · ${m.note.replace(/[<>&"]/g, '')}` : ''}</text>`;
     })
     .join('\n');
 
@@ -381,10 +386,10 @@ function buildKeepsakePosterSvg(
   <rect width="800" height="560" fill="#f8fafc" rx="20" />
   <rect x="28" y="28" width="744" height="504" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" rx="16" />
   <text x="60" y="80" font-family="sans-serif" font-size="28" font-weight="bold" fill="#0f172a">SproutScale Growth Keepsake — ${child.name.replace(/[<>&"]/g, '')}</text>
-  <text x="60" y="112" font-family="sans-serif" font-size="15" fill="#059669" font-weight="bold">Started at Age 2: ${formatHeight(child.ageTwoHeightCm, units)} (${(child.ageTwoHeightCm / 2.54).toFixed(1)} in) · ${formatWeight(child.ageTwoWeightKg, units)}${dobLine}</text>
-  <text x="60" y="140" font-family="sans-serif" font-size="15.5" fill="#0f172a">Latest (${formatAgeLabel(latestAge)}): ${formatHeight(latestH, units)} (${(latestH / 2.54).toFixed(1)} in) · ${formatWeight(latestW, units)} (+${(latestH - child.ageTwoHeightCm).toFixed(1)} cm taller since Age 2)</text>
+  <text x="60" y="112" font-family="sans-serif" font-size="14.5" fill="#059669" font-weight="bold">Started at Age 2: ${formatFeetInches(child.ageTwoHeightCm)} (${formatTotalInches(child.ageTwoHeightCm)}) · ${formatPounds(child.ageTwoWeightKg)} (${formatMetricHeight(child.ageTwoHeightCm)}, ${formatMetricWeight(child.ageTwoWeightKg)})${dobLine}</text>
+  <text x="60" y="140" font-family="sans-serif" font-size="14.5" fill="#0f172a">Latest (${formatAgeLabel(latestAge)}): ${formatFeetInches(latestH)} (${formatTotalInches(latestH)}) · ${formatPounds(latestW)} (${formatHeightDelta(hDelta, 'imperial')} / ${formatWeightDelta(wDelta, 'imperial')} · ${formatMetricHeight(latestH)}, ${formatMetricWeight(latestW)})</text>
   <line x1="60" y1="168" x2="740" y2="168" stroke="#e2e8f0" stroke-width="1.5" />
-  <text x="60" y="218" font-family="sans-serif" font-size="16" font-weight="bold" fill="#334155">Recorded Wall Milestones</text>
+  <text x="60" y="218" font-family="sans-serif" font-size="16" font-weight="bold" fill="#334155">Recorded Wall Milestones (Feet &amp; Inches, Pounds · Metric Secondary)</text>
   ${rowsSvg || '<text x="60" y="272" font-family="sans-serif" font-size="14" fill="#64748b">Age 2 baseline recorded.</text>'}
 </svg>`;
 }
@@ -453,7 +458,7 @@ export async function saveKeepsakeChartToDrive(
   accessToken: string,
   child: ChildProfile,
   measurements: GrowthMeasurement[],
-  units: UnitSystem,
+  _units: UnitSystem = 'imperial',
 ): Promise<DriveFileSummary> {
   const dateStamp = new Date().toISOString().slice(0, 10);
   const safeChildName = child.name.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -466,7 +471,7 @@ export async function saveKeepsakeChartToDrive(
       kind: 'keepsake-poster',
     },
   };
-  const svgContent = buildKeepsakePosterSvg(child, measurements, units);
+  const svgContent = buildKeepsakePosterSvg(child, measurements);
   return createMultipartDriveFile(accessToken, metadata, svgContent, 'image/svg+xml');
 }
 

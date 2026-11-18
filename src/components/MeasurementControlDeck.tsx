@@ -17,18 +17,25 @@ import {
   CHARACTER_PALETTES,
   ChildProfile,
   clampNumber,
-  formatHeight,
+  cmToInches,
+  formatFeetInches,
   formatHeightDelta,
   formatHumanDate,
-  formatWeight,
+  formatMetricHeight,
+  formatMetricWeight,
+  formatPounds,
+  formatTotalInches,
   formatWeightDelta,
   getLocalTodayIso,
   HAIR_COLOR_PRESETS,
   HairStyle,
+  inchesToCm,
+  kgToLbs,
+  lbsToKg,
   PaletteId,
   sanitizeBiologicalSex,
   SKIN_TONE_PRESETS,
-  UnitSystem,
+  splitCmToFeetAndInches,
   VALIDATION_BOUNDS,
 } from '../types';
 
@@ -39,7 +46,6 @@ interface MeasurementControlDeckProps {
   onTabChange: (tab: ControlDeckTab) => void;
   childProfile: ChildProfile;
   avatarPhotoUrl: string | null;
-  units: UnitSystem;
   draftHeightCm: number;
   draftWeightKg: number;
   draftAgeMonths: number;
@@ -104,7 +110,6 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   onTabChange,
   childProfile,
   avatarPhotoUrl,
-  units,
   draftHeightCm,
   draftWeightKg,
   draftAgeMonths,
@@ -160,7 +165,15 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
   const draftYears = Math.floor(draftAgeMonths / 12);
   const draftRemMonths = draftAgeMonths % 12;
-  const draftTotalInches = (draftHeightCm / 2.54).toFixed(1);
+
+  // Imperial values driving sliders, steppers, and feet/inches selectors
+  const draftSplitHeight = splitCmToFeetAndInches(draftHeightCm);
+  const draftTotalInchesNum = Number(cmToInches(draftHeightCm).toFixed(2));
+  const draftWeightLbsNum = Number(kgToLbs(draftWeightKg).toFixed(1));
+
+  // Imperial Age 2 baseline values for the Child Info form
+  const editAgeTwoSplit = splitCmToFeetAndInches(editAgeTwoHeight);
+  const editAgeTwoWeightLbs = Number(kgToLbs(editAgeTwoWeight).toFixed(1));
 
   // Exact age calculated from child's Date of Birth relative to the selected measurement date
   const dobCalculatedOnDraftDate = childProfile.birthDate
@@ -178,6 +191,41 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
     0,
     ((draftHeightCm - childProfile.ageTwoHeightCm) / childProfile.ageTwoHeightCm) * 100,
   );
+
+  const applyDraftInches = (nextTotalInches: number) => {
+    const clampedInches = clampNumber(nextTotalInches, 26, 68);
+    const nextCm = Number(clampNumber(inchesToCm(clampedInches), 65, 175).toFixed(1));
+    onChangeDraftHeight(nextCm);
+  };
+
+  const applyDraftPounds = (nextLbs: number) => {
+    const clampedLbs = clampNumber(nextLbs, 16, 165);
+    const nextKg = Number(clampNumber(lbsToKg(clampedLbs), 7, 75).toFixed(1));
+    onChangeDraftWeight(nextKg);
+  };
+
+  const updateAgeTwoFeetInches = (feet: number, remInches: number) => {
+    const safeInches = clampNumber(feet * 12 + remInches, 27.6, 45.2);
+    const nextCm = Number(
+      clampNumber(
+        inchesToCm(safeInches),
+        VALIDATION_BOUNDS.AGE_TWO_HEIGHT_MIN,
+        VALIDATION_BOUNDS.AGE_TWO_HEIGHT_MAX,
+      ).toFixed(1),
+    );
+    setEditAgeTwoHeight(nextCm);
+  };
+
+  const updateAgeTwoPounds = (lbs: number) => {
+    const nextKg = Number(
+      clampNumber(
+        lbsToKg(lbs),
+        VALIDATION_BOUNDS.AGE_TWO_WEIGHT_MIN,
+        VALIDATION_BOUNDS.AGE_TWO_WEIGHT_MAX,
+      ).toFixed(1),
+    );
+    setEditAgeTwoWeight(nextKg);
+  };
 
   const handleCharacterFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -289,32 +337,33 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
       {activeTab === 'measure' ? (
         <form onSubmit={onSubmitMeasurement} className="space-y-5">
-          {/* Height Slider + Fine Controls */}
-          <div className="space-y-2">
+          {/* Height Slider + Feet & Inches Controls (Imperial Primary, cm Secondary) */}
+          <div className="space-y-2.5">
             <div className="flex items-baseline justify-between gap-2">
               <label
                 htmlFor="height-slider"
                 className="text-sm font-bold text-indigo-950"
               >
-                Height Today
+                Height Today (ft &amp; in)
               </label>
-              <span className="text-base font-bold font-mono tabular-nums text-sky-700">
-                {formatHeight(draftHeightCm, units)}{' '}
-                <span className="text-xs font-semibold text-slate-500">
-                  ({draftTotalInches} in)
+              <div className="text-right">
+                <span className="text-base font-bold font-mono tabular-nums text-sky-700">
+                  {formatFeetInches(draftHeightCm)}{' '}
+                  <span className="text-xs font-bold text-indigo-950">
+                    ({formatTotalInches(draftHeightCm)})
+                  </span>
                 </span>
-              </span>
+                <span className="block text-[11px] font-mono tabular-nums text-slate-400">
+                  {formatMetricHeight(draftHeightCm)}
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
-                aria-label="Decrease height"
-                onClick={() =>
-                  onChangeDraftHeight(
-                    Number(clampNumber(draftHeightCm - 0.5, 65, 175).toFixed(1)),
-                  )
-                }
+                aria-label="Decrease height by half an inch"
+                onClick={() => applyDraftInches(draftTotalInchesNum - 0.5)}
                 className="w-10 h-10 flex items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100 transition-colors shrink-0 cursor-pointer"
               >
                 <Minus className="w-4 h-4" aria-hidden="true" />
@@ -323,26 +372,71 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <input
                 id="height-slider"
                 type="range"
-                min={65}
-                max={175}
-                step={0.5}
-                value={draftHeightCm}
-                onChange={(e) => onChangeDraftHeight(parseFloat(e.target.value))}
+                min={26}
+                max={68}
+                step={0.25}
+                value={clampNumber(draftTotalInchesNum, 26, 68)}
+                onChange={(e) => applyDraftInches(parseFloat(e.target.value))}
                 className="w-full accent-sky-600 h-2.5 bg-sky-100 rounded-lg cursor-pointer"
               />
 
               <button
                 type="button"
-                aria-label="Increase height"
-                onClick={() =>
-                  onChangeDraftHeight(
-                    Number(clampNumber(draftHeightCm + 0.5, 65, 175).toFixed(1)),
-                  )
-                }
+                aria-label="Increase height by half an inch"
+                onClick={() => applyDraftInches(draftTotalInchesNum + 0.5)}
                 className="w-10 h-10 flex items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100 transition-colors shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
+            </div>
+
+            {/* Direct Feet + Extra Inches Quick Inputs */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="draft-feet-select"
+                  className="text-xs font-semibold text-slate-600 whitespace-nowrap"
+                >
+                  Feet
+                </label>
+                <select
+                  id="draft-feet-select"
+                  value={draftSplitHeight.feet}
+                  onChange={(e) => {
+                    const nextFt = parseInt(e.target.value, 10);
+                    applyDraftInches(nextFt * 12 + draftSplitHeight.inches);
+                  }}
+                  className="w-full h-9 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                >
+                  {[2, 3, 4, 5].map((ft) => (
+                    <option key={ft} value={ft}>
+                      {ft} ft
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="draft-inches-input"
+                  className="text-xs font-semibold text-slate-600 whitespace-nowrap"
+                >
+                  Inches
+                </label>
+                <input
+                  id="draft-inches-input"
+                  type="number"
+                  min={0}
+                  max={11.9}
+                  step={0.5}
+                  value={draftSplitHeight.inches}
+                  onChange={(e) => {
+                    const nextIn = clampNumber(parseFloat(e.target.value) || 0, 0, 11.9);
+                    applyDraftInches(draftSplitHeight.feet * 12 + nextIn);
+                  }}
+                  className="w-full h-9 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                />
+              </div>
             </div>
 
             {/* Guesstimate Height in Inches from a Wall Photo CTA */}
@@ -356,29 +450,30 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             </button>
           </div>
 
-          {/* Weight Slider + Fine Controls */}
-          <div className="space-y-2 pt-2 border-t border-sky-100">
+          {/* Weight Slider + Pounds Controls (Pounds Primary, kg Secondary) */}
+          <div className="space-y-2.5 pt-2 border-t border-sky-100">
             <div className="flex items-baseline justify-between gap-2">
               <label
                 htmlFor="weight-slider"
                 className="text-sm font-bold text-indigo-950"
               >
-                Weight Today
+                Weight Today (lb)
               </label>
-              <span className="text-base font-bold font-mono tabular-nums text-rose-700">
-                {formatWeight(draftWeightKg, units)}
-              </span>
+              <div className="text-right">
+                <span className="text-base font-bold font-mono tabular-nums text-rose-700">
+                  {formatPounds(draftWeightKg)}
+                </span>
+                <span className="block text-[11px] font-mono tabular-nums text-slate-400">
+                  {formatMetricWeight(draftWeightKg)}
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
-                aria-label="Decrease weight"
-                onClick={() =>
-                  onChangeDraftWeight(
-                    Number(clampNumber(draftWeightKg - 0.2, 7, 75).toFixed(1)),
-                  )
-                }
+                aria-label="Decrease weight by half a pound"
+                onClick={() => applyDraftPounds(draftWeightLbsNum - 0.5)}
                 className="w-10 h-10 flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
               >
                 <Minus className="w-4 h-4" aria-hidden="true" />
@@ -387,22 +482,18 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <input
                 id="weight-slider"
                 type="range"
-                min={7}
-                max={75}
-                step={0.2}
-                value={draftWeightKg}
-                onChange={(e) => onChangeDraftWeight(parseFloat(e.target.value))}
+                min={16}
+                max={165}
+                step={0.5}
+                value={clampNumber(draftWeightLbsNum, 16, 165)}
+                onChange={(e) => applyDraftPounds(parseFloat(e.target.value))}
                 className="w-full accent-rose-500 h-2.5 bg-amber-100 rounded-lg cursor-pointer"
               />
 
               <button
                 type="button"
-                aria-label="Increase weight"
-                onClick={() =>
-                  onChangeDraftWeight(
-                    Number(clampNumber(draftWeightKg + 0.2, 7, 75).toFixed(1)),
-                  )
-                }
+                aria-label="Increase weight by half a pound"
+                onClick={() => applyDraftPounds(draftWeightLbsNum + 0.5)}
                 className="w-10 h-10 flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
@@ -543,18 +634,29 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             </div>
           </div>
 
-          {/* Unboxed Growth Comparison Summary */}
+          {/* Unboxed Growth Comparison Summary (Feet/Inches & Pounds Primary, Metric Secondary) */}
           <div className="pt-3 border-t border-slate-100 space-y-1">
             <p className="text-xs font-semibold text-slate-800">
-              Growth vs. Age 2 ({formatHeight(childProfile.ageTwoHeightCm, units)},{' '}
-              {formatWeight(childProfile.ageTwoWeightKg, units)})
+              Growth vs. Age 2 ({formatFeetInches(childProfile.ageTwoHeightCm)} /{' '}
+              {formatTotalInches(childProfile.ageTwoHeightCm)},{' '}
+              {formatPounds(childProfile.ageTwoWeightKg)})
             </p>
-            <p className="text-xs font-mono tabular-nums text-slate-600">
-              <span>{formatHeightDelta(heightGainCm, units)} height</span>
-              <span className="mx-1.5" aria-hidden="true">·</span>
-              <span>{formatWeightDelta(weightGainKg, units)} weight</span>
-              <span className="mx-1.5" aria-hidden="true">·</span>
+            <p className="text-xs font-mono font-bold tabular-nums text-indigo-950">
+              <span>{formatHeightDelta(heightGainCm, 'imperial')} height</span>
+              <span className="mx-1.5 text-slate-400" aria-hidden="true">·</span>
+              <span>{formatWeightDelta(weightGainKg, 'imperial')} weight</span>
+              <span className="mx-1.5 text-slate-400" aria-hidden="true">·</span>
               <span>+{percentTaller.toFixed(0)}% taller</span>
+            </p>
+            <p className="text-[11px] font-mono tabular-nums text-slate-400">
+              <span>Secondary: {formatHeightDelta(heightGainCm, 'metric')}</span>
+              <span className="mx-1.5" aria-hidden="true">·</span>
+              <span>{formatWeightDelta(weightGainKg, 'metric')}</span>
+              <span className="mx-1.5" aria-hidden="true">·</span>
+              <span>
+                Age 2 ({formatMetricHeight(childProfile.ageTwoHeightCm)},{' '}
+                {formatMetricWeight(childProfile.ageTwoWeightKg)})
+              </span>
             </p>
           </div>
 
@@ -710,49 +812,67 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             </div>
           )}
 
-          {/* Age 2 Baseline Height & Weight */}
-          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+          {/* Age 2 Baseline Height (ft & in) & Weight (lb) — Metric Secondary */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
             <div className="space-y-1">
               <label
-                htmlFor="age2-height-input"
+                htmlFor="age2-feet-select"
                 className="block text-xs font-semibold text-slate-700"
               >
-                Age 2 Height (cm)
+                Age 2 Height (ft &amp; in)
               </label>
-              <input
-                id="age2-height-input"
-                type="number"
-                step="0.5"
-                min={VALIDATION_BOUNDS.AGE_TWO_HEIGHT_MIN}
-                max={VALIDATION_BOUNDS.AGE_TWO_HEIGHT_MAX}
-                value={editAgeTwoHeight}
-                onChange={(e) => setEditAgeTwoHeight(parseFloat(e.target.value) || 86.5)}
-                className="w-full h-10 px-3 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
-              />
+              <div className="grid grid-cols-2 gap-1.5">
+                <select
+                  id="age2-feet-select"
+                  value={editAgeTwoSplit.feet}
+                  onChange={(e) => {
+                    const ft = parseInt(e.target.value, 10);
+                    updateAgeTwoFeetInches(ft, editAgeTwoSplit.inches);
+                  }}
+                  className="w-full h-10 px-2 text-xs font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                >
+                  <option value={2}>2 ft</option>
+                  <option value={3}>3 ft</option>
+                </select>
+                <input
+                  id="age2-inches-input"
+                  type="number"
+                  aria-label="Age 2 extra inches"
+                  step="0.5"
+                  min={0}
+                  max={11.9}
+                  value={editAgeTwoSplit.inches}
+                  onChange={(e) => {
+                    const nextIn = clampNumber(parseFloat(e.target.value) || 0, 0, 11.9);
+                    updateAgeTwoFeetInches(editAgeTwoSplit.feet, nextIn);
+                  }}
+                  className="w-full h-10 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                />
+              </div>
               <p className="text-[11px] text-slate-500 font-mono tabular-nums">
-                {formatHeight(editAgeTwoHeight, 'imperial')}
+                {formatTotalInches(editAgeTwoHeight)} · {formatMetricHeight(editAgeTwoHeight)}
               </p>
             </div>
 
             <div className="space-y-1">
               <label
-                htmlFor="age2-weight-input"
+                htmlFor="age2-weight-lbs-input"
                 className="block text-xs font-semibold text-slate-700"
               >
-                Age 2 Weight (kg)
+                Age 2 Weight (lb)
               </label>
               <input
-                id="age2-weight-input"
+                id="age2-weight-lbs-input"
                 type="number"
-                step="0.1"
-                min={VALIDATION_BOUNDS.AGE_TWO_WEIGHT_MIN}
-                max={VALIDATION_BOUNDS.AGE_TWO_WEIGHT_MAX}
-                value={editAgeTwoWeight}
-                onChange={(e) => setEditAgeTwoWeight(parseFloat(e.target.value) || 12.5)}
-                className="w-full h-10 px-3 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                step="0.5"
+                min={18}
+                max={55}
+                value={editAgeTwoWeightLbs}
+                onChange={(e) => updateAgeTwoPounds(parseFloat(e.target.value) || 27.6)}
+                className="w-full h-10 px-3 text-sm font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
               />
               <p className="text-[11px] text-slate-500 font-mono tabular-nums">
-                {formatWeight(editAgeTwoWeight, 'imperial')}
+                Secondary: {formatMetricWeight(editAgeTwoWeight)}
               </p>
             </div>
           </div>

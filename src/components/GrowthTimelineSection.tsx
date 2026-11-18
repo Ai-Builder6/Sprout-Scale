@@ -2,19 +2,23 @@ import React, { useState } from 'react';
 import { ArrowUpRight, Trash2 } from 'lucide-react';
 import {
   ChildProfile,
+  cmToInches,
   formatAgeLabel,
-  formatHeight,
+  formatFeetInches,
   formatHeightDelta,
-  formatWeight,
+  formatMetricHeight,
+  formatMetricWeight,
+  formatPounds,
+  formatTotalInches,
   formatWeightDelta,
   GrowthMeasurement,
-  UnitSystem,
+  inchesToCm,
+  kgToLbs,
 } from '../types';
 
 interface GrowthTimelineSectionProps {
   childProfile: ChildProfile;
   measurements: GrowthMeasurement[];
-  units: UnitSystem;
   onInspectMilestone: (measurement: GrowthMeasurement) => void;
   onDeleteMeasurement: (measurementId: string) => Promise<void>;
 }
@@ -22,7 +26,6 @@ interface GrowthTimelineSectionProps {
 export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
   childProfile,
   measurements,
-  units,
   onInspectMilestone,
   onDeleteMeasurement,
 }) => {
@@ -49,39 +52,41 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
         ...sortedAsc,
       ];
 
-  // Chart coordinate calculation
+  // Chart coordinate calculation in native INCHES (height) and POUNDS (weight)
   const svgW = 760;
-  const svgH = 280;
-  const padLeft = 68;
+  const svgH = 286;
+  const padLeft = 82;
   const padRight = 38;
-  const padTop = 28;
+  const padTop = 30;
   const padBottom = 42;
 
   const minAge = Math.min(24, ...curvePoints.map((p) => p.ageMonths));
   const maxAge = Math.max(84, ...curvePoints.map((p) => p.ageMonths + 6));
 
   const values = curvePoints.map((p) =>
-    chartMetric === 'height' ? p.heightCm : p.weightKg,
+    chartMetric === 'height' ? cmToInches(p.heightCm) : kgToLbs(p.weightKg),
   );
   const baselineVal =
     chartMetric === 'height'
-      ? childProfile.ageTwoHeightCm
-      : childProfile.ageTwoWeightKg;
+      ? cmToInches(childProfile.ageTwoHeightCm)
+      : kgToLbs(childProfile.ageTwoWeightKg);
 
-  const minYVal = Math.floor(Math.min(baselineVal, ...values) * 0.94);
-  const maxYVal = Math.ceil(Math.max(baselineVal + 8, ...values) * 1.05);
+  const minYVal = Math.floor(Math.min(baselineVal, ...values) * 0.93);
+  const maxYVal = Math.ceil(Math.max(baselineVal + 6, ...values) * 1.05);
 
   const ageToX = (months: number) =>
-    padLeft + ((months - minAge) / Math.max(12, maxAge - minAge)) * (svgW - padLeft - padRight);
+    padLeft +
+    ((months - minAge) / Math.max(12, maxAge - minAge)) * (svgW - padLeft - padRight);
 
   const valToY = (val: number) =>
     svgH -
     padBottom -
-    ((val - minYVal) / Math.max(5, maxYVal - minYVal)) * (svgH - padTop - padBottom);
+    ((val - minYVal) / Math.max(4, maxYVal - minYVal)) * (svgH - padTop - padBottom);
 
   const polylineCoords = curvePoints
     .map((p) => {
-      const val = chartMetric === 'height' ? p.heightCm : p.weightKg;
+      const val =
+        chartMetric === 'height' ? cmToInches(p.heightCm) : kgToLbs(p.weightKg);
       return `${ageToX(p.ageMonths)},${valToY(val)}`;
     })
     .join(' ');
@@ -101,8 +106,8 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
             Growth Milestones &amp; Trajectory
           </h2>
           <p className="text-sm text-slate-700 max-w-2xl">
-            Every height and weight mark recorded for {childProfile.name} since Age 2 — click any
-            milestone point to inspect it on the Growth Wall.
+            Every height (ft &amp; in) and weight (lb) mark recorded for {childProfile.name}{' '}
+            since Age 2 — click any milestone point to inspect it on the Growth Wall.
           </p>
         </div>
 
@@ -120,7 +125,7 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                 : 'text-sky-950 hover:text-indigo-950'
             }`}
           >
-            Height Trajectory
+            Height (ft &amp; in)
           </button>
           <button
             type="button"
@@ -131,22 +136,32 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                 : 'text-sky-950 hover:text-indigo-950'
             }`}
           >
-            Weight Trajectory
+            Weight (lb)
           </button>
         </div>
       </div>
 
-      {/* Interactive SVG Trajectory Curve */}
+      {/* Interactive SVG Trajectory Curve (Imperial Primary, Metric Secondary) */}
       <div className="bg-white border-2 border-sky-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-          <span>
-            Age 2 Baseline:{' '}
-            <strong className="font-mono tabular-nums text-indigo-950">
+          <div className="flex flex-wrap items-center gap-2">
+            <span>
+              Age 2 Baseline:{' '}
+              <strong className="font-mono tabular-nums text-indigo-950">
+                {chartMetric === 'height'
+                  ? `${formatFeetInches(childProfile.ageTwoHeightCm)} (${formatTotalInches(childProfile.ageTwoHeightCm)})`
+                  : formatPounds(childProfile.ageTwoWeightKg)}
+              </strong>
+            </span>
+            <span aria-hidden="true" className="text-slate-400">
+              ·
+            </span>
+            <span className="font-mono tabular-nums text-slate-400">
               {chartMetric === 'height'
-                ? `${formatHeight(childProfile.ageTwoHeightCm, units)} (${(childProfile.ageTwoHeightCm / 2.54).toFixed(1)} in)`
-                : formatWeight(childProfile.ageTwoWeightKg, units)}
-            </strong>
-          </span>
+                ? formatMetricHeight(childProfile.ageTwoHeightCm)
+                : formatMetricWeight(childProfile.ageTwoWeightKg)}
+            </span>
+          </div>
           <span className="font-medium text-sky-800">
             Click any milestone point to view on Growth Wall
           </span>
@@ -157,15 +172,15 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
             viewBox={`0 0 ${svgW} ${svgH}`}
             className="w-full min-w-[560px] h-auto"
             role="img"
-            aria-label={`${childProfile.name} ${chartMetric} growth chart`}
+            aria-label={`${childProfile.name} ${chartMetric} growth chart in feet, inches, and pounds`}
           >
             {/* Horizontal Y-Axis Gridlines */}
             {yTicks.map((tickVal, idx) => {
               const y = valToY(tickVal);
               const label =
                 chartMetric === 'height'
-                  ? formatHeight(tickVal, units)
-                  : formatWeight(tickVal, units);
+                  ? formatFeetInches(inchesToCm(tickVal))
+                  : `${tickVal.toFixed(1)} lb`;
               return (
                 <g key={`ytick_${idx}`}>
                   <line
@@ -204,13 +219,14 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
 
             {/* Plotted Milestone Nodes */}
             {curvePoints.map((pt) => {
-              const val = chartMetric === 'height' ? pt.heightCm : pt.weightKg;
+              const val =
+                chartMetric === 'height' ? cmToInches(pt.heightCm) : kgToLbs(pt.weightKg);
               const cx = ageToX(pt.ageMonths);
               const cy = valToY(val);
               const formattedVal =
                 chartMetric === 'height'
-                  ? formatHeight(pt.heightCm, units)
-                  : formatWeight(pt.weightKg, units);
+                  ? `${formatFeetInches(pt.heightCm)} (${cmToInches(pt.heightCm).toFixed(1)}")`
+                  : formatPounds(pt.weightKg);
 
               return (
                 <g
@@ -228,11 +244,11 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                   />
                   <text
                     x={cx}
-                    y={cy - 11}
+                    y={cy - 12}
                     textAnchor="middle"
                     fill="#0f172a"
                     fontSize={10.5}
-                    fontWeight={600}
+                    fontWeight={700}
                     fontFamily="JetBrains Mono, monospace"
                   >
                     {formattedVal}
@@ -243,7 +259,7 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                     textAnchor="middle"
                     fill="#475569"
                     fontSize={11}
-                    fontWeight={500}
+                    fontWeight={600}
                     fontFamily="Plus Jakarta Sans, sans-serif"
                   >
                     {`${Math.floor(pt.ageMonths / 12)}y${pt.ageMonths % 12 ? ` ${pt.ageMonths % 12}m` : ''}`}
@@ -255,7 +271,7 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
         </div>
       </div>
 
-      {/* Tabular Milestone History Table */}
+      {/* Tabular Milestone History Table (Feet/Inches & Pounds Primary, cm/kg Secondary) */}
       <div className="bg-white border-2 border-sky-200 rounded-2xl overflow-hidden shadow-xs">
         {sortedDesc.length === 0 ? (
           <div className="p-8 text-center space-y-2">
@@ -272,9 +288,8 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
               <thead>
                 <tr className="border-b border-sky-200 bg-sky-50 text-xs font-bold text-indigo-950">
                   <th className="py-3.5 px-5">Age &amp; Date</th>
-                  <th className="py-3.5 px-4">Height</th>
-                  <th className="py-3.5 px-4">Total Inches</th>
-                  <th className="py-3.5 px-4">Weight</th>
+                  <th className="py-3.5 px-4">Height (ft &amp; in)</th>
+                  <th className="py-3.5 px-4">Weight (lb)</th>
                   <th className="py-3.5 px-4">Grown Since Age 2</th>
                   <th className="py-3.5 px-4">Memory Note</th>
                   <th className="py-3.5 px-5 text-right">Actions</th>
@@ -300,22 +315,38 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono tabular-nums font-semibold text-slate-900 whitespace-nowrap">
-                        {formatHeight(m.heightCm, units)}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="font-mono tabular-nums font-bold text-slate-900">
+                          {formatFeetInches(m.heightCm)}{' '}
+                          <span className="text-xs font-semibold text-sky-800">
+                            ({formatTotalInches(m.heightCm)})
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-mono tabular-nums text-slate-400">
+                          {formatMetricHeight(m.heightCm)}
+                        </div>
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono tabular-nums text-xs font-semibold text-sky-800 whitespace-nowrap">
-                        {(m.heightCm / 2.54).toFixed(1)} in
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="font-mono tabular-nums font-bold text-slate-900">
+                          {formatPounds(m.weightKg)}
+                        </div>
+                        <div className="text-[11px] font-mono tabular-nums text-slate-400">
+                          {formatMetricWeight(m.weightKg)}
+                        </div>
                       </td>
 
-                      <td className="py-3.5 px-4 font-mono tabular-nums font-semibold text-slate-900 whitespace-nowrap">
-                        {formatWeight(m.weightKg, units)}
-                      </td>
-
-                      <td className="py-3.5 px-4 font-mono tabular-nums text-xs text-emerald-700 whitespace-nowrap">
-                        <span>{formatHeightDelta(hDelta, units)}</span>
-                        <span className="mx-1.5 text-slate-400" aria-hidden="true">·</span>
-                        <span>{formatWeightDelta(wDelta, units)}</span>
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="font-mono tabular-nums text-xs font-bold text-emerald-700">
+                          <span>{formatHeightDelta(hDelta, 'imperial')}</span>
+                          <span className="mx-1.5 text-slate-400" aria-hidden="true">·</span>
+                          <span>{formatWeightDelta(wDelta, 'imperial')}</span>
+                        </div>
+                        <div className="font-mono tabular-nums text-[11px] text-slate-400">
+                          <span>{formatHeightDelta(hDelta, 'metric')}</span>
+                          <span className="mx-1.5" aria-hidden="true">·</span>
+                          <span>{formatWeightDelta(wDelta, 'metric')}</span>
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-4 text-xs text-slate-600 max-w-xs truncate">

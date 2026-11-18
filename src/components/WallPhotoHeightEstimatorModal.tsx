@@ -850,13 +850,13 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                       <span className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-indigo-950">
-                        {aiFormatted.totalInchesLabel}
+                        {aiFormatted.feetInchesLabel}
                       </span>
                       <span className="text-sm font-bold font-mono tabular-nums text-emerald-800">
-                        ({aiFormatted.feetInchesLabel} · {aiFormatted.cmLabel})
+                        ({aiFormatted.totalInchesLabel} ± {aiEstimate.marginInches} in)
                       </span>
-                      <span className="text-xs font-mono tabular-nums text-slate-600">
-                        ±{aiEstimate.marginInches} in
+                      <span className="text-xs font-mono tabular-nums text-slate-400">
+                        Secondary: {aiFormatted.cmLabel}
                       </span>
                     </div>
 
@@ -913,10 +913,13 @@ export const WallPhotoHeightEstimatorModal: React.FC<
 
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-indigo-950">
-                    {rulerFormatted.totalInchesLabel}
+                    {rulerFormatted.feetInchesLabel}
                   </span>
                   <span className="text-sm font-bold font-mono tabular-nums text-sky-800">
-                    ({rulerFormatted.feetInchesLabel} · {rulerFormatted.cmLabel})
+                    ({rulerFormatted.totalInchesLabel})
+                  </span>
+                  <span className="text-xs font-mono tabular-nums text-slate-400">
+                    Secondary: {rulerFormatted.cmLabel}
                   </span>
                 </div>
 
@@ -987,9 +990,11 @@ export const WallPhotoHeightEstimatorModal: React.FC<
               <span>
                 Ready to apply:{' '}
                 <strong className="font-mono tabular-nums text-indigo-950">
-                  {activeFormatted.totalInchesLabel} ({activeFormatted.feetInchesLabel} ·{' '}
-                  {activeFormatted.cmLabel})
-                </strong>
+                  {activeFormatted.feetInchesLabel} ({activeFormatted.totalInchesLabel})
+                </strong>{' '}
+                <span className="font-mono tabular-nums text-slate-400">
+                  · {activeFormatted.cmLabel}
+                </span>
               </span>
             ) : (
               <span>Photo guesstimates are great for playful check-ins; verify with a book &amp; tape for doctor records.</span>
@@ -1012,7 +1017,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
             >
               <Check className="w-4 h-4" aria-hidden="true" />
               {preparedPhoto
-                ? `Apply ${activeFormatted.totalInchesLabel} (${activeFormatted.feetInchesLabel}) to Wall`
+                ? `Apply ${activeFormatted.feetInchesLabel} (${activeFormatted.totalInchesLabel}) to Wall`
                 : 'Apply Height to Wall'}
             </button>
           </div>

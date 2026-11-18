@@ -11,7 +11,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { ChildProfile, GrowthMeasurement, UnitSystem } from '../types';
+import { ChildProfile, GrowthMeasurement } from '../types';
 import {
   deleteDriveFile,
   downloadDriveGrowthBackup,
@@ -29,7 +29,6 @@ import { GoogleSignInButton } from './GoogleSignInButton';
 interface GoogleDriveVaultSectionProps {
   childProfile: ChildProfile;
   measurements: GrowthMeasurement[];
-  units: UnitSystem;
   accessToken: string | null;
   needsDriveAuth: boolean;
   isSigningIn: boolean;
@@ -67,7 +66,6 @@ function formatModifiedDate(iso?: string): string {
 export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = ({
   childProfile,
   measurements,
-  units,
   accessToken,
   needsDriveAuth,
   isSigningIn,
@@ -166,7 +164,6 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
         accessToken,
         childProfile,
         measurements,
-        units,
       );
       setFeedback({
         type: 'success',
