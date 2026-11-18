@@ -17,7 +17,17 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { Cake, Camera, LogOut, Plus, Ruler } from 'lucide-react';
+import {
+  Cake,
+  Camera,
+  ChartLine,
+  LogOut,
+  Plus,
+  Ruler,
+  Share2,
+  SlidersHorizontal,
+  Smartphone,
+} from 'lucide-react';
 import {
   clearAccessToken,
   db,
@@ -63,6 +73,12 @@ import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { GoogleDriveVaultSection } from './components/GoogleDriveVaultSection';
 import { ChildAvatarPhotoModal } from './components/ChildAvatarPhotoModal';
 import { WallPhotoHeightEstimatorModal } from './components/WallPhotoHeightEstimatorModal';
+import {
+  MobileAppDownloadModal,
+  OfflineIndicator,
+  PWAInstallActionStrip,
+} from './components/MobileAppDownloadModal';
+import { usePWAInstall } from './hooks/usePWAInstall';
 import {
   getLocalAvatarDataUrl,
   removeLocalAvatarDataUrl,
@@ -120,10 +136,24 @@ function SproutScaleWorkspace() {
   const [isPlayingTimelapse, setIsPlayingTimelapse] = useState<boolean>(false);
   const timelapseTimerRef = useRef<number | null>(null);
 
-  // Realistic Child Photo Avatar cache & Studio / Wall Photo Guesstimator modal state
+  // Realistic Child Photo Avatar cache & Studio / Wall Photo Guesstimator / Mobile App Download modal state
   const [avatarPhotoMap, setAvatarPhotoMap] = useState<Record<string, string>>({});
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isWallEstimatorOpen, setIsWallEstimatorOpen] = useState<boolean>(false);
+  const [isMobileAppModalOpen, setIsMobileAppModalOpen] = useState<boolean>(false);
+  const [mobileNavActive, setMobileNavActive] = useState<
+    'wall' | 'measure' | 'ruler' | 'history' | 'app'
+  >('wall');
+
+  const { isInstallable, isInstalled, isIOS, isAndroid, install } = usePWAInstall();
+
+  // If someone opens the shared download link (?install=1) and hasn't installed yet, open the installer sheet
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('install') === '1' && !isInstalled) {
+      setIsMobileAppModalOpen(true);
+    }
+  }, [isInstalled]);
 
   // Active children list & measurements depending on Auth state
   const activeChildrenList = user ? cloudChildren : demoChildren;
@@ -1033,9 +1063,9 @@ function SproutScaleWorkspace() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-100 via-amber-50/80 to-emerald-50/80 text-slate-900 flex flex-col">
-      {/* Strict 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b-2 border-amber-300">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-8 px-6 py-3.5">
+      {/* Strict 3-Zone Top Bar Contract (md:sticky keeps mobile sticky budget strictly on bottom tab bar <= 15%) */}
+      <header className="md:sticky md:top-0 z-30 bg-white/95 backdrop-blur-xs border-b-2 border-amber-300">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-8 px-4 sm:px-6 py-3">
           {/* Zone 1: Single Wordmark Element */}
           <a
             href="#measure"
@@ -1075,13 +1105,13 @@ function SproutScaleWorkspace() {
             >
               Google Drive
             </a>
-            <a
-              href="#how-to-measure"
-              onClick={() => setActiveDeckTab('measure')}
-              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            <button
+              type="button"
+              onClick={() => setIsMobileAppModalOpen(true)}
+              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              How to Measure
-            </a>
+              {isInstalled ? 'Share App' : 'Download App'}
+            </button>
           </nav>
 
           {/* Zone 3: 1 Primary Action */}
@@ -1165,34 +1195,44 @@ function SproutScaleWorkspace() {
               </div>
             </div>
 
-            {/* Child Switcher & Account Sync Controls */}
-            <div className="flex flex-wrap items-center gap-3">
-              <div
-                role="group"
-                aria-label="Select child profile"
-                className="flex items-center gap-1 p-1 bg-sky-200/80 rounded-lg border border-sky-300/70"
-              >
-                {activeChildrenList.map((kid) => (
-                  <button
-                    key={kid.id}
-                    type="button"
-                    onClick={() => setSelectedChildId(kid.id)}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                      kid.id === activeChild.id
-                        ? 'bg-amber-400 text-slate-950 shadow-xs'
-                        : 'text-indigo-950/80 hover:text-indigo-950 hover:bg-white/60'
-                    }`}
-                  >
-                    {kid.name}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setActiveDeckTab('character')}
-                  className="px-2.5 py-1.5 text-xs font-bold text-sky-800 hover:text-indigo-950 hover:bg-white/60 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            {/* Child Switcher, Mobile App Install/Share & Account Sync Controls */}
+            <div className="flex flex-col sm:items-end gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div
+                  role="group"
+                  aria-label="Select child profile"
+                  className="flex items-center gap-1 p-1 bg-sky-200/80 rounded-lg border border-sky-300/70"
                 >
-                  + Child
-                </button>
+                  {activeChildrenList.map((kid) => (
+                    <button
+                      key={kid.id}
+                      type="button"
+                      onClick={() => setSelectedChildId(kid.id)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                        kid.id === activeChild.id
+                          ? 'bg-amber-400 text-slate-950 shadow-xs'
+                          : 'text-indigo-950/80 hover:text-indigo-950 hover:bg-white/60'
+                      }`}
+                    >
+                      {kid.name}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setActiveDeckTab('character')}
+                    className="px-2.5 py-1.5 text-xs font-bold text-sky-800 hover:text-indigo-950 hover:bg-white/60 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    + Child
+                  </button>
+                </div>
+
+                <PWAInstallActionStrip
+                  isInstallable={isInstallable}
+                  isInstalled={isInstalled}
+                  isIOS={isIOS}
+                  onDirectInstall={install}
+                  onOpenDownloadModal={() => setIsMobileAppModalOpen(true)}
+                />
               </div>
 
               {user ? (
@@ -1259,7 +1299,7 @@ function SproutScaleWorkspace() {
                 />
               </div>
 
-              <div className="lg:col-span-4 flex flex-col">
+              <div id="control-deck-panel" className="lg:col-span-4 flex flex-col">
                 <MeasurementControlDeck
                   activeTab={activeDeckTab}
                   onTabChange={setActiveDeckTab}
@@ -1334,13 +1374,13 @@ function SproutScaleWorkspace() {
         />
       </main>
 
-      {/* Clean Quiet Footer */}
-      <footer className="border-t-2 border-amber-200 bg-white/95">
+      {/* Clean Quiet Footer (extra bottom padding on mobile for thumb-zone tab bar) */}
+      <footer className="border-t-2 border-amber-200 bg-white/95 pb-20 md:pb-0">
         <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
           <p className="font-medium text-indigo-950">
             SproutScale — Family Height &amp; Weight Growth Wall
           </p>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-4">
             <a href="#measure" className="hover:text-sky-700 transition-colors whitespace-nowrap">
               Growth Wall
             </a>
@@ -1353,9 +1393,100 @@ function SproutScaleWorkspace() {
             <a href="#how-to-measure" className="hover:text-sky-700 transition-colors whitespace-nowrap">
               Measuring Tips
             </a>
+            <button
+              type="button"
+              onClick={() => setIsMobileAppModalOpen(true)}
+              className="font-semibold text-sky-800 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
+            >
+              {isInstalled ? 'Share App Link' : 'Download Mobile App'}
+            </button>
           </div>
         </div>
       </footer>
+
+      {/* Mobile Thumb-Zone Bottom Tab Bar (<768px only, 56px height <= 15% sticky cap) */}
+      <nav
+        aria-label="Mobile app bottom navigation"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-14 bg-white/95 backdrop-blur-md border-t border-amber-200 grid grid-cols-5 items-center px-1"
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setMobileNavActive('wall');
+            document.getElementById('measure')?.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
+            mobileNavActive === 'wall' ? 'text-sky-700 font-bold' : 'text-slate-600'
+          }`}
+        >
+          <Smartphone className="w-4 h-4" aria-hidden="true" />
+          <span className="text-[10px] leading-none whitespace-nowrap">Wall</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMobileNavActive('measure');
+            setActiveDeckTab('measure');
+            document
+              .getElementById('control-deck-panel')
+              ?.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
+            mobileNavActive === 'measure' ? 'text-sky-700 font-bold' : 'text-slate-600'
+          }`}
+        >
+          <SlidersHorizontal className="w-4 h-4" aria-hidden="true" />
+          <span className="text-[10px] leading-none whitespace-nowrap">Measure</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMobileNavActive('ruler');
+            setIsWallEstimatorOpen(true);
+          }}
+          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
+            mobileNavActive === 'ruler' ? 'text-emerald-700 font-bold' : 'text-slate-600'
+          }`}
+        >
+          <Ruler className="w-4 h-4" aria-hidden="true" />
+          <span className="text-[10px] leading-none whitespace-nowrap">Photo Ruler</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMobileNavActive('history');
+            document.getElementById('timeline')?.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
+            mobileNavActive === 'history' ? 'text-sky-700 font-bold' : 'text-slate-600'
+          }`}
+        >
+          <ChartLine className="w-4 h-4" aria-hidden="true" />
+          <span className="text-[10px] leading-none whitespace-nowrap">History</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMobileNavActive('app');
+            setIsMobileAppModalOpen(true);
+          }}
+          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
+            mobileNavActive === 'app' ? 'text-amber-700 font-bold' : 'text-slate-600'
+          }`}
+        >
+          <Share2 className="w-4 h-4" aria-hidden="true" />
+          <span className="text-[10px] leading-none whitespace-nowrap">
+            {isInstalled ? 'Share App' : 'Get App'}
+          </span>
+        </button>
+      </nav>
+
+      {/* Non-intrusive Offline Connectivity Indicator */}
+      <OfflineIndicator />
 
       {/* Realistic Child Photo Studio Modal (Camera + Device Upload + Google Drive Picker) */}
       <ChildAvatarPhotoModal
@@ -1380,6 +1511,17 @@ function SproutScaleWorkspace() {
         accessToken={accessToken}
         onClose={() => setIsWallEstimatorOpen(false)}
         onApplyEstimatedInches={handleApplyWallPhotoEstimate}
+      />
+
+      {/* Download & Share Mobile App Modal (One-Tap PWA Install + Shareable Link + QR Code) */}
+      <MobileAppDownloadModal
+        isOpen={isMobileAppModalOpen}
+        onClose={() => setIsMobileAppModalOpen(false)}
+        isInstallable={isInstallable}
+        isInstalled={isInstalled}
+        isIOS={isIOS}
+        isAndroid={isAndroid}
+        onTriggerInstall={install}
       />
     </div>
   );

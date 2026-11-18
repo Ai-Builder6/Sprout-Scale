@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgSky" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+    <linearGradient id="woodRuler" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgSky)" />
+  <!-- Honey-Gold Growth Ruler -->
+  <rect x="304" y="76" width="112" height="360" rx="22" fill="url(#woodRuler)" stroke="#78350f" stroke-width="10" />
+  <line x1="304" y1="142" x2="358" y2="142" stroke="#451a03" stroke-width="10" stroke-linecap="round" />
+  <line x1="304" y1="198" x2="342" y2="198" stroke="#78350f" stroke-width="8" stroke-linecap="round" />
+  <line x1="304" y1="256" x2="362" y2="256" stroke="#451a03" stroke-width="10" stroke-linecap="round" />
+  <line x1="304" y1="314" x2="342" y2="314" stroke="#78350f" stroke-width="8" stroke-linecap="round" />
+  <line x1="304" y1="370" x2="358" y2="370" stroke="#451a03" stroke-width="10" stroke-linecap="round" />
+  <!-- Height Marker Arrow -->
+  <line x1="110" y1="142" x2="292" y2="142" stroke="#fde047" stroke-width="12" stroke-dasharray="18 14" stroke-linecap="round" />
+  <!-- Growing Emerald Sprout -->
+  <path d="M188 420 V236" stroke="#22c55e" stroke-width="24" stroke-linecap="round" />
+  <path d="M188 292 C116 292 96 226 142 194 C180 168 196 234 188 292 Z" fill="#4ade80" stroke="#14532d" stroke-width="10" stroke-linejoin="round" />
+  <path d="M188 258 C260 258 278 190 232 162 C194 138 180 202 188 258 Z" fill="#22c55e" stroke="#14532d" stroke-width="10" stroke-linejoin="round" />
+  <rect x="118" y="408" width="140" height="28" rx="14" fill="#fef08a" />
+</svg>
