@@ -7,6 +7,7 @@ import {
   PaletteId,
   sanitizeHexColor,
 } from '../types';
+import { useDefaultAppAvatar } from '../services/defaultAvatarService';
 
 export interface CharacterFigureGroupProps {
   instanceId: string;
@@ -37,9 +38,10 @@ function adjustHexBrightness(hex: string, amount: number): string {
 }
 
 /**
- * Renders a lifelike, anatomically evolving growing child SVG group anchored cleanly between
- * `crownY` (exact top of head aligned with the height ruler) and `floorY` (exact shoe sole).
- * Supports both a real cropped child photo portrait (`avatarPhotoUrl`) and a detailed shaded portrait.
+ * Renders the growing child avatar anchored cleanly between `crownY` (exact top of head
+ * aligned with the height ruler) and `floorY` (exact feet/sole on the floor/scale).
+ * Defaults to the illustrated SproutScale boy avatar, and seamlessly supports a parent's
+ * custom cropped child photo portrait (`avatarPhotoUrl`).
  */
 export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
   instanceId,
@@ -58,6 +60,7 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
   mode,
   isWaveActive = false,
 }) => {
+  const defaultAppAvatar = useDefaultAppAvatar();
   const palette = CHARACTER_PALETTES[paletteId] ?? CHARACTER_PALETTES.meadow;
   const isBaseline = mode === 'age-two-baseline';
   const hasPhoto = Boolean(avatarPhotoUrl && avatarPhotoUrl.length > 0);
@@ -71,6 +74,99 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
   const heightMeters = Math.max(0.65, heightCm / 100);
   const bmi = weightKg / (heightMeters * heightMeters);
   const buildFactor = clampNumber(1 + (bmi - 16) * 0.022, 0.9, 1.16);
+
+  // Default App Avatar: Full-body illustrated SproutScale boy anchored crownY -> floorY
+  if (!hasPhoto) {
+    const gentleWidthFactor = clampNumber(
+      1 + (bmi - 16) * 0.014 + (isBaseline ? 0.04 : -maturity * 0.03),
+      0.93,
+      1.08,
+    );
+    const figHeight = totalHeight;
+    const figWidth = figHeight * defaultAppAvatar.aspectRatio * gentleWidthFactor;
+    const figX = centerX - figWidth / 2;
+    const figY = crownY;
+    const headRxEst = figWidth * 0.34;
+    const strokeColor = '#1e293b';
+
+    return (
+      <g opacity={isBaseline ? 0.92 : 1}>
+        {/* Soft natural floor shadow beneath bare feet */}
+        <ellipse
+          cx={centerX}
+          cy={floorY + 2}
+          rx={Math.max(18, figWidth * 0.34)}
+          ry={4.5}
+          fill="#0f172a"
+          opacity={isBaseline ? 0.13 : 0.19}
+        />
+
+        {/* Illustrated SproutScale Boy Full-Body Avatar */}
+        <image
+          href={defaultAppAvatar.fullBodyUrl}
+          x={figX}
+          y={figY}
+          width={figWidth}
+          height={figHeight}
+          preserveAspectRatio="none"
+        />
+
+        {/* Optional playful head accessory on active figure (keeps sprout emblem clean on shirt) */}
+        {!isBaseline && accessoryId === 'cap' && (
+          <g>
+            <path
+              d={`M ${centerX - headRxEst * 0.88} ${crownY + 6}
+                  Q ${centerX} ${crownY - 12} ${centerX + headRxEst * 0.88} ${crownY + 6} Z`}
+              fill={palette.shoes}
+              stroke={strokeColor}
+              strokeWidth={1.45}
+            />
+            <path
+              d={`M ${centerX + headRxEst * 0.18} ${crownY + 5}
+                  L ${centerX + headRxEst * 1.24} ${crownY + 7}
+                  Q ${centerX + headRxEst * 0.8} ${crownY + 10} ${centerX - headRxEst * 0.2} ${crownY + 6} Z`}
+              fill={palette.shirtPrimary}
+              stroke={strokeColor}
+              strokeWidth={1.35}
+            />
+          </g>
+        )}
+
+        {!isBaseline && accessoryId === 'crown' && (
+          <polygon
+            points={`${centerX - 13},${crownY + 4} ${centerX - 15},${crownY - 9} ${centerX - 6},${crownY - 2} ${centerX},${crownY - 12} ${centerX + 6},${crownY - 2} ${centerX + 15},${crownY - 9} ${centerX + 13},${crownY + 4}`}
+            fill="#fbbf24"
+            stroke={strokeColor}
+            strokeWidth={1.45}
+            strokeLinejoin="round"
+          />
+        )}
+
+        {!isBaseline && accessoryId === 'dino' && (
+          <g>
+            <polygon
+              points={`${centerX - 10},${crownY + 4} ${centerX - 5},${crownY - 7} ${centerX - 1},${crownY + 3}`}
+              fill="#10b981"
+              stroke={strokeColor}
+              strokeWidth={1.35}
+            />
+            <polygon
+              points={`${centerX - 1},${crownY + 3} ${centerX + 4},${crownY - 9} ${centerX + 9},${crownY + 3}`}
+              fill="#34d399"
+              stroke={strokeColor}
+              strokeWidth={1.35}
+            />
+            <polygon
+              points={`${centerX + 9},${crownY + 4} ${centerX + 14},${crownY - 5} ${centerX + 17},${crownY + 5}`}
+              fill="#10b981"
+              stroke={strokeColor}
+              strokeWidth={1.35}
+            />
+          </g>
+        )}
+      </g>
+    );
+  }
 
   // Realistic pediatric proportions shifting smoothly from Toddler (Age 2) to Big Kid:
   const headRatio = 0.255 - maturity * 0.085;

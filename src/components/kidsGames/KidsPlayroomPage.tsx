@@ -16,6 +16,7 @@ import {
   isKidGamesMuted,
   setKidGamesMuted,
 } from '../../services/kidGameAudioService';
+import { useDefaultAppAvatar } from '../../services/defaultAvatarService';
 import { SunflowerSproutGame } from './SunflowerSproutGame';
 import { BubblePopAnimalGame } from './BubblePopAnimalGame';
 import { TallShortFriendsGame } from './TallShortFriendsGame';
@@ -161,6 +162,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
   onSelectChild,
   onBackToGrowthWall,
 }) => {
+  const defaultAppAvatar = useDefaultAppAvatar();
   const [selectedGame, setSelectedGame] = useState<PlayroomGameId>('hub');
   const [ageFilter, setAgeFilter] = useState<AgeGroupFilter>('all');
   const [isMuted, setIsMuted] = useState<boolean>(() => isKidGamesMuted());
@@ -183,23 +185,30 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
       {/* Playroom Top Workspace Header */}
       <div className="bg-white/95 rounded-3xl border-2 border-amber-200 p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-amber-800">
-              <Gamepad2 className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
-              <span>Kids Playroom</span>
-              <span aria-hidden="true">·</span>
-              <span>6 Interactive Games for Ages 2–5</span>
-              <span aria-hidden="true">·</span>
-              <span className="font-mono tabular-nums text-emerald-700">
-                {activeChild.name}: {activeHeightFormatted}
-              </span>
+          <div className="flex items-start gap-3.5">
+            <img
+              src={avatarPhotoMap[activeChild.id] || defaultAppAvatar.portraitUrl}
+              alt={`${activeChild.name} avatar`}
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover object-top border-2 border-amber-300 bg-sky-50 shadow-xs shrink-0"
+            />
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-amber-800">
+                <Gamepad2 className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
+                <span>Kids Playroom</span>
+                <span aria-hidden="true">·</span>
+                <span>6 Interactive Games for Ages 2–5</span>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono tabular-nums text-emerald-700">
+                  {activeChild.name}: {activeHeightFormatted}
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-display font-extrabold text-indigo-950">
+                Hi {activeChild.name}! Pick a colorful game to play!
+              </h1>
+              <p className="text-sm text-slate-600 max-w-2xl">
+                Rainbow xylophone songs, fruit counting, memory matching, bubble popping, and height games — big touch targets, cheerful sounds, and zero timers.
+              </p>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-display font-extrabold text-indigo-950">
-              Hi {activeChild.name}! Pick a colorful game to play!
-            </h1>
-            <p className="text-sm text-slate-600 max-w-2xl">
-              Rainbow xylophone songs, fruit counting, memory matching, bubble popping, and height games — big touch targets, cheerful sounds, and zero timers.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -258,18 +267,12 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
                       : 'bg-sky-50 text-indigo-950 hover:bg-sky-100 border border-sky-200'
                   }`}
                 >
-                  {thumb ? (
-                    <img
-                      src={thumb}
-                      alt=""
-                      aria-hidden="true"
-                      className="w-4 h-4 rounded-full object-cover border border-white shrink-0"
-                    />
-                  ) : (
-                    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                      <circle cx="5" cy="5" r="4.5" fill={accentHex} />
-                    </svg>
-                  )}
+                  <img
+                    src={thumb || defaultAppAvatar.portraitUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="w-5 h-5 rounded-full object-cover object-top border border-white bg-sky-50 shrink-0"
+                  />
                   <span>{kid.name}</span>
                 </button>
               );

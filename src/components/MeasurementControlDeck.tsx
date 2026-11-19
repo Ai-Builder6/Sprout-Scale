@@ -38,6 +38,7 @@ import {
   splitCmToFeetAndInches,
   VALIDATION_BOUNDS,
 } from '../types';
+import { useDefaultAppAvatar } from '../services/defaultAvatarService';
 
 export type ControlDeckTab = 'measure' | 'character';
 
@@ -124,6 +125,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   totalChildrenCount,
   onDeleteChild,
 }) => {
+  const defaultAppAvatar = useDefaultAppAvatar();
   // Local state for Child Info, DOB & Avatar customization form synced when childProfile.id changes
   const [editName, setEditName] = useState(childProfile.name);
   const [editBirthDate, setEditBirthDate] = useState(childProfile.birthDate || '');
@@ -695,24 +697,20 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           {/* Realistic Child Photo Avatar Strip */}
           <div className="flex items-center justify-between gap-3 p-3 bg-sky-50/90 border border-sky-200 rounded-xl">
             <div className="flex items-center gap-3 min-w-0">
-              {avatarPhotoUrl ? (
-                <img
-                  src={avatarPhotoUrl}
-                  alt={`${childProfile.name} avatar portrait`}
-                  referrerPolicy="no-referrer"
-                  className="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-amber-100 border-2 border-amber-300 flex items-center justify-center shrink-0">
-                  <Camera className="w-5 h-5 text-amber-800" aria-hidden="true" />
-                </div>
-              )}
+              <img
+                src={avatarPhotoUrl || defaultAppAvatar.portraitUrl}
+                alt={`${childProfile.name} avatar portrait`}
+                referrerPolicy="no-referrer"
+                className="w-12 h-12 rounded-full object-cover object-top border-2 border-amber-400 bg-sky-50 shrink-0"
+              />
               <div className="min-w-0">
                 <p className="text-xs font-bold text-indigo-950 truncate">
-                  {avatarPhotoUrl ? 'Real Photo Avatar Active' : 'Realistic Photo Avatar'}
+                  {avatarPhotoUrl ? 'Real Photo Avatar Active' : 'SproutScale Avatar Active'}
                 </p>
                 <p className="text-[11px] text-slate-600">
-                  Take a camera pic or upload a photo
+                  {avatarPhotoUrl
+                    ? 'Remove to restore default app avatar'
+                    : 'Or take a camera pic / upload a photo'}
                 </p>
               </div>
             </div>

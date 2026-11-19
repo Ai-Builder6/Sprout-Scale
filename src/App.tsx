@@ -128,6 +128,7 @@ import {
   uploadChildAvatarToDrive,
   uploadChildPhotoToDrive,
 } from './services/googleDriveService';
+import { useDefaultAppAvatar } from './services/defaultAvatarService';
 
 const GUEST_CHILDREN_STORAGE_KEY = 'sproutscale_guest_children_v1';
 const GUEST_MEASUREMENTS_STORAGE_KEY = 'sproutscale_guest_measurements_v1';
@@ -360,6 +361,7 @@ function SproutScaleWorkspace() {
   const timelapseTimerRef = useRef<number | null>(null);
 
   // Realistic Child Photo Avatar cache & Studio / Wall Photo Guesstimator / Mobile App Download modal state
+  const defaultAppAvatar = useDefaultAppAvatar();
   const [avatarPhotoMap, setAvatarPhotoMap] = useState<Record<string, string>>({});
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isWallEstimatorOpen, setIsWallEstimatorOpen] = useState<boolean>(false);
@@ -3361,24 +3363,12 @@ function SproutScaleWorkspace() {
                             : 'text-indigo-950/85 hover:text-indigo-950 hover:bg-white/70'
                         }`}
                       >
-                        {kidThumb ? (
-                          <img
-                            src={kidThumb}
-                            alt=""
-                            aria-hidden="true"
-                            className="w-4 h-4 rounded-full object-cover border border-white/80 shrink-0"
-                          />
-                        ) : (
-                          <svg
-                            width="10"
-                            height="10"
-                            viewBox="0 0 10 10"
-                            aria-hidden="true"
-                            className="shrink-0"
-                          >
-                            <circle cx="5" cy="5" r="4.5" fill={accentHex} />
-                          </svg>
-                        )}
+                        <img
+                          src={kidThumb || defaultAppAvatar.portraitUrl}
+                          alt=""
+                          aria-hidden="true"
+                          className="w-5 h-5 rounded-full object-cover object-top border border-white/80 bg-sky-50 shrink-0"
+                        />
                         <span>{kid.name}</span>
                         {kidAgeShort && (
                           <span className="font-mono tabular-nums text-[10px] opacity-75">

@@ -38,6 +38,7 @@ import {
   ShareCardFormat,
   ShareCardTheme,
 } from '../services/socialShareCardService';
+import { useDefaultAppAvatar } from '../services/defaultAvatarService';
 
 export interface SocialShareInitialContext {
   photoId?: string | null;
@@ -70,6 +71,9 @@ export const SocialShareConnectorModal: React.FC<SocialShareConnectorModalProps>
   initialContext,
   onClose,
 }) => {
+  const defaultAppAvatar = useDefaultAppAvatar();
+  const effectiveAvatarUrl = avatarPhotoUrl || defaultAppAvatar.portraitUrl;
+
   // Share card configuration
   const [format, setFormat] = useState<ShareCardFormat>('story_9_16');
   const [theme, setTheme] = useState<ShareCardTheme>('sunny');
@@ -118,11 +122,11 @@ export const SocialShareConnectorModal: React.FC<SocialShareConnectorModalProps>
 
   const activePhotoDataUrl = useMemo(() => {
     if (selectedPhotoId === '__none__') return null;
-    if (selectedPhotoId === '__avatar__') return avatarPhotoUrl;
+    if (selectedPhotoId === '__avatar__') return effectiveAvatarUrl;
     const found = photosWithImage.find((p) => p.id === selectedPhotoId);
     if (found?.localDataUrl) return found.localDataUrl;
-    return avatarPhotoUrl;
-  }, [selectedPhotoId, photosWithImage, avatarPhotoUrl]);
+    return effectiveAvatarUrl;
+  }, [selectedPhotoId, photosWithImage, effectiveAvatarUrl]);
 
   const loadMetaStatus = useCallback(async () => {
     setIsLoadingMeta(true);
@@ -159,7 +163,7 @@ export const SocialShareConnectorModal: React.FC<SocialShareConnectorModalProps>
       setSelectedPhotoId('__none__');
     } else if (matchedPhoto) {
       setSelectedPhotoId(matchedPhoto.id);
-    } else if (avatarPhotoUrl) {
+    } else if (effectiveAvatarUrl) {
       setSelectedPhotoId('__avatar__');
     } else {
       setSelectedPhotoId('__none__');
@@ -612,7 +616,7 @@ export const SocialShareConnectorModal: React.FC<SocialShareConnectorModalProps>
             </div>
 
             {/* Quick Photo Selector Strip */}
-            {(photosWithImage.length > 0 || avatarPhotoUrl) && (
+            {(photosWithImage.length > 0 || effectiveAvatarUrl) && (
               <div className="space-y-1.5">
                 <p className="text-[11px] font-semibold text-slate-600">
                   Choose photo from {childProfile.name}’s portfolio:
@@ -637,21 +641,21 @@ export const SocialShareConnectorModal: React.FC<SocialShareConnectorModalProps>
                       />
                     </button>
                   ))}
-                  {avatarPhotoUrl && (
+                  {effectiveAvatarUrl && (
                     <button
                       type="button"
                       onClick={() => setSelectedPhotoId('__avatar__')}
-                      className={`w-14 h-14 rounded-lg overflow-hidden border-2 shrink-0 cursor-pointer ${
+                      className={`w-14 h-14 rounded-lg overflow-hidden border-2 shrink-0 cursor-pointer bg-sky-50 ${
                         selectedPhotoId === '__avatar__'
                           ? 'border-amber-400'
                           : 'border-slate-200 hover:border-sky-400'
                       }`}
                     >
                       <img
-                        src={avatarPhotoUrl}
+                        src={effectiveAvatarUrl}
                         alt={`${childProfile.name} portrait`}
                         referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover object-top"
                       />
                     </button>
                   )}

@@ -12,6 +12,7 @@ import {
   computeGrowthProgressSummary,
   downloadPrintableGrowthPdfReport,
 } from '../services/growthPdfReportService';
+import { useDefaultAppAvatar } from '../services/defaultAvatarService';
 
 interface GrowthReportModalProps {
   isOpen: boolean;
@@ -179,6 +180,8 @@ export const GrowthReportModal: React.FC<GrowthReportModalProps> = ({
   avatarPhotoUrl,
   onClose,
 }) => {
+  const defaultAppAvatar = useDefaultAppAvatar();
+  const effectiveAvatarUrl = avatarPhotoUrl || defaultAppAvatar.portraitUrl;
   const [parentVisitNote, setParentVisitNote] = useState<string>('');
   const [downloadedFileName, setDownloadedFileName] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
@@ -211,7 +214,7 @@ export const GrowthReportModal: React.FC<GrowthReportModalProps> = ({
       const savedName = downloadPrintableGrowthPdfReport({
         childProfile,
         measurements,
-        avatarPhotoUrl,
+        avatarPhotoUrl: effectiveAvatarUrl,
         parentVisitNote,
       });
       setDownloadedFileName(savedName);
@@ -322,11 +325,11 @@ export const GrowthReportModal: React.FC<GrowthReportModalProps> = ({
           {/* Sheet Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-sky-50/90 border border-sky-200 rounded-xl p-4 sm:p-5">
             <div className="flex items-center gap-4">
-              {avatarPhotoUrl && (
+              {effectiveAvatarUrl && (
                 <img
-                  src={avatarPhotoUrl}
+                  src={effectiveAvatarUrl}
                   alt={`${summary.childName} portrait`}
-                  className="w-16 h-16 rounded-xl object-cover border-2 border-sky-400 bg-white shrink-0"
+                  className="w-16 h-16 rounded-xl object-cover object-top border-2 border-sky-400 bg-white shrink-0"
                 />
               )}
               <div className="space-y-1">
