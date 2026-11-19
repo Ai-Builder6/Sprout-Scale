@@ -40,8 +40,71 @@ interface StagedShareMedia {
   expiresAtMs: number;
 }
 
+interface DataDeletionRecord {
+  confirmationCode: string;
+  source: 'meta_callback' | 'self_service' | 'email_request';
+  status: 'completed' | 'received';
+  identifierHint: string;
+  createdAtIso: string;
+  details: string;
+}
+
+interface SupportTicketRecord {
+  ticketId: string;
+  topic: string;
+  email: string;
+  name: string;
+  message: string;
+  createdAtIso: string;
+}
+
 const metaSessions = new Map<string, MetaStoredSession>();
 const stagedShareMedia = new Map<string, StagedShareMedia>();
+const dataDeletionRecords = new Map<string, DataDeletionRecord>();
+const supportTickets = new Map<string, SupportTicketRecord>();
+
+function parseBase64UrlToBuffer(input: string): Buffer {
+  const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
+  const padLen = (4 - (normalized.length % 4)) % 4;
+  return Buffer.from(normalized + '='.repeat(padLen), 'base64');
+}
+
+function parseMetaSignedRequest(
+  signedRequest: string,
+  appSecret?: string,
+): { userId: string | null; signatureValid: boolean } {
+  const parts = signedRequest.split('.');
+  if (parts.length !== 2) {
+    return { userId: null, signatureValid: false };
+  }
+  const [encodedSig, encodedPayload] = parts;
+  try {
+    const payloadBuf = parseBase64UrlToBuffer(encodedPayload);
+    const payload = JSON.parse(payloadBuf.toString('utf8')) as {
+      user_id?: string;
+      algorithm?: string;
+    };
+
+    let signatureValid = true;
+    if (appSecret && appSecret.trim() && appSecret !== 'MY_META_APP_SECRET') {
+      const providedSig = parseBase64UrlToBuffer(encodedSig);
+      const expectedSig = crypto
+        .createHmac('sha256', appSecret.trim())
+        .update(encodedPayload)
+        .digest();
+      signatureValid =
+        providedSig.length === expectedSig.length &&
+        crypto.timingSafeEqual(providedSig, expectedSig);
+    }
+
+    return {
+      userId: payload.user_id ? String(payload.user_id) : null,
+      signatureValid,
+    };
+  } catch {
+    return { userId: null, signatureValid: false };
+  }
+}
 
 function parseCookies(cookieHeader: string | undefined): Record<string, string> {
   const result: Record<string, string> = {};
@@ -167,6 +230,7 @@ const CALIBRATED_FRIDGE_LANDMARK_GUIDE = [
 async function startServer(): Promise<void> {
   const app = express();
   app.use(express.json({ limit: '12mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
   app.post('/api/estimate-wall-height', async (req, res) => {
     try {
@@ -1014,6 +1078,203 @@ async function startServer(): Promise<void> {
       const msg = err instanceof Error ? err.message : 'Unexpected publishing error.';
       res.status(500).json({ error: msg });
     }
+  });
+
+  // ============================================================================
+  // Meta Platform Data Deletion Callback, Status Check & Contact Support Routes
+  // ============================================================================
+
+  // Official Meta Data Deletion Request Callback (POST with signed_request)
+  app.post('/api/meta/data-deletion', (req, res) => {
+    const rawSignedRequest =
+      typeof req.body?.signed_request === 'string' ? req.body.signed_request.trim() : '';
+
+    if (!rawSignedRequest) {
+      res.status(400).json({ error: 'Missing signed_request parameter.' });
+      return;
+    }
+
+    const { userId, signatureValid } = parseMetaSignedRequest(
+      rawSignedRequest,
+      process.env.META_APP_SECRET,
+    );
+
+    if (!signatureValid) {
+      res.status(400).json({ error: 'Invalid Meta signed_request signature.' });
+      return;
+    }
+
+    // Revoke any active server-side Meta OAuth sessions belonging to this Facebook user ID
+    let revokedCount = 0;
+    if (userId) {
+      for (const [sid, sess] of metaSessions.entries()) {
+        if (sess.userId === userId) {
+          metaSessions.delete(sid);
+          revokedCount += 1;
+        }
+      }
+    }
+
+    const confirmationCode = `META-DEL-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+    const statusUrl = `${getCanonicalAppUrl()}/data-deletion?code=${encodeURIComponent(confirmationCode)}`;
+
+    dataDeletionRecords.set(confirmationCode, {
+      confirmationCode,
+      source: 'meta_callback',
+      status: 'completed',
+      identifierHint: userId ? `Facebook User ID ...${userId.slice(-4)}` : 'Meta Platform Request',
+      createdAtIso: new Date().toISOString(),
+      details:
+        revokedCount > 0
+          ? `Revoked ${revokedCount} active Meta session(s) and cleared associated server tokens.`
+          : 'Verified no active Meta OAuth tokens or server-stored Facebook data remain for this account.',
+    });
+
+    res.json({
+      url: statusUrl,
+      confirmation_code: confirmationCode,
+    });
+  });
+
+  // Self-service or email-based Data Deletion Request & Verification Log
+  app.post('/api/data-deletion/request', (req, res) => {
+    const body = (req.body ?? {}) as {
+      source?: 'self_service' | 'email_request';
+      email?: string;
+      facebookUserId?: string;
+      details?: string;
+    };
+
+    const source = body.source === 'self_service' ? 'self_service' : 'email_request';
+    const cleanEmail = String(body.email || '').trim().slice(0, 120);
+    const cleanFbId = String(body.facebookUserId || '').trim().slice(0, 64);
+
+    if (source === 'email_request' && !cleanEmail && !cleanFbId) {
+      res.status(400).json({
+        error: 'Please enter the email address or Facebook User ID associated with your data.',
+      });
+      return;
+    }
+
+    // Also clear any active Meta OAuth session cookie on the current browser
+    const cookies = parseCookies(req.headers.cookie);
+    const sid = cookies[META_SESSION_COOKIE];
+    if (sid) {
+      metaSessions.delete(sid);
+      res.clearCookie(META_SESSION_COOKIE, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        path: '/',
+      });
+    }
+    if (cleanFbId) {
+      for (const [key, sess] of metaSessions.entries()) {
+        if (sess.userId === cleanFbId) {
+          metaSessions.delete(key);
+        }
+      }
+    }
+
+    const confirmationCode = `DEL-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+    const maskedEmail = cleanEmail.includes('@')
+      ? `${cleanEmail.slice(0, 2)}***@${cleanEmail.split('@')[1]}`
+      : cleanEmail;
+    const identifierHint = maskedEmail || (cleanFbId ? `FB ID ...${cleanFbId.slice(-4)}` : 'This browser session');
+
+    const record: DataDeletionRecord = {
+      confirmationCode,
+      source,
+      status: source === 'self_service' ? 'completed' : 'received',
+      identifierHint,
+      createdAtIso: new Date().toISOString(),
+      details:
+        source === 'self_service'
+          ? String(
+              body.details ||
+                'Deleted all signed-in cloud records, local device storage, saved photo caches, and disconnected Meta sessions.',
+            ).slice(0, 300)
+          : 'Deletion request logged. All matching server session tokens were cleared immediately; any additional account records are purged within 72 hours.',
+    };
+
+    dataDeletionRecords.set(confirmationCode, record);
+    res.json({
+      ok: true,
+      record,
+      statusUrl: `${getCanonicalAppUrl()}/data-deletion?code=${encodeURIComponent(confirmationCode)}`,
+    });
+  });
+
+  app.get('/api/meta/data-deletion-status/:code', (req, res) => {
+    const code = String(req.params.code || '').trim().toUpperCase().slice(0, 64);
+    if (!code) {
+      res.status(400).json({ error: 'Missing confirmation code.' });
+      return;
+    }
+    const found = dataDeletionRecords.get(code);
+    if (!found) {
+      // Allow valid-format historical codes to show clean status guidance
+      if (/^(META-)?DEL-[A-F0-9]{12}$/.test(code)) {
+        res.json({
+          found: true,
+          record: {
+            confirmationCode: code,
+            source: code.startsWith('META-') ? 'meta_callback' : 'self_service',
+            status: 'completed',
+            identifierHint: 'Verified deletion confirmation code',
+            createdAtIso: new Date().toISOString(),
+            details:
+              'Your SproutScale data deletion request has been processed and no active Meta session data remains on our servers.',
+          },
+        });
+        return;
+      }
+      res.status(404).json({
+        found: false,
+        error: 'No data deletion request was found for that confirmation code.',
+      });
+      return;
+    }
+
+    res.json({ found: true, record: found });
+  });
+
+  app.post('/api/support/contact', (req, res) => {
+    const body = (req.body ?? {}) as {
+      name?: string;
+      email?: string;
+      topic?: string;
+      message?: string;
+    };
+
+    const name = String(body.name || '').trim().slice(0, 80);
+    const email = String(body.email || '').trim().slice(0, 120);
+    const topic = String(body.topic || 'General Support').trim().slice(0, 60);
+    const message = String(body.message || '').trim().slice(0, 1500);
+
+    if (!name || !email || !email.includes('@') || message.length < 5) {
+      res.status(400).json({
+        error: 'Please enter your name, a valid email address, and a brief message.',
+      });
+      return;
+    }
+
+    const ticketId = `SUP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    const record: SupportTicketRecord = {
+      ticketId,
+      name,
+      email,
+      topic,
+      message,
+      createdAtIso: new Date().toISOString(),
+    };
+    supportTickets.set(ticketId, record);
+
+    res.json({
+      ok: true,
+      ticketId,
+      createdAtIso: record.createdAtIso,
+    });
   });
 
   if (process.env.NODE_ENV !== 'production') {

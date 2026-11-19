@@ -319,6 +319,38 @@ export async function deleteAllLocalPhotosForChild(childId: string): Promise<voi
   });
 }
 
+export async function clearAllLocalPhotoStorage(): Promise<void> {
+  const db = await openAvatarCacheDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const storeNames: string[] = [];
+      if (db.objectStoreNames.contains(STORE_NAME)) storeNames.push(STORE_NAME);
+      if (db.objectStoreNames.contains(PHOTOS_STORE_NAME)) storeNames.push(PHOTOS_STORE_NAME);
+      if (storeNames.length === 0) {
+        db.close();
+        resolve();
+        return;
+      }
+      const tx = db.transaction(storeNames, 'readwrite');
+      for (const name of storeNames) {
+        tx.objectStore(name).clear();
+      }
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve();
+      };
+    } catch {
+      db.close();
+      resolve();
+    }
+  });
+}
+
 function rgbToHex(r: number, g: number, b: number): string {
   const toByte = (v: number) =>
     clampNumber(Math.round(v), 0, 255).toString(16).padStart(2, '0');

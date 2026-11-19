@@ -101,8 +101,14 @@ import {
   PWAInstallActionStrip,
 } from './components/MobileAppDownloadModal';
 import { KidsPlayroomPage } from './components/kidsGames/KidsPlayroomPage';
+import {
+  DeletionExecutionResult,
+  LegalPageId,
+  LegalSupportPages,
+} from './components/LegalSupportPages';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import {
+  clearAllLocalPhotoStorage,
   compressPhotoToStorageJpeg,
   cropPortraitToDataUrl,
   deleteAllLocalPhotosForChild,
@@ -181,6 +187,38 @@ function loadStoredSelectedChildId(): string {
   return DEMO_CHILD.id;
 }
 
+type AppPageView = 'growth_wall' | 'playroom' | LegalPageId;
+
+function resolveAppViewFromPath(pathname: string): AppPageView {
+  const normalized = pathname.replace(/\/+$/, '').toLowerCase();
+  if (normalized === '/privacy') return 'privacy';
+  if (normalized === '/terms') return 'terms';
+  if (normalized === '/support') return 'support';
+  if (normalized === '/contact' || normalized === '/contacts') return 'contact';
+  if (normalized === '/data-deletion' || normalized === '/delete-data') return 'data-deletion';
+  if (normalized === '/games' || normalized === '/playroom') return 'playroom';
+  return 'growth_wall';
+}
+
+function getPathForAppView(view: AppPageView): string {
+  switch (view) {
+    case 'privacy':
+      return '/privacy';
+    case 'terms':
+      return '/terms';
+    case 'support':
+      return '/support';
+    case 'contact':
+      return '/contact';
+    case 'data-deletion':
+      return '/data-deletion';
+    case 'playroom':
+      return '/games';
+    default:
+      return '/';
+  }
+}
+
 function getTodayIsoDate(): string {
   return getLocalTodayIso();
 }
@@ -220,8 +258,10 @@ function SproutScaleWorkspace() {
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [isSyncingBatchPhotos, setIsSyncingBatchPhotos] = useState(false);
 
-  // Active child, Page View Tab ('growth_wall' | 'playroom') & UI controls
-  const [appView, setAppView] = useState<'growth_wall' | 'playroom'>('growth_wall');
+  // Active child, Page View Route & UI controls
+  const [appView, setAppView] = useState<AppPageView>(() =>
+    typeof window !== 'undefined' ? resolveAppViewFromPath(window.location.pathname) : 'growth_wall',
+  );
   const [selectedChildId, setSelectedChildId] = useState<string>(loadStoredSelectedChildId);
   const [activeDeckTab, setActiveDeckTab] = useState<ControlDeckTab>('measure');
   const [isAddChildModalOpen, setIsAddChildModalOpen] = useState<boolean>(false);
@@ -327,8 +367,24 @@ function SproutScaleWorkspace() {
     'wall' | 'games' | 'ruler' | 'history' | 'app'
   >('wall');
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setAppView(resolveAppViewFromPath(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const pushAppPath = (view: AppPageView) => {
+    const nextPath = getPathForAppView(view);
+    if (typeof window !== 'undefined' && window.location.pathname !== nextPath) {
+      window.history.pushState({}, '', nextPath);
+    }
+  };
+
   const navigateToGrowthWall = (sectionId?: string) => {
     setAppView('growth_wall');
+    pushAppPath('growth_wall');
     setMobileNavActive(sectionId === 'timeline' ? 'history' : 'wall');
     if (sectionId) {
       window.setTimeout(() => {
@@ -341,7 +397,14 @@ function SproutScaleWorkspace() {
 
   const navigateToPlayroom = () => {
     setAppView('playroom');
+    pushAppPath('playroom');
     setMobileNavActive('games');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateToLegalPage = (page: LegalPageId) => {
+    setAppView(page);
+    pushAppPath(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1140,6 +1203,93 @@ function SproutScaleWorkspace() {
     setCloudEventsByChild({});
     selectChildProfile(demoChildrenRef.current[0]?.id ?? DEMO_CHILD.id);
     setStatusBanner(null);
+  };
+
+  /**
+   * Self-service complete user data deletion for Meta Ads & Privacy compliance.
+   * Respects firestore.rules by deleting all subcollection docs BEFORE parent /children/{childId}.
+   */
+  const handleDeleteAllUserData = async (): Promise<DeletionExecutionResult> => {
+    let deletedCloudChildren = 0;
+    let deletedCloudDocs = 0;
+    const signedOutEmail = user?.email ?? null;
+
+    if (user) {
+      const childrenSnap = await getDocs(
+        query(collection(db, 'children'), where('ownerId', '==', user.uid)),
+      );
+
+      for (const childDoc of childrenSnap.docs) {
+        const cid = childDoc.id;
+
+        // 1. Delete subcollection documents first while parent child doc still exists (required by isParentChildOwner)
+        for (const subCol of ['measurements', 'photos', 'events'] as const) {
+          const subPath = `children/${cid}/${subCol}`;
+          try {
+            const subSnap = await getDocs(
+              query(collection(db, 'children', cid, subCol), where('ownerId', '==', user.uid)),
+            );
+            for (const subDoc of subSnap.docs) {
+              await deleteDoc(doc(db, 'children', cid, subCol, subDoc.id));
+              deletedCloudDocs += 1;
+            }
+          } catch (err) {
+            handleFirestoreError(err, OperationType.DELETE, subPath);
+          }
+        }
+
+        // 2. Delete parent child profile document
+        const childPath = `children/${cid}`;
+        try {
+          await deleteDoc(doc(db, 'children', cid));
+          deletedCloudChildren += 1;
+          deletedCloudDocs += 1;
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, childPath);
+        }
+      }
+    }
+
+    // 3. Clear IndexedDB saved photos & portrait caches
+    await clearAllLocalPhotoStorage();
+
+    // 4. Clear guest localStorage records & reset in-memory state
+    try {
+      window.localStorage.removeItem(GUEST_CHILDREN_STORAGE_KEY);
+      window.localStorage.removeItem(GUEST_MEASUREMENTS_STORAGE_KEY);
+      window.localStorage.removeItem(GUEST_EVENTS_STORAGE_KEY);
+      window.localStorage.removeItem(SELECTED_CHILD_STORAGE_KEY);
+    } catch {
+      // Ignore storage access errors
+    }
+
+    setDemoChildren([DEMO_CHILD]);
+    setDemoMeasurementsMap({ [DEMO_CHILD.id]: DEMO_MEASUREMENTS });
+    setDemoEventsMap({ [DEMO_CHILD.id]: DEMO_EVENTS });
+    setAvatarPhotoMap({});
+    setLocalPhotosByChild({});
+
+    // 5. Disconnect any active server-side Meta (Facebook/Instagram) OAuth session
+    let disconnectedMeta = false;
+    try {
+      await fetch('/api/meta/disconnect', { method: 'POST', credentials: 'include' });
+      disconnectedMeta = true;
+    } catch {
+      // Best-effort disconnect
+    }
+
+    // 6. Sign out Firebase Auth session if signed in
+    if (user) {
+      await handleSignOut();
+    }
+
+    return {
+      deletedCloudChildren,
+      deletedCloudDocs,
+      clearedLocalStorage: true,
+      disconnectedMeta,
+      signedOutEmail,
+    };
   };
 
   const handleImportBackupPayload = async (payload: GrowthBackupPayload) => {
@@ -3052,7 +3202,20 @@ function SproutScaleWorkspace() {
 
       {/* Main Content Container (1440px Desktop Presence via max-w-7xl) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-12">
-        {appView === 'playroom' ? (
+        {appView === 'privacy' ||
+        appView === 'terms' ||
+        appView === 'support' ||
+        appView === 'contact' ||
+        appView === 'data-deletion' ? (
+          <LegalSupportPages
+            page={appView}
+            userEmail={user?.email ?? null}
+            childrenCount={activeChildrenList.length}
+            onNavigatePage={navigateToLegalPage}
+            onBackToApp={() => navigateToGrowthWall('measure')}
+            onDeleteAllUserData={handleDeleteAllUserData}
+          />
+        ) : appView === 'playroom' ? (
           <KidsPlayroomPage
             activeChild={activeChild}
             childrenList={activeChildrenList}
@@ -3424,60 +3587,111 @@ function SproutScaleWorkspace() {
 
       {/* Clean Quiet Footer (extra bottom padding on mobile for thumb-zone tab bar) */}
       <footer className="border-t-2 border-amber-200 bg-white/95 pb-20 md:pb-0">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
-          <p className="font-medium text-indigo-950">
-            SproutScale — Family Height &amp; Weight Growth Wall
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <button
-              type="button"
-              onClick={() => navigateToGrowthWall('measure')}
-              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
-            >
-              Growth Wall
-            </button>
-            <button
-              type="button"
-              onClick={navigateToPlayroom}
-              className="font-semibold text-emerald-700 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
-            >
-              Kids Games (Ages 2–4)
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateToGrowthWall('timeline')}
-              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
-            >
-              Milestones
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateToGrowthWall('photo-album')}
-              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
-            >
-              Saved Photos
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateToGrowthWall('drive-vault')}
-              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
-            >
-              Google Drive
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateToGrowthWall('how-to-measure')}
-              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
-            >
-              Measuring Tips
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsMobileAppModalOpen(true)}
-              className="font-semibold text-sky-800 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
-            >
-              {isInstalled ? 'Share App Link' : 'Download Mobile App'}
-            </button>
+        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-4 text-xs text-slate-600">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="font-medium text-indigo-950">
+              SproutScale — Family Height &amp; Weight Growth Wall
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigateToGrowthWall('measure')}
+                className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                Growth Wall
+              </button>
+              <button
+                type="button"
+                onClick={navigateToPlayroom}
+                className="font-semibold text-emerald-700 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                Kids Games (Ages 2–4)
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateToGrowthWall('timeline')}
+                className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                Milestones
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateToGrowthWall('photo-album')}
+                className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                Saved Photos
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateToGrowthWall('drive-vault')}
+                className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                Google Drive
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsMobileAppModalOpen(true)}
+                className="font-semibold text-sky-800 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                {isInstalled ? 'Share App Link' : 'Download Mobile App'}
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-amber-100 flex flex-wrap items-center justify-center sm:justify-between gap-x-5 gap-y-2 text-[11px] text-slate-500">
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
+              <a
+                href="/privacy"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateToLegalPage('privacy');
+                }}
+                className="font-semibold text-slate-600 hover:text-indigo-950 transition-colors whitespace-nowrap"
+              >
+                Privacy Policy
+              </a>
+              <a
+                href="/terms"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateToLegalPage('terms');
+                }}
+                className="font-semibold text-slate-600 hover:text-indigo-950 transition-colors whitespace-nowrap"
+              >
+                Terms of Service
+              </a>
+              <a
+                href="/support"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateToLegalPage('support');
+                }}
+                className="font-semibold text-slate-600 hover:text-indigo-950 transition-colors whitespace-nowrap"
+              >
+                Support
+              </a>
+              <a
+                href="/contact"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateToLegalPage('contact');
+                }}
+                className="font-semibold text-slate-600 hover:text-indigo-950 transition-colors whitespace-nowrap"
+              >
+                Contact
+              </a>
+              <a
+                href="/data-deletion"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateToLegalPage('data-deletion');
+                }}
+                className="font-semibold text-rose-700 hover:text-rose-900 transition-colors whitespace-nowrap"
+              >
+                Data Deletion
+              </a>
+            </div>
+            <span>Parent-controlled family growth keepsake</span>
           </div>
         </div>
       </footer>
