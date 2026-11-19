@@ -21,31 +21,26 @@ const FALLBACK_RESULT: ProcessedDefaultAvatar = {
   isReady: false,
 };
 
-let cachedResult: ProcessedDefaultAvatar | null = null;
-let inflightPromise: Promise<ProcessedDefaultAvatar> | null = null;
+const processedUrlCache = new Map<string, ProcessedDefaultAvatar>();
+const inflightUrlPromises = new Map<string, Promise<ProcessedDefaultAvatar | null>>();
 
 function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
 }
 
-/**
- * Loads the app's illustrated boy avatar once, removes only the exterior off-white
- * paper background using a border-seeded flood fill (preserving pure white inside
- * eyes and the shirt sprout emblem), feathers edge pixels to eliminate white halos,
- * crops tightly from top of hair to bottom of bare feet for millimeter-accurate
- * growth-wall ruler alignment, and generates a matching face portrait thumbnail.
- */
-export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
-  if (cachedResult) {
-    return Promise.resolve(cachedResult);
+function processAvatarImageUrl(imageUrl: string): Promise<ProcessedDefaultAvatar | null> {
+  const existing = processedUrlCache.get(imageUrl);
+  if (existing) {
+    return Promise.resolve(existing);
   }
-  if (inflightPromise) {
-    return inflightPromise;
+  const inflight = inflightUrlPromises.get(imageUrl);
+  if (inflight) {
+    return inflight;
   }
 
-  inflightPromise = new Promise<ProcessedDefaultAvatar>((resolve) => {
+  const promise = new Promise<ProcessedDefaultAvatar | null>((resolve) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
-      resolve(FALLBACK_RESULT);
+      resolve(null);
       return;
     }
 
@@ -54,7 +49,6 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
 
     img.onload = () => {
       try {
-        // Work at crisp high resolution while keeping processing ultra-fast (~15ms)
         const targetH = 1024;
         const scale = Math.min(1, targetH / Math.max(1, img.naturalHeight));
         const w = Math.max(1, Math.round(img.naturalWidth * scale));
@@ -65,7 +59,7 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
         workCanvas.height = h;
         const ctx = workCanvas.getContext('2d', { willReadFrequently: true });
         if (!ctx) {
-          resolve(FALLBACK_RESULT);
+          resolve(null);
           return;
         }
 
@@ -82,6 +76,8 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
 
         const isExteriorPaperPixel = (idx: number): boolean => {
           const p = idx * 4;
+          const alpha = data[p + 3];
+          if (alpha < 20) return true;
           const r = data[p];
           const g = data[p + 1];
           const b = data[p + 2];
@@ -89,8 +85,6 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
           const minC = Math.min(r, g, b);
           const chroma = maxC - minC;
           const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          // Matches off-white textured paper + subtle neutral floor shadow under feet,
-          // while stopping cleanly at warm-brown outlines, peach skin, blue shirt & khaki shorts.
           return lum >= 220 && chroma <= 24;
         };
 
@@ -104,7 +98,6 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
           }
         };
 
-        // Seed flood fill from all four outer borders
         for (let x = 0; x < w; x++) {
           enqueueIfPaper(x, 0);
           enqueueIfPaper(x, h - 1);
@@ -125,14 +118,12 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
           if (cy + 1 < h) enqueueIfPaper(cx, cy + 1);
         }
 
-        // Clear confirmed exterior background pixels
         for (let i = 0; i < totalPx; i++) {
           if (bgMask[i]) {
             data[i * 4 + 3] = 0;
           }
         }
 
-        // Soft anti-alias de-fringing on foreground pixels touching the removed background
         for (let y = 1; y < h - 1; y++) {
           for (let x = 1; x < w - 1; x++) {
             const idx = y * w + x;
@@ -162,7 +153,6 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
             if (lum > 198 && chroma < 34) {
               const t = clamp((242 - lum) / 44, 0, 1);
               data[p + 3] = Math.round(t * 255);
-              // Gentle un-premultiply toward darker outline color to eliminate white halo
               if (t > 0.08 && t < 0.95) {
                 data[p] = clamp(Math.round((r - 252 * (1 - t)) / t), 0, 255);
                 data[p + 1] = clamp(Math.round((g - 251 * (1 - t)) / t), 0, 255);
@@ -174,8 +164,6 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
 
         ctx.putImageData(imageData, 0, 0);
 
-        // Compute tight bounding box of the visible character so top of hair = crownY
-        // and bottom of feet = floorY on the growth wall ruler!
         let minX = w;
         let minY = h;
         let maxX = 0;
@@ -194,11 +182,10 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
         }
 
         if (maxX <= minX || maxY <= minY) {
-          resolve(FALLBACK_RESULT);
+          resolve(null);
           return;
         }
 
-        // Pad 2px horizontally so strokes aren't clipped, 0px vertically so height alignment is exact
         const cropX = Math.max(0, minX - 2);
         const cropY = minY;
         const cropW = Math.min(w - cropX, maxX - minX + 5);
@@ -209,13 +196,12 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
         bodyCanvas.height = cropH;
         const bodyCtx = bodyCanvas.getContext('2d');
         if (!bodyCtx) {
-          resolve(FALLBACK_RESULT);
+          resolve(null);
           return;
         }
         bodyCtx.drawImage(workCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
         const fullBodyUrl = bodyCanvas.toDataURL('image/png');
 
-        // Generate a joyful 256x256 square face portrait framed cleanly around head & collar
         const portraitSize = 256;
         const portraitCanvas = document.createElement('canvas');
         portraitCanvas.width = portraitSize;
@@ -230,7 +216,6 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
           pCtx.fillStyle = grad;
           pCtx.fillRect(0, 0, portraitSize, portraitSize);
 
-          // The head & upper shoulders occupy the top ~40% of the tightly cropped full body
           const headCropSide = Math.round(cropH * 0.42);
           const headSrcX = Math.round(cropW / 2 - headCropSide / 2);
           const headSrcY = Math.round(-cropH * 0.015);
@@ -248,26 +233,42 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
           portraitUrl = portraitCanvas.toDataURL('image/png');
         }
 
-        cachedResult = {
+        const result: ProcessedDefaultAvatar = {
           fullBodyUrl,
           portraitUrl,
           aspectRatio: cropW / cropH,
           isReady: true,
         };
-        resolve(cachedResult);
+        processedUrlCache.set(imageUrl, result);
+        resolve(result);
       } catch {
-        resolve(FALLBACK_RESULT);
+        resolve(null);
       }
     };
 
     img.onerror = () => {
-      resolve(FALLBACK_RESULT);
+      resolve(null);
     };
 
-    img.src = DEFAULT_APP_AVATAR_URL;
+    img.src = imageUrl;
   });
 
-  return inflightPromise;
+  inflightUrlPromises.set(imageUrl, promise);
+  return promise;
+}
+
+export function getAgeAvatarCandidateUrl(ageMonths: number): string {
+  const ageYears = clamp(Math.floor(ageMonths / 12), 2, 18);
+  return `/avatars/avatar_age_${String(ageYears).padStart(2, '0')}.png`;
+}
+
+/**
+ * Loads the app's illustrated boy avatar once, removes exterior paper background,
+ * crops tightly from top of hair to bottom of feet, and caches portrait + full body.
+ */
+export async function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
+  const res = await processAvatarImageUrl(DEFAULT_APP_AVATAR_URL);
+  return res ?? FALLBACK_RESULT;
 }
 
 /**
@@ -276,13 +277,14 @@ export function loadProcessedDefaultAvatar(): Promise<ProcessedDefaultAvatar> {
  */
 export function useDefaultAppAvatar(): ProcessedDefaultAvatar {
   const [avatar, setAvatar] = useState<ProcessedDefaultAvatar>(
-    () => cachedResult ?? FALLBACK_RESULT,
+    () => processedUrlCache.get(DEFAULT_APP_AVATAR_URL) ?? FALLBACK_RESULT,
   );
 
   useEffect(() => {
     let active = true;
-    if (cachedResult) {
-      setAvatar(cachedResult);
+    const cached = processedUrlCache.get(DEFAULT_APP_AVATAR_URL);
+    if (cached) {
+      setAvatar(cached);
       return;
     }
     void loadProcessedDefaultAvatar().then((res) => {
@@ -297,3 +299,48 @@ export function useDefaultAppAvatar(): ProcessedDefaultAvatar {
 
   return avatar;
 }
+
+/**
+ * Checks if an age-specific avatar file exists at `/avatars/avatar_age_XX.png`
+ * (for ages 02–18). If present, returns that age's transparently cropped character;
+ * otherwise seamlessly returns the default illustrated SproutScale boy avatar.
+ */
+export function useAgeAwareAppAvatar(ageMonths: number): ProcessedDefaultAvatar {
+  const defaultAvatar = useDefaultAppAvatar();
+  const candidateUrl = getAgeAvatarCandidateUrl(ageMonths);
+  const [ageAvatar, setAgeAvatar] = useState<ProcessedDefaultAvatar | null>(
+    () => processedUrlCache.get(candidateUrl) ?? null,
+  );
+
+  useEffect(() => {
+    let active = true;
+    const cached = processedUrlCache.get(candidateUrl);
+    if (cached) {
+      setAgeAvatar(cached);
+      return;
+    }
+
+    // Check quietly with HEAD first so missing optional age files don't spam image decode errors
+    fetch(candidateUrl, { method: 'HEAD' })
+      .then((res) => {
+        const contentType = res.headers.get('content-type') || '';
+        if (!res.ok || !contentType.startsWith('image/')) {
+          if (active) setAgeAvatar(null);
+          return;
+        }
+        return processAvatarImageUrl(candidateUrl).then((processed) => {
+          if (active) setAgeAvatar(processed);
+        });
+      })
+      .catch(() => {
+        if (active) setAgeAvatar(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [candidateUrl]);
+
+  return ageAvatar ?? defaultAvatar;
+}
+

@@ -626,20 +626,10 @@ export function getFunComparison(
   growthFact: string;
   weightFact: string;
 } {
-  let heightFact = 'About as tall as an acoustic ukulele stood upright!';
-  if (heightCm < 90) {
-    heightFact = 'About as tall as a friendly Golden Retriever sitting proud (~2\' 10")!';
-  } else if (heightCm < 102) {
-    heightFact = 'Tall enough to peek right over a standard 3-foot kitchen chair!';
-  } else if (heightCm < 114) {
-    heightFact = 'Nearly eye-to-eye with an Emperor Penguin (3\' 9" · 45 in)!';
-  } else if (heightCm < 126) {
-    heightFact = 'About as tall as 5 regulation soccer balls stacked high (~3\' 11")!';
-  } else if (heightCm < 140) {
-    heightFact = 'Tall enough for many big-kid theme park adventure rides (4\' 6" · 54 in)!';
-  } else {
-    heightFact = 'Standing as tall as a baby giraffe’s shoulder (over 4\' 7")!';
-  }
+  const heightIn = cmToInches(heightCm);
+  const soccerBalls = (heightIn / 8.7).toFixed(1);
+  const stackedApples = Math.max(1, Math.round(heightIn / 3.5));
+  const heightFact = `${heightIn.toFixed(1)}" is about ${soccerBalls} soccer balls or ${stackedApples} stacked apples tall!`;
 
   const gainedCm = Math.max(0, heightCm - ageTwoHeightCm);
   const gainedIn = cmToInches(gainedCm);
@@ -651,7 +641,6 @@ export function getFunComparison(
 
   let weightFact = 'About the weight of a big basket of picnic apples!';
   if (weightKg < 14) {
-    heightFact = heightFact;
     weightFact = 'Weighs about the same as 3 fluffy house cats (~28 lb)!';
   } else if (weightKg < 18) {
     weightFact = 'Weighs about as much as 2 large summer watermelons (~36 lb)!';

@@ -1,6 +1,6 @@
 {
   "name": "SproutScale",
   "description": "Interactive kids' height and weight growth tracker featuring a growing character companion from age two onward.",
-  "requestFramePermissions": ["camera"],
+  "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

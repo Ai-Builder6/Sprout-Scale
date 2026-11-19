@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Camera, Play, Pause, Ruler, Sparkles } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Camera, Play, Pause, Ruler, Sparkles, Square, Volume2 } from 'lucide-react';
 import {
   calculateExactAgeFromDob,
   ChildProfile,
@@ -21,6 +21,10 @@ import {
   kgToLbs,
 } from '../types';
 import { CharacterFigureGroup } from './GrowingCharacterSvg';
+import {
+  speakWithElevenLabsAvatar,
+  stopAvatarSpeech,
+} from '../services/elevenLabsVoiceService';
 
 interface GrowthWallStageProps {
   childProfile: ChildProfile;
@@ -78,6 +82,14 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   onOpenWallHeightEstimator,
 }) => {
   const [showSecondaryMetric, setShowSecondaryMetric] = useState<boolean>(true);
+  const [isSpeakingAvatar, setIsSpeakingAvatar] = useState<boolean>(false);
+  const [isLoadingSpeech, setIsLoadingSpeech] = useState<boolean>(false);
+
+  useEffect(() => {
+    return () => {
+      stopAvatarSpeech();
+    };
+  }, []);
 
   const ageTwoCrownY = heightCmToSvgY(childProfile.ageTwoHeightCm);
   const currentCrownY = heightCmToSvgY(activeHeightCm);
@@ -110,6 +122,43 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
 
   // Sort measurements ascending by ageMonths for clean wall display
   const sortedMarks = [...measurements].sort((a, b) => a.ageMonths - b.ageMonths);
+
+  const handleToggleAvatarSpeech = async () => {
+    if (isSpeakingAvatar || isLoadingSpeech) {
+      stopAvatarSpeech();
+      setIsSpeakingAvatar(false);
+      setIsLoadingSpeech(false);
+      return;
+    }
+
+    const totalIn = cmToInches(activeHeightCm);
+    const ft = Math.floor(totalIn / 12);
+    const remIn = Math.round((totalIn % 12) * 10) / 10;
+    const gainIn = Math.round(cmToInches(Math.max(0, heightGainCm)) * 10) / 10;
+    const lbs = Math.round(kgToLbs(activeWeightKg) * 10) / 10;
+
+    const spokenScript =
+      gainIn > 0.2
+        ? `Hi! I'm ${childProfile.name}! At ${formatAgeLabel(activeAgeMonths)}, I'm ${ft} feet ${remIn} inches tall and weigh ${lbs} pounds. I've grown ${gainIn} inches taller since I turned two!`
+        : `Hi! I'm ${childProfile.name}! I'm ${ft} feet ${remIn} inches tall and weigh ${lbs} pounds. Watch me grow on SproutScale!`;
+
+    setIsLoadingSpeech(true);
+    try {
+      await speakWithElevenLabsAvatar(spokenScript, {
+        onStart: () => {
+          setIsLoadingSpeech(false);
+          setIsSpeakingAvatar(true);
+        },
+        onEnd: () => {
+          setIsLoadingSpeech(false);
+          setIsSpeakingAvatar(false);
+        },
+      });
+    } catch {
+      setIsLoadingSpeech(false);
+      setIsSpeakingAvatar(false);
+    }
+  };
 
   return (
     <div className="bg-white border-2 border-sky-200 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5 shadow-xs">
@@ -168,6 +217,28 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           >
             <Camera className="w-3.5 h-3.5 text-sky-700" aria-hidden="true" />
             {avatarPhotoUrl ? 'Change Photo' : 'Photo Avatar'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleToggleAvatarSpeech()}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              isSpeakingAvatar
+                ? 'bg-rose-500 hover:bg-rose-600 text-white'
+                : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-950'
+            }`}
+          >
+            {isSpeakingAvatar ? (
+              <>
+                <Square className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                Stop Voice
+              </>
+            ) : (
+              <>
+                <Volume2 className="w-3.5 h-3.5 text-indigo-700" aria-hidden="true" />
+                {isLoadingSpeech ? 'Speaking...' : 'Hear Avatar'}
+              </>
+            )}
           </button>
 
           <button
@@ -670,8 +741,41 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             hairColor={childProfile.hairColor}
             avatarPhotoUrl={avatarPhotoUrl}
             mode="current"
-            isWaveActive={isPlayingTimelapse || isPreviewDirty}
+            isWaveActive={isPlayingTimelapse || isPreviewDirty || isSpeakingAvatar}
           />
+
+          {/* Cheerful Speech Bubble when Avatar is Speaking */}
+          {isSpeakingAvatar && (
+            <g>
+              <rect
+                x={226}
+                y={Math.max(16, currentCrownY - 12)}
+                width={118}
+                height={32}
+                rx={12}
+                fill="#ffffff"
+                stroke="#4f46e5"
+                strokeWidth={2}
+              />
+              <polygon
+                points={`342,${Math.max(16, currentCrownY - 12) + 12} 354,${Math.max(16, currentCrownY - 12) + 18} 342,${Math.max(16, currentCrownY - 12) + 24}`}
+                fill="#ffffff"
+                stroke="#4f46e5"
+                strokeWidth={1.6}
+              />
+              <text
+                x={285}
+                y={Math.max(16, currentCrownY - 12) + 20}
+                textAnchor="middle"
+                fill="#1e1b4b"
+                fontSize={10.5}
+                fontWeight={700}
+                fontFamily="Plus Jakarta Sans, sans-serif"
+              >
+                {`Hi! I'm ${childProfile.name.slice(0, 10)}!`}
+              </text>
+            </g>
+          )}
 
           {/* Active Kid Name, Feet/Inches & Pounds Card Under Scale (cm & kg Secondary) */}
           <rect

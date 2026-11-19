@@ -7,7 +7,7 @@ import {
   PaletteId,
   sanitizeHexColor,
 } from '../types';
-import { useDefaultAppAvatar } from '../services/defaultAvatarService';
+import { useAgeAwareAppAvatar } from '../services/defaultAvatarService';
 
 export interface CharacterFigureGroupProps {
   instanceId: string;
@@ -60,7 +60,7 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
   mode,
   isWaveActive = false,
 }) => {
-  const defaultAppAvatar = useDefaultAppAvatar();
+  const defaultAppAvatar = useAgeAwareAppAvatar(ageMonths);
   const palette = CHARACTER_PALETTES[paletteId] ?? CHARACTER_PALETTES.meadow;
   const isBaseline = mode === 'age-two-baseline';
   const hasPhoto = Boolean(avatarPhotoUrl && avatarPhotoUrl.length > 0);

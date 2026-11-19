@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Cake,
   Camera,
   Check,
+  Mic,
   Minus,
   Plus,
   RotateCcw,
   Ruler,
+  Square,
   Trash2,
   UserPlus,
+  Volume2,
 } from 'lucide-react';
 import {
   AccessoryId,
@@ -39,6 +42,15 @@ import {
   VALIDATION_BOUNDS,
 } from '../types';
 import { useDefaultAppAvatar } from '../services/defaultAvatarService';
+import {
+  ElevenLabsVoiceOption,
+  fetchElevenLabsVoices,
+  getSavedElevenLabsVoiceId,
+  parseSpokenMeasurement,
+  saveElevenLabsVoiceId,
+  speakWithElevenLabsAvatar,
+  transcribeAudioWithElevenLabs,
+} from '../services/elevenLabsVoiceService';
 
 export type ControlDeckTab = 'measure' | 'character';
 
@@ -126,6 +138,344 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   onDeleteChild,
 }) => {
   const defaultAppAvatar = useDefaultAppAvatar();
+
+  // ElevenLabs Scribe v3 Voice-to-Note recording & Voice Selection state
+  const [isRecordingNote, setIsRecordingNote] = useState<boolean>(false);
+  const [isTranscribingNote, setIsTranscribingNote] = useState<boolean>(false);
+  const [voiceNoteFeedback, setVoiceNoteFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<ElevenLabsVoiceOption[]>([]);
+  const [elevenLabsConfigured, setElevenLabsConfigured] = useState<boolean>(false);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(() =>
+    getSavedElevenLabsVoiceId(),
+  );
+  const [isTestingVoice, setIsTestingVoice] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetchElevenLabsVoices().then((res) => {
+      if (!active) return;
+      setElevenLabsConfigured(res.configured);
+      setElevenLabsVoices(res.voices);
+      if (!getSavedElevenLabsVoiceId() && res.defaultVoiceId) {
+        setSelectedVoiceId(res.defaultVoiceId);
+      }
+    });
+    return () => {
+      active = false;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (measureRecorderRef.current && measureRecorderRef.current.state !== 'inactive') {
+        measureRecorderRef.current.stop();
+      }
+      if (speechRecRef.current) {
+        try {
+          speechRecRef.current.stop();
+        } catch {
+          // Ignore unmount stop errors
+        }
+      }
+    };
+  }, []);
+
+  const handleToggleVoiceNoteRecording = async () => {
+    setVoiceNoteFeedback(null);
+
+    if (isRecordingNote && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecordingNote(false);
+      return;
+    }
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia ||
+      typeof MediaRecorder === 'undefined'
+    ) {
+      setVoiceNoteFeedback({
+        type: 'error',
+        message: 'Microphone recording is not supported in this browser.',
+      });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
+          : '';
+      const recorder = preferredMime
+        ? new MediaRecorder(stream, { mimeType: preferredMime })
+        : new MediaRecorder(stream);
+
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const recordedBlob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || 'audio/webm',
+        });
+        if (recordedBlob.size < 200) {
+          setVoiceNoteFeedback({
+            type: 'error',
+            message: 'Recording was too short. Tap the mic and speak clearly.',
+          });
+          return;
+        }
+
+        setIsTranscribingNote(true);
+        void transcribeAudioWithElevenLabs(recordedBlob, {
+          languageCode: 'eng',
+          tagAudioEvents: true,
+          diarize: true,
+        })
+          .then((result) => {
+            if (result.text) {
+              const combined = draftNote.trim()
+                ? `${draftNote.trim()} ${result.text}`
+                : result.text;
+              onChangeDraftNote(combined.slice(0, VALIDATION_BOUNDS.NOTE_MAX_LEN));
+              const eventTag =
+                result.audioEvents.length > 0
+                  ? ` · Heard: ${result.audioEvents.slice(0, 2).join(', ')}`
+                  : '';
+              setVoiceNoteFeedback({
+                type: 'success',
+                message: `Transcribed with ElevenLabs (${result.modelUsed})${eventTag}`,
+              });
+            } else {
+              setVoiceNoteFeedback({
+                type: 'error',
+                message: 'No speech detected. Please try recording again.',
+              });
+            }
+          })
+          .catch((err: unknown) => {
+            setVoiceNoteFeedback({
+              type: 'error',
+              message:
+                err instanceof Error ? err.message : 'Could not transcribe voice note.',
+            });
+          })
+          .finally(() => {
+            setIsTranscribingNote(false);
+          });
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecordingNote(true);
+    } catch {
+      setVoiceNoteFeedback({
+        type: 'error',
+        message: 'Microphone access was blocked. Allow microphone permission to record.',
+      });
+    }
+  };
+
+  const handleTestSelectedVoice = async () => {
+    setIsTestingVoice(true);
+    try {
+      await speakWithElevenLabsAvatar(
+        `Hi! I'm ${editName.trim() || childProfile.name}'s SproutScale avatar! Ready to measure how tall we grew today?`,
+        {
+          voiceId: selectedVoiceId || undefined,
+          onEnd: () => setIsTestingVoice(false),
+        },
+      );
+    } catch {
+      setIsTestingVoice(false);
+    }
+  };
+
+  // Hands-free "Speak It" Voice Measurement state ("He is 36 inches and 33 pounds")
+  const [isSpeakingMeasurement, setIsSpeakingMeasurement] = useState<boolean>(false);
+  const [isParsingSpokenMeasurement, setIsParsingSpokenMeasurement] = useState<boolean>(false);
+  const [spokenMeasurementStatus, setSpokenMeasurementStatus] = useState<string>(
+    'Try saying: "He is 36 inches and 33 pounds" or "3 feet 4 inches and 38 pounds"',
+  );
+  const measureRecorderRef = useRef<MediaRecorder | null>(null);
+  const measureChunksRef = useRef<Blob[]>([]);
+  const speechRecRef = useRef<{ stop: () => void } | null>(null);
+
+  const applySpokenTranscriptToMeasurement = (transcript: string) => {
+    const clean = transcript.trim();
+    if (!clean) {
+      setSpokenMeasurementStatus('Did not catch that — try saying: "36 inches and 33 pounds"');
+      return;
+    }
+
+    const parsed = parseSpokenMeasurement(clean);
+    const updates: string[] = [];
+
+    if (parsed.heightInches !== null) {
+      applyDraftInches(parsed.heightInches);
+      updates.push(`${parsed.heightInches.toFixed(1).replace(/\.0$/, '')}" height`);
+    }
+    if (parsed.weightLbs !== null) {
+      applyDraftPounds(parsed.weightLbs);
+      updates.push(`${parsed.weightLbs.toFixed(1).replace(/\.0$/, '')} lb weight`);
+    }
+
+    if (updates.length > 0) {
+      setSpokenMeasurementStatus(`Heard: "${clean}" · Set ${updates.join(' & ')}!`);
+    } else {
+      setSpokenMeasurementStatus(
+        `Heard: "${clean}" · Say inches/feet and pounds (e.g. "36 inches and 33 pounds")`,
+      );
+    }
+  };
+
+  const handleToggleSpeakMeasurement = async () => {
+    // Stop active recording / browser SpeechRecognition if already listening
+    if (isSpeakingMeasurement) {
+      if (measureRecorderRef.current && measureRecorderRef.current.state !== 'inactive') {
+        measureRecorderRef.current.stop();
+      }
+      if (speechRecRef.current) {
+        try {
+          speechRecRef.current.stop();
+        } catch {
+          // Ignore stop race
+        }
+        speechRecRef.current = null;
+      }
+      setIsSpeakingMeasurement(false);
+      return;
+    }
+
+    // Prefer ElevenLabs Scribe v3 when ELEVENLABS_API_KEY is connected
+    if (
+      elevenLabsConfigured &&
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices?.getUserMedia &&
+      typeof MediaRecorder !== 'undefined'
+    ) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : '';
+        const recorder = preferredMime
+          ? new MediaRecorder(stream, { mimeType: preferredMime })
+          : new MediaRecorder(stream);
+
+        measureChunksRef.current = [];
+        recorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) {
+            measureChunksRef.current.push(ev.data);
+          }
+        };
+
+        recorder.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(measureChunksRef.current, {
+            type: recorder.mimeType || 'audio/webm',
+          });
+          if (blob.size < 200) {
+            setSpokenMeasurementStatus('Recording was too short. Tap Speak It and try again.');
+            return;
+          }
+          setIsParsingSpokenMeasurement(true);
+          setSpokenMeasurementStatus('Transcribing with ElevenLabs Scribe...');
+          void transcribeAudioWithElevenLabs(blob, {
+            languageCode: 'eng',
+            tagAudioEvents: false,
+            diarize: false,
+          })
+            .then((res) => applySpokenTranscriptToMeasurement(res.text))
+            .catch((err: unknown) => {
+              setSpokenMeasurementStatus(
+                err instanceof Error ? err.message : 'Could not transcribe measurement.',
+              );
+            })
+            .finally(() => {
+              setIsParsingSpokenMeasurement(false);
+            });
+        };
+
+        measureRecorderRef.current = recorder;
+        recorder.start();
+        setIsSpeakingMeasurement(true);
+        setSpokenMeasurementStatus('Listening... say height & weight, then tap Done.');
+        return;
+      } catch {
+        setSpokenMeasurementStatus('Microphone access was blocked. Allow mic permission to speak.');
+        return;
+      }
+    }
+
+    // Instant zero-config browser SpeechRecognition fallback (Chrome, Edge, Safari)
+    type BrowserSpeechRecCtor = new () => {
+      lang: string;
+      interimResults: boolean;
+      maxAlternatives: number;
+      onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+      onerror: ((e: { error?: string }) => void) | null;
+      onend: (() => void) | null;
+      start: () => void;
+      stop: () => void;
+    };
+
+    const win = window as unknown as {
+      SpeechRecognition?: BrowserSpeechRecCtor;
+      webkitSpeechRecognition?: BrowserSpeechRecCtor;
+    };
+    const SpeechRecCtor = win.SpeechRecognition || win.webkitSpeechRecognition;
+
+    if (!SpeechRecCtor) {
+      setSpokenMeasurementStatus(
+        'Voice input needs Chrome, Edge, Safari, or ELEVENLABS_API_KEY in Secrets.',
+      );
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecCtor();
+      rec.lang = 'en-US';
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      rec.onresult = (event) => {
+        const transcript = event.results?.[0]?.[0]?.transcript || '';
+        applySpokenTranscriptToMeasurement(transcript);
+      };
+      rec.onerror = (event) => {
+        setSpokenMeasurementStatus(
+          event.error === 'not-allowed'
+            ? 'Microphone permission was blocked. Allow mic access to use Speak It.'
+            : 'Did not hear speech — tap Speak It and say e.g. "36 inches and 33 pounds".',
+        );
+      };
+      rec.onend = () => {
+        setIsSpeakingMeasurement(false);
+        speechRecRef.current = null;
+      };
+      speechRecRef.current = rec;
+      setIsSpeakingMeasurement(true);
+      setSpokenMeasurementStatus('Listening... say e.g. "He is 36 inches and 33 pounds"');
+      rec.start();
+    } catch {
+      setIsSpeakingMeasurement(false);
+      setSpokenMeasurementStatus('Could not start voice recognition in this browser.');
+    }
+  };
+
   // Local state for Child Info, DOB & Avatar customization form synced when childProfile.id changes
   const [editName, setEditName] = useState(childProfile.name);
   const [editBirthDate, setEditBirthDate] = useState(childProfile.birthDate || '');
@@ -331,6 +681,40 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
               + Add Another Child
             </button>
+          </div>
+
+          {/* Hands-Free "Speak It" Voice Measurement Bar */}
+          <div className="p-3 bg-sky-50/90 border border-sky-200 rounded-xl space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-indigo-950">
+                Hands-Free Voice Entry
+              </span>
+              <button
+                type="button"
+                disabled={isParsingSpokenMeasurement}
+                onClick={() => void handleToggleSpeakMeasurement()}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50 ${
+                  isSpeakingMeasurement
+                    ? 'bg-rose-500 hover:bg-rose-600 text-white'
+                    : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-xs'
+                }`}
+              >
+                {isSpeakingMeasurement ? (
+                  <>
+                    <Square className="w-3 h-3 fill-current" aria-hidden="true" />
+                    {elevenLabsConfigured ? 'Done' : 'Stop'}
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-3.5 h-3.5" aria-hidden="true" />
+                    {isParsingSpokenMeasurement ? 'Reading...' : 'Speak It'}
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] font-medium text-sky-900 leading-snug">
+              {spokenMeasurementStatus}
+            </p>
           </div>
           {/* Height Slider + Feet & Inches Controls (Imperial Primary, cm Secondary) */}
           <div className="space-y-2.5">
@@ -611,21 +995,56 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label
-                htmlFor="milestone-note-input"
-                className="block text-xs font-semibold text-slate-700"
-              >
-                Memory Note
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label
+                  htmlFor="milestone-note-input"
+                  className="block text-xs font-semibold text-slate-700"
+                >
+                  Memory Note
+                </label>
+                <button
+                  type="button"
+                  disabled={isTranscribingNote}
+                  onClick={() => void handleToggleVoiceNoteRecording()}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold rounded-md transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 ${
+                    isRecordingNote
+                      ? 'bg-rose-500 text-white hover:bg-rose-600'
+                      : 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100'
+                  }`}
+                >
+                  {isRecordingNote ? (
+                    <>
+                      <Square className="w-2.5 h-2.5 fill-current" aria-hidden="true" />
+                      Stop
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="w-3 h-3 text-indigo-700" aria-hidden="true" />
+                      {isTranscribingNote ? 'Transcribing...' : 'Voice Note'}
+                    </>
+                  )}
+                </button>
+              </div>
               <input
                 id="milestone-note-input"
                 type="text"
                 maxLength={VALIDATION_BOUNDS.NOTE_MAX_LEN}
-                placeholder="e.g. New school shoes!"
+                placeholder={
+                  isRecordingNote ? 'Listening... tap Stop when done' : 'e.g. New school shoes!'
+                }
                 value={draftNote}
                 onChange={(e) => onChangeDraftNote(e.target.value)}
                 className="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-600"
               />
+              {voiceNoteFeedback && (
+                <p
+                  className={`text-[11px] font-medium ${
+                    voiceNoteFeedback.type === 'error' ? 'text-rose-700' : 'text-emerald-700'
+                  }`}
+                >
+                  {voiceNoteFeedback.message}
+                </p>
+              )}
             </div>
           </div>
 
@@ -735,6 +1154,47 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               )}
             </div>
           </div>
+
+          {/* ElevenLabs Avatar Voice Selector (shown when ELEVENLABS_API_KEY is connected) */}
+          {elevenLabsConfigured && elevenLabsVoices.length > 0 && (
+            <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label
+                  htmlFor="elevenlabs-voice-select"
+                  className="text-xs font-bold text-indigo-950"
+                >
+                  Avatar Voice (ElevenLabs)
+                </label>
+                <button
+                  type="button"
+                  disabled={isTestingVoice}
+                  onClick={() => void handleTestSelectedVoice()}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-indigo-950 bg-white border border-indigo-200 hover:bg-indigo-100 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Volume2 className="w-3 h-3 text-indigo-700" aria-hidden="true" />
+                  {isTestingVoice ? 'Playing...' : 'Test Voice'}
+                </button>
+              </div>
+              <select
+                id="elevenlabs-voice-select"
+                value={selectedVoiceId}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setSelectedVoiceId(nextId);
+                  saveElevenLabsVoiceId(nextId);
+                }}
+                className="w-full h-9 px-2.5 text-xs font-medium bg-white border border-indigo-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {elevenLabsVoices.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                    {v.category !== 'premade' ? ` (${v.category})` : ''}
+                    {v.accent ? ` — ${v.accent}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Name + Date of Birth */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

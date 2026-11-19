@@ -1277,6 +1277,304 @@ async function startServer(): Promise<void> {
     });
   });
 
+  // ============================================================================
+  // ElevenLabs Voice & Scribe v3 Speech-to-Text Server-Side Proxy Routes
+  // ============================================================================
+
+  interface CachedElevenLabsVoice {
+    id: string;
+    name: string;
+    category: string;
+    accent: string;
+    previewUrl: string;
+  }
+
+  let cachedElevenLabsVoices: { fetchedAt: number; voices: CachedElevenLabsVoice[] } | null = null;
+  const ELEVENLABS_FALLBACK_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'; // Sarah — warm friendly default
+
+  const getElevenLabsKey = (): string => (process.env.ELEVENLABS_API_KEY || '').trim();
+
+  async function fetchElevenLabsVoicesFromApi(apiKey: string): Promise<CachedElevenLabsVoice[]> {
+    if (
+      cachedElevenLabsVoices &&
+      Date.now() - cachedElevenLabsVoices.fetchedAt < 5 * 60 * 1000
+    ) {
+      return cachedElevenLabsVoices.voices;
+    }
+
+    const upstream = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': apiKey },
+    });
+    if (!upstream.ok) {
+      const errText = await upstream.text().catch(() => '');
+      throw new Error(
+        `ElevenLabs voices request failed (${upstream.status}): ${errText.slice(0, 160)}`,
+      );
+    }
+
+    const json = (await upstream.json()) as {
+      voices?: Array<{
+        voice_id?: string;
+        name?: string;
+        category?: string;
+        labels?: Record<string, string>;
+        preview_url?: string;
+      }>;
+    };
+
+    const voices: CachedElevenLabsVoice[] = (json.voices || [])
+      .filter((v) => Boolean(v.voice_id && v.name))
+      .map((v) => ({
+        id: String(v.voice_id),
+        name: String(v.name),
+        category: String(v.category || 'premade'),
+        accent: String(v.labels?.accent || v.labels?.descriptive || ''),
+        previewUrl: String(v.preview_url || ''),
+      }));
+
+    cachedElevenLabsVoices = { fetchedAt: Date.now(), voices };
+    return voices;
+  }
+
+  app.get('/api/elevenlabs/status', (_req, res) => {
+    const configured = Boolean(getElevenLabsKey());
+    res.json({
+      configured,
+      defaultVoiceId: (process.env.ELEVENLABS_VOICE_ID || '').trim() || ELEVENLABS_FALLBACK_VOICE_ID,
+      sttModel: 'scribe_v3',
+    });
+  });
+
+  app.get('/api/elevenlabs/voices', async (_req, res) => {
+    const apiKey = getElevenLabsKey();
+    if (!apiKey) {
+      res.status(503).json({
+        configured: false,
+        voices: [],
+        error: 'ELEVENLABS_API_KEY is not configured in server secrets.',
+      });
+      return;
+    }
+
+    try {
+      const voices = await fetchElevenLabsVoicesFromApi(apiKey);
+      res.json({
+        configured: true,
+        defaultVoiceId:
+          (process.env.ELEVENLABS_VOICE_ID || '').trim() ||
+          voices[0]?.id ||
+          ELEVENLABS_FALLBACK_VOICE_ID,
+        voices,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to load ElevenLabs voices.';
+      res.status(502).json({ configured: true, voices: [], error: msg });
+    }
+  });
+
+  app.post('/api/elevenlabs/tts', async (req, res) => {
+    const apiKey = getElevenLabsKey();
+    if (!apiKey) {
+      res.status(503).json({
+        error: 'ELEVENLABS_API_KEY is not configured in server secrets.',
+      });
+      return;
+    }
+
+    const body = (req.body ?? {}) as {
+      text?: string;
+      voiceId?: string;
+      modelId?: string;
+    };
+
+    const cleanText = String(body.text || '').trim().slice(0, 600);
+    if (!cleanText) {
+      res.status(400).json({ error: 'Please provide text for the avatar to speak.' });
+      return;
+    }
+
+    const rawVoiceId = String(body.voiceId || process.env.ELEVENLABS_VOICE_ID || '').trim();
+    const safeVoiceId = /^[a-zA-Z0-9_-]{8,64}$/.test(rawVoiceId)
+      ? rawVoiceId
+      : ELEVENLABS_FALLBACK_VOICE_ID;
+    const modelId =
+      typeof body.modelId === 'string' && /^[a-zA-Z0-9_.-]{4,40}$/.test(body.modelId)
+        ? body.modelId
+        : 'eleven_multilingual_v2';
+
+    try {
+      const upstream = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(safeVoiceId)}`,
+        {
+          method: 'POST',
+          headers: {
+            'xi-api-key': apiKey,
+            'Content-Type': 'application/json',
+            Accept: 'audio/mpeg',
+          },
+          body: JSON.stringify({
+            text: cleanText,
+            model_id: modelId,
+            voice_settings: {
+              stability: 0.55,
+              similarity_boost: 0.8,
+              style: 0.25,
+              use_speaker_boost: true,
+            },
+          }),
+        },
+      );
+
+      if (!upstream.ok) {
+        const errText = await upstream.text().catch(() => '');
+        res.status(upstream.status === 401 ? 401 : 502).json({
+          error:
+            errText.slice(0, 240) ||
+            `ElevenLabs Text-to-Speech failed with status ${upstream.status}.`,
+        });
+        return;
+      }
+
+      const audioBuffer = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.send(audioBuffer);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'ElevenLabs TTS request failed.';
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  app.post('/api/elevenlabs/stt', async (req, res) => {
+    const apiKey = getElevenLabsKey();
+    if (!apiKey) {
+      res.status(503).json({
+        error: 'ELEVENLABS_API_KEY is not configured in server secrets.',
+      });
+      return;
+    }
+
+    const body = (req.body ?? {}) as {
+      audioBase64?: string;
+      mimeType?: string;
+      languageCode?: string | null;
+      tagAudioEvents?: boolean;
+      diarize?: boolean;
+    };
+
+    const rawBase64 = String(body.audioBase64 || '').trim();
+    if (!rawBase64) {
+      res.status(400).json({ error: 'Missing recorded audio payload.' });
+      return;
+    }
+
+    const cleanBase64 = rawBase64.includes(',') ? rawBase64.split(',')[1] : rawBase64;
+    const audioBuffer = Buffer.from(cleanBase64, 'base64');
+    if (audioBuffer.length < 200 || audioBuffer.length > 15 * 1024 * 1024) {
+      res.status(400).json({ error: 'Recorded audio must be between 200 bytes and 15 MB.' });
+      return;
+    }
+
+    const mimeType =
+      typeof body.mimeType === 'string' && body.mimeType.startsWith('audio/')
+        ? body.mimeType.split(';')[0]
+        : 'audio/webm';
+    const ext =
+      mimeType.includes('mp4') || mimeType.includes('m4a')
+        ? 'm4a'
+        : mimeType.includes('ogg')
+          ? 'ogg'
+          : mimeType.includes('wav')
+            ? 'wav'
+            : mimeType.includes('mpeg')
+              ? 'mp3'
+              : 'webm';
+
+    const tagAudioEvents = body.tagAudioEvents !== false;
+    const diarize = body.diarize !== false;
+    const languageCode =
+      typeof body.languageCode === 'string' && /^[a-z]{2,3}$/i.test(body.languageCode.trim())
+        ? body.languageCode.trim().toLowerCase()
+        : 'eng';
+
+    const callScribe = async (modelId: string) => {
+      const form = new FormData();
+      form.append('file', new Blob([audioBuffer], { type: mimeType }), `voice-note.${ext}`);
+      form.append('model_id', modelId);
+      form.append('tag_audio_events', String(tagAudioEvents));
+      form.append('diarize', String(diarize));
+      if (languageCode) {
+        form.append('language_code', languageCode);
+      }
+
+      const upstream = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey,
+        },
+        body: form,
+      });
+
+      const rawText = await upstream.text().catch(() => '');
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
+      } catch {
+        parsed = { detail: rawText };
+      }
+      return { ok: upstream.ok, status: upstream.status, parsed, modelId };
+    };
+
+    try {
+      let result = await callScribe('scribe_v3');
+      // Graceful fallback to scribe_v2 if an account tier hasn't enabled scribe_v3 yet
+      if (!result.ok && (result.status === 400 || result.status === 404 || result.status === 422)) {
+        result = await callScribe('scribe_v2');
+      }
+
+      if (!result.ok) {
+        const detail =
+          typeof result.parsed.detail === 'string'
+            ? result.parsed.detail
+            : typeof (result.parsed.detail as { message?: string } | undefined)?.message === 'string'
+              ? String((result.parsed.detail as { message?: string }).message)
+              : `ElevenLabs Speech-to-Text failed (${result.status}).`;
+        res.status(result.status === 401 ? 401 : 502).json({ error: detail });
+        return;
+      }
+
+      const text = String(result.parsed.text || '').trim();
+      const words = Array.isArray(result.parsed.words)
+        ? (result.parsed.words as Array<{ type?: string; text?: string; speaker_id?: string }>)
+        : [];
+      const audioEvents = Array.from(
+        new Set(
+          words
+            .filter((w) => w.type === 'audio_event' && w.text)
+            .map((w) => String(w.text).trim()),
+        ),
+      );
+      const speakers = Array.from(
+        new Set(
+          words
+            .filter((w) => w.speaker_id)
+            .map((w) => String(w.speaker_id)),
+        ),
+      );
+
+      res.json({
+        ok: true,
+        text,
+        audioEvents,
+        speakers,
+        modelUsed: result.modelId,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Speech-to-text transcription failed.';
+      res.status(500).json({ error: msg });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
