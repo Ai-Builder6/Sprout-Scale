@@ -21,12 +21,12 @@ import {
   Cake,
   Camera,
   ChartLine,
+  Gamepad2,
   Image as ImageIcon,
   LogOut,
   Plus,
   Ruler,
   Share2,
-  SlidersHorizontal,
   Smartphone,
 } from 'lucide-react';
 import {
@@ -100,6 +100,7 @@ import {
   OfflineIndicator,
   PWAInstallActionStrip,
 } from './components/MobileAppDownloadModal';
+import { KidsPlayroomPage } from './components/kidsGames/KidsPlayroomPage';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import {
   compressPhotoToStorageJpeg,
@@ -219,7 +220,8 @@ function SproutScaleWorkspace() {
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [isSyncingBatchPhotos, setIsSyncingBatchPhotos] = useState(false);
 
-  // Active child & UI controls
+  // Active child, Page View Tab ('growth_wall' | 'playroom') & UI controls
+  const [appView, setAppView] = useState<'growth_wall' | 'playroom'>('growth_wall');
   const [selectedChildId, setSelectedChildId] = useState<string>(loadStoredSelectedChildId);
   const [activeDeckTab, setActiveDeckTab] = useState<ControlDeckTab>('measure');
   const [isAddChildModalOpen, setIsAddChildModalOpen] = useState<boolean>(false);
@@ -322,8 +324,26 @@ function SproutScaleWorkspace() {
   const [isWallEstimatorOpen, setIsWallEstimatorOpen] = useState<boolean>(false);
   const [isMobileAppModalOpen, setIsMobileAppModalOpen] = useState<boolean>(false);
   const [mobileNavActive, setMobileNavActive] = useState<
-    'wall' | 'measure' | 'ruler' | 'history' | 'app'
+    'wall' | 'games' | 'ruler' | 'history' | 'app'
   >('wall');
+
+  const navigateToGrowthWall = (sectionId?: string) => {
+    setAppView('growth_wall');
+    setMobileNavActive(sectionId === 'timeline' ? 'history' : 'wall');
+    if (sectionId) {
+      window.setTimeout(() => {
+        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+      }, 40);
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const navigateToPlayroom = () => {
+    setAppView('playroom');
+    setMobileNavActive('games');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const { isInstallable, isInstalled, isIOS, isAndroid, install } = usePWAInstall();
 
@@ -2947,25 +2967,41 @@ function SproutScaleWorkspace() {
       <header className="md:sticky md:top-0 z-30 bg-white/95 backdrop-blur-xs border-b-2 border-amber-300">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-8 px-4 sm:px-6 py-3">
           {/* Zone 1: Single Wordmark Element */}
-          <a
-            href="#measure"
-            className="text-xl font-bold tracking-tight text-indigo-950 font-display whitespace-nowrap shrink-0"
+          <button
+            type="button"
+            onClick={() => navigateToGrowthWall('measure')}
+            className="text-xl font-bold tracking-tight text-indigo-950 font-display whitespace-nowrap shrink-0 cursor-pointer"
           >
             SproutScale
-          </a>
+          </button>
 
           {/* Zone 2: 5 Concise Single-Line Navigation Links */}
           <nav
             aria-label="Primary navigation"
             className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-700"
           >
-            <a
-              href="#measure"
-              onClick={() => setActiveDeckTab('measure')}
-              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            <button
+              type="button"
+              onClick={() => {
+                setActiveDeckTab('measure');
+                navigateToGrowthWall('measure');
+              }}
+              className={`hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                appView === 'growth_wall' ? 'text-indigo-950 underline' : ''
+              }`}
             >
               Growth Wall
-            </a>
+            </button>
+            <button
+              type="button"
+              onClick={navigateToPlayroom}
+              className={`inline-flex items-center gap-1.5 hover:text-emerald-700 hover:underline decoration-2 decoration-emerald-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                appView === 'playroom' ? 'text-emerald-700 font-bold underline' : ''
+              }`}
+            >
+              <Gamepad2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+              Kids Games
+            </button>
             <button
               type="button"
               onClick={() => setIsWallEstimatorOpen(true)}
@@ -2973,18 +3009,13 @@ function SproutScaleWorkspace() {
             >
               Photo Ruler
             </button>
-            <a
-              href="#timeline"
-              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            <button
+              type="button"
+              onClick={() => navigateToGrowthWall('timeline')}
+              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Milestones
-            </a>
-            <a
-              href="#drive-vault"
-              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              Google Drive
-            </a>
+            </button>
             <button
               type="button"
               onClick={() => setIsMobileAppModalOpen(true)}
@@ -3003,14 +3034,17 @@ function SproutScaleWorkspace() {
                 compact
               />
             ) : (
-              <a
-                href="#measure"
-                onClick={() => setActiveDeckTab('measure')}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-xs transition-colors whitespace-nowrap shrink-0"
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDeckTab('measure');
+                  navigateToGrowthWall('measure');
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                 Mark Measurement
-              </a>
+              </button>
             )}
           </div>
         </div>
@@ -3018,6 +3052,20 @@ function SproutScaleWorkspace() {
 
       {/* Main Content Container (1440px Desktop Presence via max-w-7xl) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-12">
+        {appView === 'playroom' ? (
+          <KidsPlayroomPage
+            activeChild={activeChild}
+            childrenList={activeChildrenList}
+            avatarPhotoMap={avatarPhotoMap}
+            activeChildHeightCm={draftHeightCm}
+            onSelectChild={(kidId) => {
+              pendingChildIdRef.current = null;
+              selectChildProfile(kidId);
+            }}
+            onBackToGrowthWall={() => navigateToGrowthWall('measure')}
+          />
+        ) : (
+          <>
         {/* Hero Intro & Sibling Switcher Workspace Bar */}
         <section id="measure" className="space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
@@ -3098,6 +3146,15 @@ function SproutScaleWorkspace() {
                 >
                   <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
                   Share to FB / IG
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={navigateToPlayroom}
+                  className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:text-indigo-950 hover:underline whitespace-nowrap cursor-pointer"
+                >
+                  <Gamepad2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  Kids Playroom (Ages 2–4)
                 </button>
               </div>
             </div>
@@ -3361,6 +3418,8 @@ function SproutScaleWorkspace() {
         <HowToMeasureSection
           onOpenWallHeightEstimator={() => setIsWallEstimatorOpen(true)}
         />
+          </>
+        )}
       </main>
 
       {/* Clean Quiet Footer (extra bottom padding on mobile for thumb-zone tab bar) */}
@@ -3370,21 +3429,48 @@ function SproutScaleWorkspace() {
             SproutScale — Family Height &amp; Weight Growth Wall
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4">
-            <a href="#measure" className="hover:text-sky-700 transition-colors whitespace-nowrap">
+            <button
+              type="button"
+              onClick={() => navigateToGrowthWall('measure')}
+              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+            >
               Growth Wall
-            </a>
-            <a href="#timeline" className="hover:text-sky-700 transition-colors whitespace-nowrap">
+            </button>
+            <button
+              type="button"
+              onClick={navigateToPlayroom}
+              className="font-semibold text-emerald-700 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
+            >
+              Kids Games (Ages 2–4)
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToGrowthWall('timeline')}
+              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+            >
               Milestones
-            </a>
-            <a href="#photo-album" className="hover:text-sky-700 transition-colors whitespace-nowrap">
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToGrowthWall('photo-album')}
+              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+            >
               Saved Photos
-            </a>
-            <a href="#drive-vault" className="hover:text-sky-700 transition-colors whitespace-nowrap">
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToGrowthWall('drive-vault')}
+              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+            >
               Google Drive
-            </a>
-            <a href="#how-to-measure" className="hover:text-sky-700 transition-colors whitespace-nowrap">
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateToGrowthWall('how-to-measure')}
+              className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+            >
               Measuring Tips
-            </a>
+            </button>
             <button
               type="button"
               onClick={() => setIsMobileAppModalOpen(true)}
@@ -3403,12 +3489,11 @@ function SproutScaleWorkspace() {
       >
         <button
           type="button"
-          onClick={() => {
-            setMobileNavActive('wall');
-            document.getElementById('measure')?.scrollIntoView({ behavior: 'smooth' });
-          }}
+          onClick={() => navigateToGrowthWall('measure')}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
-            mobileNavActive === 'wall' ? 'text-sky-700 font-bold' : 'text-slate-600'
+            appView === 'growth_wall' && mobileNavActive === 'wall'
+              ? 'text-sky-700 font-bold'
+              : 'text-slate-600'
           }`}
         >
           <Smartphone className="w-4 h-4" aria-hidden="true" />
@@ -3417,19 +3502,13 @@ function SproutScaleWorkspace() {
 
         <button
           type="button"
-          onClick={() => {
-            setMobileNavActive('measure');
-            setActiveDeckTab('measure');
-            document
-              .getElementById('control-deck-panel')
-              ?.scrollIntoView({ behavior: 'smooth' });
-          }}
+          onClick={navigateToPlayroom}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
-            mobileNavActive === 'measure' ? 'text-sky-700 font-bold' : 'text-slate-600'
+            appView === 'playroom' ? 'text-emerald-700 font-bold' : 'text-slate-600'
           }`}
         >
-          <SlidersHorizontal className="w-4 h-4" aria-hidden="true" />
-          <span className="text-[10px] leading-none whitespace-nowrap">Measure</span>
+          <Gamepad2 className="w-4 h-4" aria-hidden="true" />
+          <span className="text-[10px] leading-none whitespace-nowrap">Games</span>
         </button>
 
         <button
@@ -3448,12 +3527,11 @@ function SproutScaleWorkspace() {
 
         <button
           type="button"
-          onClick={() => {
-            setMobileNavActive('history');
-            document.getElementById('timeline')?.scrollIntoView({ behavior: 'smooth' });
-          }}
+          onClick={() => navigateToGrowthWall('timeline')}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
-            mobileNavActive === 'history' ? 'text-sky-700 font-bold' : 'text-slate-600'
+            appView === 'growth_wall' && mobileNavActive === 'history'
+              ? 'text-sky-700 font-bold'
+              : 'text-slate-600'
           }`}
         >
           <ChartLine className="w-4 h-4" aria-hidden="true" />
