@@ -106,6 +106,7 @@ import {
   LegalPageId,
   LegalSupportPages,
 } from './components/LegalSupportPages';
+import { LogoDownloadModal } from './components/LogoDownloadCard';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import {
   clearAllLocalPhotoStorage,
@@ -363,6 +364,7 @@ function SproutScaleWorkspace() {
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isWallEstimatorOpen, setIsWallEstimatorOpen] = useState<boolean>(false);
   const [isMobileAppModalOpen, setIsMobileAppModalOpen] = useState<boolean>(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
   const [mobileNavActive, setMobileNavActive] = useState<
     'wall' | 'games' | 'ruler' | 'history' | 'app'
   >('wall');
@@ -3690,6 +3692,13 @@ function SproutScaleWorkspace() {
               >
                 Data Deletion
               </a>
+              <button
+                type="button"
+                onClick={() => setIsLogoModalOpen(true)}
+                className="font-semibold text-sky-700 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                Download Logo (1024×1024)
+              </button>
             </div>
             <span>Parent-controlled family growth keepsake</span>
           </div>
@@ -3850,6 +3859,12 @@ function SproutScaleWorkspace() {
           setIsSocialShareOpen(false);
           setSocialShareContext(null);
         }}
+      />
+
+      {/* Downloadable SproutScale Brand Logo & 1024x1024 Meta App Icon Modal */}
+      <LogoDownloadModal
+        isOpen={isLogoModalOpen}
+        onClose={() => setIsLogoModalOpen(false)}
       />
     </div>
   );

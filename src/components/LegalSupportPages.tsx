@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
+import { LogoDownloadCard } from './LogoDownloadCard';
 
 export type LegalPageId = 'privacy' | 'terms' | 'support' | 'contact' | 'data-deletion';
 
@@ -616,6 +617,8 @@ export const LegalSupportPages: React.FC<LegalSupportPagesProps> = ({
               </div>
             ))}
           </div>
+
+          <LogoDownloadCard compact />
         </div>
       )}
 
@@ -1058,6 +1061,9 @@ export const LegalSupportPages: React.FC<LegalSupportPagesProps> = ({
               ))}
             </div>
           </div>
+
+          {/* Downloadable Meta App Icon (1024x1024 PNG) & Brand Logo */}
+          <LogoDownloadCard compact />
         </div>
       )}
     </section>
