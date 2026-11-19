@@ -1,6 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowUpRight, Check, Download, FileText, Trash2 } from 'lucide-react';
 import {
+  ArrowUpRight,
+  Camera,
+  Check,
+  Download,
+  FileText,
+  Image as ImageIcon,
+  Trash2,
+} from 'lucide-react';
+import {
+  ChildPhotoRecord,
   ChildProfile,
   cmToInches,
   formatAgeLabel,
@@ -14,6 +23,7 @@ import {
   GrowthMeasurement,
   inchesToCm,
   kgToLbs,
+  MilestoneEventRecord,
 } from '../types';
 import {
   computeGrowthProgressSummary,
@@ -25,17 +35,23 @@ import { GrowthMusicKeepsakeCard } from './GrowthMusicKeepsakeCard';
 interface GrowthTimelineSectionProps {
   childProfile: ChildProfile;
   measurements: GrowthMeasurement[];
+  photos?: ChildPhotoRecord[];
+  events?: MilestoneEventRecord[];
   avatarPhotoUrl?: string | null;
   onInspectMilestone: (measurement: GrowthMeasurement) => void;
   onDeleteMeasurement: (measurementId: string) => Promise<void>;
+  onAddPhotoForMilestone?: (measurement: GrowthMeasurement) => void;
 }
 
 export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
   childProfile,
   measurements,
+  photos = [],
+  events = [],
   avatarPhotoUrl = null,
   onInspectMilestone,
   onDeleteMeasurement,
+  onAddPhotoForMilestone,
 }) => {
   const [chartMetric, setChartMetric] = useState<'height' | 'weight'>('height');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -430,6 +446,14 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                   const hDelta = m.heightCm - childProfile.ageTwoHeightCm;
                   const wDelta = m.weightKg - childProfile.ageTwoWeightKg;
                   const isConfirming = confirmDeleteId === m.id;
+                  const syncedPhotos = photos.filter(
+                    (p) =>
+                      p.linkedMeasurementId === m.id || p.capturedDate === m.recordedDate,
+                  );
+                  const syncedEvents = events.filter(
+                    (ev) =>
+                      ev.linkedMeasurementId === m.id || ev.eventDate === m.recordedDate,
+                  );
 
                   return (
                     <tr
@@ -479,12 +503,43 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 text-xs text-slate-600 max-w-xs truncate">
-                        {m.note || '—'}
+                      <td className="py-3.5 px-4 text-xs text-slate-600 max-w-xs">
+                        <div className="truncate">
+                          {m.note || syncedEvents[0]?.title || '—'}
+                        </div>
+                        {(syncedPhotos.length > 0 || syncedEvents.length > 0) && (
+                          <a
+                            href="#photo-album"
+                            className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-semibold text-sky-800 hover:text-indigo-950 hover:underline whitespace-nowrap"
+                          >
+                            <ImageIcon className="w-3 h-3 shrink-0" aria-hidden="true" />
+                            <span>
+                              {syncedPhotos.length > 0
+                                ? `${syncedPhotos.length} ${syncedPhotos.length === 1 ? 'photo' : 'photos'}`
+                                : ''}
+                              {syncedPhotos.length > 0 && syncedEvents.length > 0 ? ' · ' : ''}
+                              {syncedEvents.length > 0
+                                ? `${syncedEvents.length} ${syncedEvents.length === 1 ? 'event' : 'events'}`
+                                : ''}{' '}
+                              in portfolio
+                            </span>
+                          </a>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-5 text-right whitespace-nowrap">
                         <div className="inline-flex items-center justify-end gap-3">
+                          {onAddPhotoForMilestone && (
+                            <button
+                              type="button"
+                              onClick={() => onAddPhotoForMilestone(m)}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-sky-800 hover:text-indigo-950 whitespace-nowrap shrink-0 cursor-pointer"
+                            >
+                              <Camera className="w-3.5 h-3.5" aria-hidden="true" />
+                              Add Photo
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => onInspectMilestone(m)}

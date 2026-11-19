@@ -171,7 +171,7 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
-    // Validation Blueprint: ChildPhoto (metadata only — raw images stored in IndexedDB / Google Drive)
+    // Validation Blueprint: ChildPhoto (synced gallery metadata — raw images in IndexedDB / Google Drive)
     function isValidChildPhoto(data, childId) {
       return data.keys().hasAll([
           'ownerId',
@@ -195,6 +195,9 @@ service cloud.firestore {
           'heightCm',
           'weightKg',
           'caption',
+          'eventTitle',
+          'linkedMeasurementId',
+          'isFavorite',
           'driveFileId',
           'createdAt',
           'updatedAt'
@@ -212,7 +215,7 @@ service cloud.firestore {
         data.kind is string &&
         data.kind.size() >= 1 &&
         data.kind.size() <= 16 &&
-        data.kind in ['avatar', 'wall'] &&
+        data.kind in ['avatar', 'wall', 'milestone', 'event', 'school', 'family'] &&
         data.capturedDate is string &&
         data.capturedDate.size() == 10 &&
         data.capturedDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
@@ -226,10 +229,97 @@ service cloud.firestore {
         data.weightKg >= 0 &&
         data.weightKg <= 120 &&
         data.caption is string &&
-        data.caption.size() <= 120 &&
+        data.caption.size() <= 240 &&
+        (!('eventTitle' in data) || (
+          data.eventTitle is string &&
+          data.eventTitle.size() <= 80
+        )) &&
+        (!('linkedMeasurementId' in data) || (
+          data.linkedMeasurementId is string &&
+          data.linkedMeasurementId.size() <= 128 &&
+          (data.linkedMeasurementId.size() == 0 || data.linkedMeasurementId.matches('^[a-zA-Z0-9_\\-]+$'))
+        )) &&
+        (!('isFavorite' in data) || (
+          data.isFavorite is bool
+        )) &&
         data.driveFileId is string &&
         data.driveFileId.size() <= 128 &&
         (data.driveFileId.size() == 0 || data.driveFileId.matches('^[a-zA-Z0-9_\\-]+$')) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: MilestoneEvent (life events & portfolio moments synced with dates & measurements)
+    function isValidMilestoneEvent(data, childId) {
+      return data.keys().hasAll([
+          'ownerId',
+          'childId',
+          'title',
+          'category',
+          'eventDate',
+          'ageMonths',
+          'story',
+          'heightCm',
+          'weightKg',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerId',
+          'childId',
+          'title',
+          'category',
+          'eventDate',
+          'ageMonths',
+          'story',
+          'heightCm',
+          'weightKg',
+          'linkedMeasurementId',
+          'linkedPhotoId',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.ownerId is string &&
+        data.ownerId.size() >= 1 &&
+        data.ownerId.size() <= 128 &&
+        data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.ownerId == request.auth.uid &&
+        data.childId is string &&
+        data.childId.size() >= 1 &&
+        data.childId.size() <= 128 &&
+        data.childId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.childId == childId &&
+        data.title is string &&
+        data.title.size() >= 1 &&
+        data.title.size() <= 80 &&
+        data.category is string &&
+        data.category.size() >= 1 &&
+        data.category.size() <= 16 &&
+        data.category in ['birthday', 'firsts', 'school', 'health', 'adventure', 'celebration'] &&
+        data.eventDate is string &&
+        data.eventDate.size() == 10 &&
+        data.eventDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        data.ageMonths is number &&
+        data.ageMonths >= 0 &&
+        data.ageMonths <= 216 &&
+        data.story is string &&
+        data.story.size() <= 400 &&
+        data.heightCm is number &&
+        data.heightCm >= 0 &&
+        data.heightCm <= 210 &&
+        data.weightKg is number &&
+        data.weightKg >= 0 &&
+        data.weightKg <= 120 &&
+        (!('linkedMeasurementId' in data) || (
+          data.linkedMeasurementId is string &&
+          data.linkedMeasurementId.size() <= 128 &&
+          (data.linkedMeasurementId.size() == 0 || data.linkedMeasurementId.matches('^[a-zA-Z0-9_\\-]+$'))
+        )) &&
+        (!('linkedPhotoId' in data) || (
+          data.linkedPhotoId is string &&
+          data.linkedPhotoId.size() <= 128 &&
+          (data.linkedPhotoId.size() == 0 || data.linkedPhotoId.matches('^[a-zA-Z0-9_\\-]+$'))
+        )) &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -357,20 +447,82 @@ service cloud.firestore {
           incoming().ownerId == existing().ownerId &&
           incoming().childId == existing().childId &&
           incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time && (
+            // Action 1: Edit gallery portfolio details, date, favorite flag, or linked measurement
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'kind',
+              'capturedDate',
+              'ageMonths',
+              'heightCm',
+              'weightKg',
+              'caption',
+              'eventTitle',
+              'linkedMeasurementId',
+              'isFavorite',
+              'driveFileId',
+              'updatedAt'
+            ]) ||
+            // Action 2: Sync Google Drive backup file ID only
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'driveFileId',
+              'updatedAt'
+            ])
+          ) &&
+          isParentChildOwner(childId);
+
+        allow delete: if isVerifiedUser() &&
+          isValidId(childId) &&
+          isValidId(photoId) &&
+          existing().ownerId == request.auth.uid &&
+          isParentChildOwner(childId);
+      }
+
+      // Subcollection: /children/{childId}/events/{eventId}
+      match /events/{eventId} {
+        allow get: if isVerifiedUser() &&
+          isValidId(childId) &&
+          isValidId(eventId) &&
+          existing().ownerId == request.auth.uid &&
+          existing().childId == childId &&
+          isParentChildOwner(childId);
+
+        allow list: if isVerifiedUser() &&
+          existing().ownerId == request.auth.uid;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(childId) &&
+          isValidId(eventId) &&
+          isValidMilestoneEvent(incoming(), childId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isParentChildOwner(childId);
+
+        allow update: if isVerifiedUser() &&
+          isValidId(childId) &&
+          isValidId(eventId) &&
+          isValidMilestoneEvent(incoming(), childId) &&
+          existing().ownerId == request.auth.uid &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().childId == existing().childId &&
+          incoming().createdAt == existing().createdAt &&
           incoming().updatedAt == request.time &&
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'caption',
+            'title',
+            'category',
+            'eventDate',
+            'ageMonths',
+            'story',
             'heightCm',
             'weightKg',
-            'ageMonths',
-            'driveFileId',
+            'linkedMeasurementId',
+            'linkedPhotoId',
             'updatedAt'
           ]) &&
           isParentChildOwner(childId);
 
         allow delete: if isVerifiedUser() &&
           isValidId(childId) &&
-          isValidId(photoId) &&
+          isValidId(eventId) &&
           existing().ownerId == request.auth.uid &&
           isParentChildOwner(childId);
       }

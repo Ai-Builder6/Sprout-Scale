@@ -48,6 +48,7 @@ import {
   ChildProfile,
   clampNumber,
   DEMO_CHILD,
+  DEMO_EVENTS,
   DEMO_MEASUREMENTS,
   formatFeetInches,
   formatHumanDate,
@@ -58,10 +59,13 @@ import {
   GrowthMeasurement,
   HAIR_COLOR_PRESETS,
   HairStyle,
+  MilestoneEventRecord,
   PaletteId,
   sanitizeBiologicalSex,
+  sanitizeEventCategory,
   sanitizeHexColor,
   sanitizeId,
+  sanitizePhotoKind,
   SKIN_TONE_PRESETS,
   VALIDATION_BOUNDS,
 } from './types';
@@ -72,7 +76,15 @@ import {
   MeasurementControlDeck,
 } from './components/MeasurementControlDeck';
 import { GrowthTimelineSection } from './components/GrowthTimelineSection';
-import { ChildPhotoAlbumSection } from './components/ChildPhotoAlbumSection';
+import {
+  ChildPhotoAlbumSection,
+  PhotoDetailsPatch,
+} from './components/ChildPhotoAlbumSection';
+import {
+  AddPortfolioMemoryModal,
+  CreatePortfolioMemoryPayload,
+  InitialMemoryModalContext,
+} from './components/AddPortfolioMemoryModal';
 import { HowToMeasureSection } from './components/HowToMeasureSection';
 import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { GoogleDriveVaultSection } from './components/GoogleDriveVaultSection';
@@ -107,6 +119,7 @@ import {
 
 const GUEST_CHILDREN_STORAGE_KEY = 'sproutscale_guest_children_v1';
 const GUEST_MEASUREMENTS_STORAGE_KEY = 'sproutscale_guest_measurements_v1';
+const GUEST_EVENTS_STORAGE_KEY = 'sproutscale_guest_events_v1';
 const SELECTED_CHILD_STORAGE_KEY = 'sproutscale_selected_child_id_v1';
 
 function loadStoredGuestChildren(): ChildProfile[] {
@@ -139,6 +152,20 @@ function loadStoredGuestMeasurements(): Record<string, GrowthMeasurement[]> {
   return { [DEMO_CHILD.id]: DEMO_MEASUREMENTS };
 }
 
+function loadStoredGuestEvents(): Record<string, MilestoneEventRecord[]> {
+  try {
+    const raw = window.localStorage.getItem(GUEST_EVENTS_STORAGE_KEY);
+    if (!raw) return { [DEMO_CHILD.id]: DEMO_EVENTS };
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as Record<string, MilestoneEventRecord[]>;
+    }
+  } catch {
+    // Ignore storage read errors
+  }
+  return { [DEMO_CHILD.id]: DEMO_EVENTS };
+}
+
 function loadStoredSelectedChildId(): string {
   try {
     const saved = window.localStorage.getItem(SELECTED_CHILD_STORAGE_KEY);
@@ -167,6 +194,9 @@ function SproutScaleWorkspace() {
   const [demoMeasurementsMap, setDemoMeasurementsMap] = useState<
     Record<string, GrowthMeasurement[]>
   >(loadStoredGuestMeasurements);
+  const [demoEventsMap, setDemoEventsMap] = useState<
+    Record<string, MilestoneEventRecord[]>
+  >(loadStoredGuestEvents);
 
   // Cloud Firestore state isolated strictly per childId so sibling data never bleeds across children!
   const [cloudChildren, setCloudChildren] = useState<ChildProfile[]>([]);
@@ -176,15 +206,22 @@ function SproutScaleWorkspace() {
   const [cloudPhotosByChild, setCloudPhotosByChild] = useState<
     Record<string, ChildPhotoRecord[]>
   >({});
+  const [cloudEventsByChild, setCloudEventsByChild] = useState<
+    Record<string, MilestoneEventRecord[]>
+  >({});
   const [localPhotosByChild, setLocalPhotosByChild] = useState<
     Record<string, SavedLocalPhotoRecord[]>
   >({});
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
+  const [isSyncingBatchPhotos, setIsSyncingBatchPhotos] = useState(false);
 
   // Active child & UI controls
   const [selectedChildId, setSelectedChildId] = useState<string>(loadStoredSelectedChildId);
   const [activeDeckTab, setActiveDeckTab] = useState<ControlDeckTab>('measure');
   const [isAddChildModalOpen, setIsAddChildModalOpen] = useState<boolean>(false);
+  const [isMemoryModalOpen, setIsMemoryModalOpen] = useState<boolean>(false);
+  const [memoryModalContext, setMemoryModalContext] =
+    useState<InitialMemoryModalContext | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [statusBanner, setStatusBanner] = useState<{
     type: 'success' | 'error';
@@ -196,6 +233,7 @@ function SproutScaleWorkspace() {
   const pendingChildIdRef = useRef<string | null>(null);
   const demoChildrenRef = useRef<ChildProfile[]>(demoChildren);
   const demoMeasurementsMapRef = useRef<Record<string, GrowthMeasurement[]>>(demoMeasurementsMap);
+  const demoEventsMapRef = useRef<Record<string, MilestoneEventRecord[]>>(demoEventsMap);
 
   // Synchronously update selectedChildIdRef + localStorage + React state together
   const selectChildProfile = (nextChildId: string) => {
@@ -206,6 +244,11 @@ function SproutScaleWorkspace() {
     } catch {
       // Ignore storage write errors
     }
+  };
+
+  const openAddMemoryModal = (ctx?: InitialMemoryModalContext) => {
+    setMemoryModalContext(ctx ?? null);
+    setIsMemoryModalOpen(true);
   };
 
   useEffect(() => {
@@ -237,6 +280,18 @@ function SproutScaleWorkspace() {
       // Ignore storage write errors
     }
   }, [demoMeasurementsMap]);
+
+  useEffect(() => {
+    demoEventsMapRef.current = demoEventsMap;
+    try {
+      window.localStorage.setItem(
+        GUEST_EVENTS_STORAGE_KEY,
+        JSON.stringify(demoEventsMap),
+      );
+    } catch {
+      // Ignore storage write errors
+    }
+  }, [demoEventsMap]);
 
   // Live Interactive Measurement Draft (drives the growing character on the wall in real time!)
   const [draftHeightCm, setDraftHeightCm] = useState<number>(116.5);
@@ -291,6 +346,15 @@ function SproutScaleWorkspace() {
     return demoMeasurementsMap[activeChild.id] ?? [];
   }, [user, cloudMeasurementsByChild, demoMeasurementsMap, activeChild.id]);
 
+  const activeEvents: MilestoneEventRecord[] = useMemo(() => {
+    if (user) {
+      return (cloudEventsByChild[activeChild.id] ?? []).filter(
+        (ev) => ev.childId === activeChild.id,
+      );
+    }
+    return demoEventsMap[activeChild.id] ?? [];
+  }, [user, cloudEventsByChild, demoEventsMap, activeChild.id]);
+
   // Merge Firestore photo metadata with IndexedDB local image data strictly for activeChild
   const activePhotos: ChildPhotoRecord[] = useMemo(() => {
     const childLocalPhotos = localPhotosByChild[activeChild.id] ?? [];
@@ -311,6 +375,9 @@ function SproutScaleWorkspace() {
         const match = localById.get(cp.id);
         mergedMap.set(cp.id, {
           ...cp,
+          eventTitle: cp.eventTitle ?? match?.eventTitle,
+          linkedMeasurementId: cp.linkedMeasurementId ?? match?.linkedMeasurementId,
+          isFavorite: cp.isFavorite ?? match?.isFavorite ?? false,
           localDataUrl: match?.dataUrl,
         });
       }
@@ -323,12 +390,15 @@ function SproutScaleWorkspace() {
           id: lp.id,
           ownerId: user ? user.uid : 'demo_family',
           childId: lp.childId,
-          kind: lp.kind,
+          kind: sanitizePhotoKind(lp.kind),
           capturedDate: lp.capturedDate,
           ageMonths: lp.ageMonths,
           heightCm: lp.heightCm,
           weightKg: lp.weightKg,
           caption: lp.caption,
+          eventTitle: lp.eventTitle,
+          linkedMeasurementId: lp.linkedMeasurementId,
+          isFavorite: Boolean(lp.isFavorite),
           driveFileId: lp.driveFileId,
           createdAtMs: lp.createdAtMs,
           localDataUrl: lp.dataUrl,
@@ -515,6 +585,41 @@ function SproutScaleWorkspace() {
                 weightKg: kid.ageTwoWeightKg,
                 recordedDate: getTodayIsoDate(),
                 note: 'Age 2 starting height & weight baseline',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+            }
+
+            const localEvs = demoEventsMapRef.current[kid.id] ?? [];
+            for (let evIdx = 0; evIdx < localEvs.length; evIdx += 1) {
+              const ev = localEvs[evIdx];
+              const evId = sanitizeId(`evt_${childId}_${evIdx}_${ev.ageMonths}m`);
+              const safeTitle =
+                String(ev.title ?? '')
+                  .trim()
+                  .slice(0, VALIDATION_BOUNDS.EVENT_TITLE_MAX_LEN) || 'Milestone Memory';
+              await setDoc(doc(db, 'children', childId, 'events', evId), {
+                ownerId: currentUser.uid,
+                childId,
+                title: safeTitle,
+                category: sanitizeEventCategory(ev.category),
+                eventDate: VALIDATION_BOUNDS.DATE_PATTERN.test(ev.eventDate)
+                  ? ev.eventDate
+                  : getTodayIsoDate(),
+                ageMonths: Math.round(
+                  clampNumber(
+                    ev.ageMonths,
+                    VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+                    VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+                  ),
+                ),
+                story: String(ev.story ?? '').slice(0, VALIDATION_BOUNDS.EVENT_STORY_MAX_LEN),
+                heightCm: Number(
+                  clampNumber(ev.heightCm ?? 0, 0, VALIDATION_BOUNDS.HEIGHT_CM_MAX).toFixed(1),
+                ),
+                weightKg: Number(
+                  clampNumber(ev.weightKg ?? 0, 0, VALIDATION_BOUNDS.WEIGHT_KG_MAX).toFixed(1),
+                ),
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
               });
@@ -743,17 +848,22 @@ function SproutScaleWorkspace() {
             createdAtField && typeof createdAtField.toMillis === 'function'
               ? createdAtField.toMillis()
               : Date.now();
-          const kindVal: ChildPhotoKind = d.kind === 'wall' ? 'wall' : 'avatar';
+          const rawEventTitle = typeof d.eventTitle === 'string' ? d.eventTitle : '';
+          const rawLinkedMId =
+            typeof d.linkedMeasurementId === 'string' ? d.linkedMeasurementId : '';
           return {
             id: docSnap.id,
             ownerId: String(d.ownerId ?? user.uid),
             childId: String(d.childId ?? targetChildId),
-            kind: kindVal,
+            kind: sanitizePhotoKind(d.kind),
             capturedDate: String(d.capturedDate ?? getTodayIsoDate()),
             ageMonths: Number(d.ageMonths ?? 24),
             heightCm: Number(d.heightCm ?? 0),
             weightKg: Number(d.weightKg ?? 0),
             caption: String(d.caption ?? ''),
+            eventTitle: rawEventTitle || undefined,
+            linkedMeasurementId: rawLinkedMId || undefined,
+            isFavorite: typeof d.isFavorite === 'boolean' ? d.isFavorite : false,
             driveFileId: String(d.driveFileId ?? ''),
             createdAtMs,
           };
@@ -772,7 +882,67 @@ function SproutScaleWorkspace() {
     return () => unsubscribe();
   }, [isAuthReady, user, activeChild.id, cloudChildren]);
 
-  // 6. Hydrate any cloud-backed Drive photos that aren't yet cached in IndexedDB on this device
+  // 6. Attach real-time onSnapshot listener for active child's Milestone Events in Firestore
+  useEffect(() => {
+    if (!isAuthReady || !user || !activeChild?.id || cloudChildren.length === 0) {
+      return;
+    }
+    const targetChildId = activeChild.id;
+    if (!cloudChildren.some((c) => c.id === targetChildId)) {
+      return;
+    }
+
+    const eventsPath = `children/${targetChildId}/events`;
+    const q = query(
+      collection(db, 'children', targetChildId, 'events'),
+      where('ownerId', '==', user.uid),
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const loaded: MilestoneEventRecord[] = snapshot.docs.map((docSnap) => {
+          const d = docSnap.data();
+          const createdAtField = d.createdAt as { toMillis?: () => number } | undefined;
+          const createdAtMs =
+            createdAtField && typeof createdAtField.toMillis === 'function'
+              ? createdAtField.toMillis()
+              : Date.now();
+          const rawLinkedMId =
+            typeof d.linkedMeasurementId === 'string' ? d.linkedMeasurementId : '';
+          const rawLinkedPhotoId =
+            typeof d.linkedPhotoId === 'string' ? d.linkedPhotoId : '';
+          return {
+            id: docSnap.id,
+            ownerId: String(d.ownerId ?? user.uid),
+            childId: String(d.childId ?? targetChildId),
+            title: String(d.title ?? 'Milestone Event'),
+            category: sanitizeEventCategory(d.category),
+            eventDate: String(d.eventDate ?? getTodayIsoDate()),
+            ageMonths: Number(d.ageMonths ?? 24),
+            story: String(d.story ?? ''),
+            heightCm: Number(d.heightCm ?? 0),
+            weightKg: Number(d.weightKg ?? 0),
+            linkedMeasurementId: rawLinkedMId || undefined,
+            linkedPhotoId: rawLinkedPhotoId || undefined,
+            createdAtMs,
+          };
+        });
+        loaded.sort((a, b) => b.eventDate.localeCompare(a.eventDate));
+        setCloudEventsByChild((prev) => ({
+          ...prev,
+          [targetChildId]: loaded,
+        }));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, eventsPath);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [isAuthReady, user, activeChild.id, cloudChildren]);
+
+  // 7. Hydrate any cloud-backed Drive photos that aren't yet cached in IndexedDB on this device
   useEffect(() => {
     const targetChildId = activeChild.id;
     const childCloudPhotos = cloudPhotosByChild[targetChildId] ?? [];
@@ -800,6 +970,9 @@ function SproutScaleWorkspace() {
             heightCm: cp.heightCm,
             weightKg: cp.weightKg,
             caption: cp.caption,
+            eventTitle: cp.eventTitle,
+            linkedMeasurementId: cp.linkedMeasurementId,
+            isFavorite: cp.isFavorite,
             driveFileId: cp.driveFileId,
             createdAtMs: cp.createdAtMs,
           });
@@ -932,6 +1105,7 @@ function SproutScaleWorkspace() {
     setCloudChildren([]);
     setCloudMeasurementsByChild({});
     setCloudPhotosByChild({});
+    setCloudEventsByChild({});
     selectChildProfile(demoChildrenRef.current[0]?.id ?? DEMO_CHILD.id);
     setStatusBanner(null);
   };
@@ -1487,6 +1661,10 @@ function SproutScaleWorkspace() {
       [activeChild.id]: (prev[activeChild.id] ?? []).filter((p) => p.id !== photo.id),
     }));
     if (user) {
+      setCloudPhotosByChild((prev) => ({
+        ...prev,
+        [activeChild.id]: (prev[activeChild.id] ?? []).filter((p) => p.id !== photo.id),
+      }));
       const photoPath = `children/${activeChild.id}/photos/${photo.id}`;
       try {
         await deleteDoc(doc(db, 'children', activeChild.id, 'photos', photo.id));
@@ -1494,7 +1672,635 @@ function SproutScaleWorkspace() {
         handleFirestoreError(err, OperationType.DELETE, photoPath);
       }
     }
-    showTransientBanner('success', `Removed photo from ${activeChild.name}’s album.`);
+    showTransientBanner('success', `Removed photo from ${activeChild.name}’s portfolio.`);
+  };
+
+  // Toggle portfolio favorite star on any gallery photo (IndexedDB + Firestore sync)
+  const handleToggleFavoritePhoto = async (photo: ChildPhotoRecord) => {
+    const targetChildId = activeChild.id;
+    const nextFav = !photo.isFavorite;
+
+    await updateLocalPhotoRecord(photo.id, { isFavorite: nextFav });
+    setLocalPhotosByChild((prev) => ({
+      ...prev,
+      [targetChildId]: (prev[targetChildId] ?? []).map((p) =>
+        p.id === photo.id ? { ...p, isFavorite: nextFav } : p,
+      ),
+    }));
+
+    if (user) {
+      const existsInCloud = (cloudPhotosByChild[targetChildId] ?? []).some(
+        (cp) => cp.id === photo.id,
+      );
+      setCloudPhotosByChild((prev) => ({
+        ...prev,
+        [targetChildId]: (prev[targetChildId] ?? []).map((p) =>
+          p.id === photo.id ? { ...p, isFavorite: nextFav } : p,
+        ),
+      }));
+
+      const photoPath = `children/${targetChildId}/photos/${photo.id}`;
+      try {
+        if (existsInCloud) {
+          await updateDoc(doc(db, 'children', targetChildId, 'photos', photo.id), {
+            isFavorite: nextFav,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(doc(db, 'children', targetChildId, 'photos', photo.id), {
+            ownerId: user.uid,
+            childId: targetChildId,
+            kind: sanitizePhotoKind(photo.kind),
+            capturedDate: VALIDATION_BOUNDS.DATE_PATTERN.test(photo.capturedDate)
+              ? photo.capturedDate
+              : getTodayIsoDate(),
+            ageMonths: Math.round(
+              clampNumber(
+                photo.ageMonths,
+                VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+                VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+              ),
+            ),
+            heightCm: Number(
+              clampNumber(photo.heightCm, 0, VALIDATION_BOUNDS.HEIGHT_CM_MAX).toFixed(1),
+            ),
+            weightKg: Number(
+              clampNumber(photo.weightKg, 0, VALIDATION_BOUNDS.WEIGHT_KG_MAX).toFixed(1),
+            ),
+            caption: String(photo.caption ?? '').slice(0, VALIDATION_BOUNDS.CAPTION_MAX_LEN),
+            eventTitle: String(photo.eventTitle ?? '').slice(
+              0,
+              VALIDATION_BOUNDS.EVENT_TITLE_MAX_LEN,
+            ),
+            linkedMeasurementId:
+              photo.linkedMeasurementId &&
+              VALIDATION_BOUNDS.ID_PATTERN.test(photo.linkedMeasurementId)
+                ? photo.linkedMeasurementId.slice(0, VALIDATION_BOUNDS.ID_MAX_LEN)
+                : '',
+            isFavorite: nextFav,
+            driveFileId:
+              photo.driveFileId && VALIDATION_BOUNDS.ID_PATTERN.test(photo.driveFileId)
+                ? photo.driveFileId.slice(0, VALIDATION_BOUNDS.ID_MAX_LEN)
+                : '',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, photoPath);
+      }
+    }
+  };
+
+  // Edit gallery photo title, caption, date, or category (synced with DOB age + Firestore)
+  const handleUpdatePhotoDetails = async (
+    photo: ChildPhotoRecord,
+    updates: PhotoDetailsPatch,
+  ) => {
+    const targetChildId = activeChild.id;
+    const safeKind = sanitizePhotoKind(updates.kind);
+    const safeDate = VALIDATION_BOUNDS.DATE_PATTERN.test(updates.capturedDate)
+      ? updates.capturedDate
+      : photo.capturedDate;
+    const safeEventTitle = updates.eventTitle
+      .trim()
+      .slice(0, VALIDATION_BOUNDS.EVENT_TITLE_MAX_LEN);
+    const safeCaption = updates.caption
+      .trim()
+      .slice(0, VALIDATION_BOUNDS.CAPTION_MAX_LEN);
+
+    const recomputedAge =
+      activeChild.birthDate && safeDate !== photo.capturedDate
+        ? calculateExactAgeFromDob(activeChild.birthDate, safeDate)?.totalMonths ??
+          photo.ageMonths
+        : photo.ageMonths;
+    const safeAgeMonths = Math.round(
+      clampNumber(
+        recomputedAge,
+        VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+        VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+      ),
+    );
+
+    await updateLocalPhotoRecord(photo.id, {
+      kind: safeKind,
+      capturedDate: safeDate,
+      ageMonths: safeAgeMonths,
+      eventTitle: safeEventTitle,
+      caption: safeCaption,
+    });
+    setLocalPhotosByChild((prev) => ({
+      ...prev,
+      [targetChildId]: (prev[targetChildId] ?? []).map((p) =>
+        p.id === photo.id
+          ? {
+              ...p,
+              kind: safeKind,
+              capturedDate: safeDate,
+              ageMonths: safeAgeMonths,
+              eventTitle: safeEventTitle,
+              caption: safeCaption,
+            }
+          : p,
+      ),
+    }));
+
+    if (user) {
+      const existsInCloud = (cloudPhotosByChild[targetChildId] ?? []).some(
+        (cp) => cp.id === photo.id,
+      );
+      setCloudPhotosByChild((prev) => ({
+        ...prev,
+        [targetChildId]: (prev[targetChildId] ?? []).map((p) =>
+          p.id === photo.id
+            ? {
+                ...p,
+                kind: safeKind,
+                capturedDate: safeDate,
+                ageMonths: safeAgeMonths,
+                eventTitle: safeEventTitle || undefined,
+                caption: safeCaption,
+              }
+            : p,
+        ),
+      }));
+
+      const photoPath = `children/${targetChildId}/photos/${photo.id}`;
+      try {
+        if (existsInCloud) {
+          await updateDoc(doc(db, 'children', targetChildId, 'photos', photo.id), {
+            kind: safeKind,
+            capturedDate: safeDate,
+            ageMonths: safeAgeMonths,
+            eventTitle: safeEventTitle,
+            caption: safeCaption,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(doc(db, 'children', targetChildId, 'photos', photo.id), {
+            ownerId: user.uid,
+            childId: targetChildId,
+            kind: safeKind,
+            capturedDate: safeDate,
+            ageMonths: safeAgeMonths,
+            heightCm: Number(
+              clampNumber(photo.heightCm, 0, VALIDATION_BOUNDS.HEIGHT_CM_MAX).toFixed(1),
+            ),
+            weightKg: Number(
+              clampNumber(photo.weightKg, 0, VALIDATION_BOUNDS.WEIGHT_KG_MAX).toFixed(1),
+            ),
+            caption: safeCaption,
+            eventTitle: safeEventTitle,
+            linkedMeasurementId:
+              photo.linkedMeasurementId &&
+              VALIDATION_BOUNDS.ID_PATTERN.test(photo.linkedMeasurementId)
+                ? photo.linkedMeasurementId.slice(0, VALIDATION_BOUNDS.ID_MAX_LEN)
+                : '',
+            isFavorite: Boolean(photo.isFavorite),
+            driveFileId:
+              photo.driveFileId && VALIDATION_BOUNDS.ID_PATTERN.test(photo.driveFileId)
+                ? photo.driveFileId.slice(0, VALIDATION_BOUNDS.ID_MAX_LEN)
+                : '',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, photoPath);
+      }
+    }
+
+    showTransientBanner('success', `Updated ${activeChild.name}’s portfolio photo details!`);
+  };
+
+  // Batch sync all local device photos to Google Drive & Firestore gallery metadata
+  const handleSyncAllPhotosToDrive = async () => {
+    if (!accessToken) return;
+    const unsynced = activePhotos.filter((p) => Boolean(p.localDataUrl) && !p.driveFileId);
+    if (unsynced.length === 0) return;
+
+    setIsSyncingBatchPhotos(true);
+    const targetChild = activeChild;
+    let syncedCount = 0;
+
+    try {
+      for (const photo of unsynced) {
+        if (!photo.localDataUrl) continue;
+        const rawFileId = await uploadChildPhotoToDrive(accessToken, {
+          childId: targetChild.id,
+          childName: targetChild.name,
+          kind: photo.kind,
+          capturedDate: photo.capturedDate,
+          jpegDataUrl: photo.localDataUrl,
+        });
+
+        if (
+          rawFileId.length > 0 &&
+          rawFileId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
+          VALIDATION_BOUNDS.ID_PATTERN.test(rawFileId)
+        ) {
+          await updateLocalPhotoRecord(photo.id, { driveFileId: rawFileId });
+          setLocalPhotosByChild((prev) => ({
+            ...prev,
+            [targetChild.id]: (prev[targetChild.id] ?? []).map((p) =>
+              p.id === photo.id ? { ...p, driveFileId: rawFileId } : p,
+            ),
+          }));
+
+          if (user) {
+            const existsInCloud = (cloudPhotosByChild[targetChild.id] ?? []).some(
+              (cp) => cp.id === photo.id,
+            );
+            const photoPath = `children/${targetChild.id}/photos/${photo.id}`;
+            try {
+              if (existsInCloud) {
+                await updateDoc(doc(db, 'children', targetChild.id, 'photos', photo.id), {
+                  driveFileId: rawFileId,
+                  updatedAt: serverTimestamp(),
+                });
+              } else {
+                await setDoc(doc(db, 'children', targetChild.id, 'photos', photo.id), {
+                  ownerId: user.uid,
+                  childId: targetChild.id,
+                  kind: sanitizePhotoKind(photo.kind),
+                  capturedDate: VALIDATION_BOUNDS.DATE_PATTERN.test(photo.capturedDate)
+                    ? photo.capturedDate
+                    : getTodayIsoDate(),
+                  ageMonths: Math.round(
+                    clampNumber(
+                      photo.ageMonths,
+                      VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+                      VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+                    ),
+                  ),
+                  heightCm: Number(
+                    clampNumber(photo.heightCm, 0, VALIDATION_BOUNDS.HEIGHT_CM_MAX).toFixed(1),
+                  ),
+                  weightKg: Number(
+                    clampNumber(photo.weightKg, 0, VALIDATION_BOUNDS.WEIGHT_KG_MAX).toFixed(1),
+                  ),
+                  caption: String(photo.caption ?? '').slice(
+                    0,
+                    VALIDATION_BOUNDS.CAPTION_MAX_LEN,
+                  ),
+                  eventTitle: String(photo.eventTitle ?? '').slice(
+                    0,
+                    VALIDATION_BOUNDS.EVENT_TITLE_MAX_LEN,
+                  ),
+                  linkedMeasurementId:
+                    photo.linkedMeasurementId &&
+                    VALIDATION_BOUNDS.ID_PATTERN.test(photo.linkedMeasurementId)
+                      ? photo.linkedMeasurementId.slice(0, VALIDATION_BOUNDS.ID_MAX_LEN)
+                      : '',
+                  isFavorite: Boolean(photo.isFavorite),
+                  driveFileId: rawFileId,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                });
+              }
+            } catch (err) {
+              handleFirestoreError(err, OperationType.WRITE, photoPath);
+            }
+          }
+          syncedCount += 1;
+        }
+      }
+
+      if (syncedCount > 0) {
+        showTransientBanner(
+          'success',
+          `Synced ${syncedCount} gallery ${syncedCount === 1 ? 'photo' : 'photos'} to Firestore & Google Drive!`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('AUTH_REQUIRED')) {
+        clearAccessToken();
+        setAccessToken(null);
+        setNeedsDriveAuth(true);
+        showTransientBanner('error', 'Please reconnect Google Drive to finish cloud photo sync.');
+      } else {
+        showTransientBanner('error', 'Could not finish syncing all photos to Google Drive.');
+      }
+    } finally {
+      setIsSyncingBatchPhotos(false);
+    }
+  };
+
+  // Unified Portfolio Composer Handler: Saves multiple gallery photos + milestone event + optional wall mark
+  const handleCreatePortfolioMemory = async (payload: CreatePortfolioMemoryPayload) => {
+    setIsSaving(true);
+    const targetChild = activeChild;
+
+    const safeDate = VALIDATION_BOUNDS.DATE_PATTERN.test(payload.dateIso)
+      ? payload.dateIso
+      : getTodayIsoDate();
+    const safeAgeMonths = Math.round(
+      clampNumber(
+        payload.ageMonths,
+        VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+        VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+      ),
+    );
+    const safeKind = sanitizePhotoKind(payload.photoKind);
+    const safeCategory = sanitizeEventCategory(payload.eventCategory);
+    const safeTitle =
+      payload.eventTitle.trim().slice(0, VALIDATION_BOUNDS.EVENT_TITLE_MAX_LEN) ||
+      `${targetChild.name}’s Milestone`;
+    const safeStory = payload.story
+      .trim()
+      .slice(0, VALIDATION_BOUNDS.EVENT_STORY_MAX_LEN);
+    const safeCaption = payload.story
+      .trim()
+      .slice(0, VALIDATION_BOUNDS.CAPTION_MAX_LEN);
+
+    const safePhotoHeightCm = payload.includeMeasurements
+      ? Number(
+          clampNumber(payload.heightCm, 0, VALIDATION_BOUNDS.HEIGHT_CM_MAX).toFixed(1),
+        )
+      : 0;
+    const safePhotoWeightKg = payload.includeMeasurements
+      ? Number(
+          clampNumber(payload.weightKg, 0, VALIDATION_BOUNDS.WEIGHT_KG_MAX).toFixed(1),
+        )
+      : 0;
+
+    let effectiveLinkedMId =
+      payload.linkedMeasurementId &&
+      VALIDATION_BOUNDS.ID_PATTERN.test(payload.linkedMeasurementId)
+        ? payload.linkedMeasurementId.slice(0, VALIDATION_BOUNDS.ID_MAX_LEN)
+        : '';
+
+    try {
+      // 1. Optionally create a synced GrowthMeasurement on the Growth Wall & Trajectory Chart
+      if (payload.alsoSaveWallMeasurement && payload.includeMeasurements) {
+        const wallH = Number(
+          clampNumber(
+            payload.heightCm,
+            VALIDATION_BOUNDS.HEIGHT_CM_MIN,
+            VALIDATION_BOUNDS.HEIGHT_CM_MAX,
+          ).toFixed(1),
+        );
+        const wallW = Number(
+          clampNumber(
+            payload.weightKg,
+            VALIDATION_BOUNDS.WEIGHT_KG_MIN,
+            VALIDATION_BOUNDS.WEIGHT_KG_MAX,
+          ).toFixed(1),
+        );
+        const wallNote = (safeStory || safeTitle).slice(0, VALIDATION_BOUNDS.NOTE_MAX_LEN);
+
+        if (user) {
+          const newMId = sanitizeId(`m_port_${Date.now()}`);
+          effectiveLinkedMId = newMId;
+          const mPath = `children/${targetChild.id}/measurements/${newMId}`;
+          const optimisticM: GrowthMeasurement = {
+            id: newMId,
+            ownerId: user.uid,
+            childId: targetChild.id,
+            ageMonths: safeAgeMonths,
+            heightCm: wallH,
+            weightKg: wallW,
+            recordedDate: safeDate,
+            note: wallNote,
+          };
+          setCloudMeasurementsByChild((prev) => ({
+            ...prev,
+            [targetChild.id]: [...(prev[targetChild.id] ?? []), optimisticM].sort(
+              (a, b) => a.ageMonths - b.ageMonths,
+            ),
+          }));
+
+          try {
+            await setDoc(doc(db, 'children', targetChild.id, 'measurements', newMId), {
+              ownerId: user.uid,
+              childId: targetChild.id,
+              ageMonths: safeAgeMonths,
+              heightCm: wallH,
+              weightKg: wallW,
+              recordedDate: safeDate,
+              note: wallNote,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          } catch (err) {
+            handleFirestoreError(err, OperationType.CREATE, mPath);
+          }
+        } else {
+          const demoMId = sanitizeId(`demo_m_port_${Date.now()}`);
+          effectiveLinkedMId = demoMId;
+          const newDemoM: GrowthMeasurement = {
+            id: demoMId,
+            ownerId: 'demo_family',
+            childId: targetChild.id,
+            ageMonths: safeAgeMonths,
+            heightCm: wallH,
+            weightKg: wallW,
+            recordedDate: safeDate,
+            note: wallNote,
+          };
+          setDemoMeasurementsMap((prev) => ({
+            ...prev,
+            [targetChild.id]: [...(prev[targetChild.id] ?? []), newDemoM],
+          }));
+        }
+      }
+
+      // 2. Save all uploaded / captured gallery photos (IndexedDB + Google Drive + Firestore)
+      let primarySavedPhotoId = '';
+      const newlySavedLocalPhotos: SavedLocalPhotoRecord[] = [];
+
+      for (let i = 0; i < payload.photosDataUrls.length; i += 1) {
+        const rawDataUrl = payload.photosDataUrls[i];
+        const photoId = sanitizeId(`photo_${safeKind}_${Date.now()}_${i}`);
+        if (!primarySavedPhotoId) {
+          primarySavedPhotoId = photoId;
+        }
+        const createdAtMs = Date.now() + i;
+        const compressedJpeg = await compressPhotoToStorageJpeg(rawDataUrl, 1200, 0.85);
+
+        let uploadedDriveId = '';
+        if (accessToken) {
+          try {
+            const rawFileId = await uploadChildPhotoToDrive(accessToken, {
+              childId: targetChild.id,
+              childName: targetChild.name,
+              kind: safeKind,
+              capturedDate: safeDate,
+              jpegDataUrl: compressedJpeg,
+            });
+            if (
+              rawFileId.length > 0 &&
+              rawFileId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
+              VALIDATION_BOUNDS.ID_PATTERN.test(rawFileId)
+            ) {
+              uploadedDriveId = rawFileId;
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : '';
+            if (msg.includes('AUTH_REQUIRED')) {
+              clearAccessToken();
+              setAccessToken(null);
+              setNeedsDriveAuth(true);
+            }
+          }
+        }
+
+        const localRec: SavedLocalPhotoRecord = {
+          id: photoId,
+          childId: targetChild.id,
+          kind: safeKind,
+          dataUrl: compressedJpeg,
+          capturedDate: safeDate,
+          ageMonths: safeAgeMonths,
+          heightCm: safePhotoHeightCm,
+          weightKg: safePhotoWeightKg,
+          caption: safeCaption,
+          eventTitle: safeTitle,
+          linkedMeasurementId: effectiveLinkedMId || undefined,
+          isFavorite: Boolean(payload.isFavorite),
+          driveFileId: uploadedDriveId,
+          createdAtMs,
+        };
+
+        await savePhotoToLocalAlbum(localRec);
+        newlySavedLocalPhotos.push(localRec);
+
+        if (user) {
+          const photoPath = `children/${targetChild.id}/photos/${photoId}`;
+          try {
+            await setDoc(doc(db, 'children', targetChild.id, 'photos', photoId), {
+              ownerId: user.uid,
+              childId: targetChild.id,
+              kind: safeKind,
+              capturedDate: safeDate,
+              ageMonths: safeAgeMonths,
+              heightCm: safePhotoHeightCm,
+              weightKg: safePhotoWeightKg,
+              caption: safeCaption,
+              eventTitle: safeTitle,
+              linkedMeasurementId: effectiveLinkedMId,
+              isFavorite: Boolean(payload.isFavorite),
+              driveFileId: uploadedDriveId,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          } catch (err) {
+            handleFirestoreError(err, OperationType.CREATE, photoPath);
+          }
+        }
+      }
+
+      if (newlySavedLocalPhotos.length > 0) {
+        setLocalPhotosByChild((prev) => ({
+          ...prev,
+          [targetChild.id]: [
+            ...newlySavedLocalPhotos,
+            ...(prev[targetChild.id] ?? []),
+          ],
+        }));
+      }
+
+      // 3. Save MilestoneEventRecord when an event headline or text-only milestone is provided
+      if (payload.createEventRecord) {
+        if (user) {
+          const eventId = sanitizeId(`evt_${Date.now()}`);
+          const eventPath = `children/${targetChild.id}/events/${eventId}`;
+          const optimisticEv: MilestoneEventRecord = {
+            id: eventId,
+            ownerId: user.uid,
+            childId: targetChild.id,
+            title: safeTitle,
+            category: safeCategory,
+            eventDate: safeDate,
+            ageMonths: safeAgeMonths,
+            story: safeStory,
+            heightCm: safePhotoHeightCm,
+            weightKg: safePhotoWeightKg,
+            linkedMeasurementId: effectiveLinkedMId || undefined,
+            linkedPhotoId: primarySavedPhotoId || undefined,
+            createdAtMs: Date.now(),
+          };
+          setCloudEventsByChild((prev) => ({
+            ...prev,
+            [targetChild.id]: [optimisticEv, ...(prev[targetChild.id] ?? [])],
+          }));
+
+          try {
+            await setDoc(doc(db, 'children', targetChild.id, 'events', eventId), {
+              ownerId: user.uid,
+              childId: targetChild.id,
+              title: safeTitle,
+              category: safeCategory,
+              eventDate: safeDate,
+              ageMonths: safeAgeMonths,
+              story: safeStory,
+              heightCm: safePhotoHeightCm,
+              weightKg: safePhotoWeightKg,
+              linkedMeasurementId: effectiveLinkedMId,
+              linkedPhotoId: primarySavedPhotoId,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          } catch (err) {
+            handleFirestoreError(err, OperationType.CREATE, eventPath);
+          }
+        } else {
+          const demoEv: MilestoneEventRecord = {
+            id: sanitizeId(`demo_evt_${Date.now()}`),
+            ownerId: 'demo_family',
+            childId: targetChild.id,
+            title: safeTitle,
+            category: safeCategory,
+            eventDate: safeDate,
+            ageMonths: safeAgeMonths,
+            story: safeStory,
+            heightCm: safePhotoHeightCm,
+            weightKg: safePhotoWeightKg,
+            linkedMeasurementId: effectiveLinkedMId || undefined,
+            linkedPhotoId: primarySavedPhotoId || undefined,
+            createdAtMs: Date.now(),
+          };
+          setDemoEventsMap((prev) => ({
+            ...prev,
+            [targetChild.id]: [demoEv, ...(prev[targetChild.id] ?? [])],
+          }));
+        }
+      }
+
+      setIsMemoryModalOpen(false);
+      setMemoryModalContext(null);
+      showTransientBanner(
+        'success',
+        newlySavedLocalPhotos.length > 0
+          ? `Saved ${newlySavedLocalPhotos.length} ${newlySavedLocalPhotos.length === 1 ? 'photo' : 'photos'} & "${safeTitle}" to ${targetChild.name}’s portfolio!`
+          : `Saved "${safeTitle}" to ${targetChild.name}’s portfolio!`,
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteMilestoneEvent = async (ev: MilestoneEventRecord) => {
+    const targetChildId = activeChild.id;
+    if (user) {
+      setCloudEventsByChild((prev) => ({
+        ...prev,
+        [targetChildId]: (prev[targetChildId] ?? []).filter((item) => item.id !== ev.id),
+      }));
+      const eventPath = `children/${targetChildId}/events/${ev.id}`;
+      try {
+        await deleteDoc(doc(db, 'children', targetChildId, 'events', ev.id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, eventPath);
+      }
+    } else {
+      setDemoEventsMap((prev) => ({
+        ...prev,
+        [targetChildId]: (prev[targetChildId] ?? []).filter((item) => item.id !== ev.id),
+      }));
+    }
+    showTransientBanner('success', `Removed "${ev.title}" from ${activeChild.name}’s portfolio.`);
   };
 
   const handleApplyWallPhotoEstimate = ({
@@ -2015,6 +2821,11 @@ function SproutScaleWorkspace() {
           delete next[childIdToDelete];
           return next;
         });
+        setCloudEventsByChild((prev) => {
+          const next = { ...prev };
+          delete next[childIdToDelete];
+          return next;
+        });
 
         try {
           const mSnap = await getDocs(
@@ -2035,6 +2846,15 @@ function SproutScaleWorkspace() {
           for (const pDoc of pSnap.docs) {
             await deleteDoc(doc(db, 'children', childIdToDelete, 'photos', pDoc.id));
           }
+          const evSnap = await getDocs(
+            query(
+              collection(db, 'children', childIdToDelete, 'events'),
+              where('ownerId', '==', user.uid),
+            ),
+          );
+          for (const evDoc of evSnap.docs) {
+            await deleteDoc(doc(db, 'children', childIdToDelete, 'events', evDoc.id));
+          }
           await deleteDoc(doc(db, 'children', childIdToDelete));
         } catch (err) {
           handleFirestoreError(err, OperationType.DELETE, childPath);
@@ -2044,6 +2864,11 @@ function SproutScaleWorkspace() {
       } else {
         setDemoChildren(remaining);
         setDemoMeasurementsMap((prev) => {
+          const next = { ...prev };
+          delete next[childIdToDelete];
+          return next;
+        });
+        setDemoEventsMap((prev) => {
           const next = { ...prev };
           delete next[childIdToDelete];
           return next;
@@ -2241,8 +3066,18 @@ function SproutScaleWorkspace() {
                   className="inline-flex items-center gap-1 font-bold text-indigo-800 hover:text-sky-800 hover:underline whitespace-nowrap"
                 >
                   <ImageIcon className="w-3.5 h-3.5" aria-hidden="true" />
-                  Saved Photos ({activePhotos.length})
+                  Portfolio &amp; Gallery ({activePhotos.length} photos · {activeEvents.length}{' '}
+                  {activeEvents.length === 1 ? 'event' : 'events'})
                 </a>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => openAddMemoryModal()}
+                  className="inline-flex items-center gap-1 font-bold text-amber-800 hover:text-indigo-950 hover:underline whitespace-nowrap cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                  Add Photos / Event
+                </button>
               </div>
             </div>
 
@@ -2444,22 +3279,43 @@ function SproutScaleWorkspace() {
         <GrowthTimelineSection
           childProfile={activeChild}
           measurements={activeMeasurements}
+          photos={activePhotos}
+          events={activeEvents}
           avatarPhotoUrl={activeAvatarPhotoUrl}
           onInspectMilestone={handleInspectMilestone}
           onDeleteMeasurement={handleDeleteMeasurement}
+          onAddPhotoForMilestone={(m) =>
+            openAddMemoryModal({
+              dateIso: m.recordedDate,
+              ageMonths: m.ageMonths,
+              heightCm: m.heightCm,
+              weightKg: m.weightKg,
+              linkedMeasurementId: m.id,
+              suggestedTitle: m.note,
+            })
+          }
         />
 
-        {/* Section 3: Saved Photos Album (All Camera Portraits & Wall Height Check-In Pictures) */}
+        {/* Section 3: Child Growth Portfolio, Photo Gallery & Milestone Events (Firestore + Drive Synced) */}
         <ChildPhotoAlbumSection
           childProfile={activeChild}
           photos={activePhotos}
+          events={activeEvents}
+          measurements={activeMeasurements}
           accessToken={accessToken}
           isSignedIn={Boolean(user)}
+          isSyncingBatch={isSyncingBatchPhotos}
+          onOpenAddMemoryModal={openAddMemoryModal}
           onOpenAvatarStudio={() => setIsPhotoModalOpen(true)}
           onOpenWallEstimator={() => setIsWallEstimatorOpen(true)}
           onUseAsAvatar={handleUseAlbumPhotoAsAvatar}
+          onToggleFavoritePhoto={handleToggleFavoritePhoto}
+          onUpdatePhotoDetails={handleUpdatePhotoDetails}
           onBackupToDrive={handleBackupPhotoToDrive}
+          onSyncAllPhotosToDrive={handleSyncAllPhotosToDrive}
           onDeletePhoto={handleDeleteSavedPhoto}
+          onDeleteEvent={handleDeleteMilestoneEvent}
+          onInspectMilestone={handleInspectMilestone}
           onSignInForDrive={() => void handleGoogleSignIn()}
         />
 
@@ -2647,6 +3503,24 @@ function SproutScaleWorkspace() {
         isSaving={isSaving}
         onClose={() => setIsAddChildModalOpen(false)}
         onCreateChild={handleCreateNewChild}
+      />
+
+      {/* Unified Portfolio Photos & Milestone Events Composer Modal */}
+      <AddPortfolioMemoryModal
+        isOpen={isMemoryModalOpen}
+        childProfile={activeChild}
+        measurements={activeMeasurements}
+        currentDraftHeightCm={draftHeightCm}
+        currentDraftWeightKg={draftWeightKg}
+        currentDraftAgeMonths={draftAgeMonths}
+        accessToken={accessToken}
+        isSaving={isSaving}
+        initialContext={memoryModalContext}
+        onClose={() => {
+          setIsMemoryModalOpen(false);
+          setMemoryModalContext(null);
+        }}
+        onSaveMemory={handleCreatePortfolioMemory}
       />
     </div>
   );

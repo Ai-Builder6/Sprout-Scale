@@ -3,7 +3,21 @@ export type BiologicalSex = 'boy' | 'girl' | 'unspecified';
 export type PaletteId = 'meadow' | 'sunny' | 'ocean' | 'berry';
 export type AccessoryId = 'none' | 'sprout' | 'cap' | 'crown' | 'dino';
 export type HairStyle = 'curls' | 'bob' | 'spiky' | 'puffs';
-export type ChildPhotoKind = 'avatar' | 'wall';
+export type ChildPhotoKind =
+  | 'avatar'
+  | 'wall'
+  | 'milestone'
+  | 'event'
+  | 'school'
+  | 'family';
+
+export type MilestoneEventCategory =
+  | 'birthday'
+  | 'firsts'
+  | 'school'
+  | 'health'
+  | 'adventure'
+  | 'celebration';
 
 // Validation constants synchronized verbatim with firebase-blueprint.json & firestore.rules
 export const VALIDATION_BOUNDS = {
@@ -12,7 +26,10 @@ export const VALIDATION_BOUNDS = {
   NAME_MIN_LEN: 1,
   NAME_MAX_LEN: 50,
   NOTE_MAX_LEN: 120,
-  CAPTION_MAX_LEN: 120,
+  CAPTION_MAX_LEN: 240,
+  EVENT_TITLE_MIN_LEN: 1,
+  EVENT_TITLE_MAX_LEN: 80,
+  EVENT_STORY_MAX_LEN: 400,
   DATE_PATTERN: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
   HEX_COLOR_PATTERN: /^#[0-9a-fA-F]{6}$/,
   AGE_TWO_HEIGHT_MIN: 70,
@@ -65,10 +82,47 @@ export interface ChildPhotoRecord {
   heightCm: number;
   weightKg: number;
   caption: string;
+  eventTitle?: string;
+  linkedMeasurementId?: string;
+  isFavorite?: boolean;
   driveFileId: string;
   createdAtMs: number;
   localDataUrl?: string;
 }
+
+export interface MilestoneEventRecord {
+  id: string;
+  ownerId: string;
+  childId: string;
+  title: string;
+  category: MilestoneEventCategory;
+  eventDate: string;
+  ageMonths: number;
+  story: string;
+  heightCm: number;
+  weightKg: number;
+  linkedMeasurementId?: string;
+  linkedPhotoId?: string;
+  createdAtMs: number;
+}
+
+export const PHOTO_KIND_LABELS: Record<ChildPhotoKind, string> = {
+  wall: 'Wall / Fridge Check-In',
+  milestone: 'Growth Milestone',
+  event: 'Birthday & Special Event',
+  school: 'School & Activities',
+  family: 'Family Memory',
+  avatar: 'Portrait',
+};
+
+export const EVENT_CATEGORY_LABELS: Record<MilestoneEventCategory, string> = {
+  birthday: 'Birthday',
+  firsts: 'First Moment',
+  school: 'School & Sports',
+  health: 'Checkup & Wellness',
+  adventure: 'Trip & Adventure',
+  celebration: 'Celebration',
+};
 
 export interface PaletteTheme {
   id: PaletteId;
@@ -221,6 +275,36 @@ export const DEMO_MEASUREMENTS: GrowthMeasurement[] = [
   },
 ];
 
+export const DEMO_EVENTS: MilestoneEventRecord[] = [
+  {
+    id: 'demo_evt_kinder',
+    ownerId: 'demo_family',
+    childId: 'demo_leo',
+    title: 'First Day of Kindergarten',
+    category: 'school',
+    eventDate: '2025-09-03',
+    ageMonths: 58,
+    story: 'Picked out his own green backpack and walked right into classroom 104 with a giant wave.',
+    heightCm: 109.2,
+    weightKg: 18.4,
+    createdAtMs: 1756900000000,
+  },
+  {
+    id: 'demo_evt_tooth',
+    ownerId: 'demo_family',
+    childId: 'demo_leo',
+    title: 'Lost First Front Tooth & 6th Birthday',
+    category: 'birthday',
+    eventDate: '2026-11-18',
+    ageMonths: 72,
+    story: 'Wiggled loose right after eating an apple — measured against the kitchen fridge right before cake!',
+    heightCm: 116.5,
+    weightKg: 21.0,
+    linkedMeasurementId: 'demo_m_72',
+    createdAtMs: 1795000000000,
+  },
+];
+
 export interface CalculatedAgeBreakdown {
   years: number;
   months: number;
@@ -368,6 +452,34 @@ export function sanitizeBiologicalSex(raw: unknown): BiologicalSex {
     return raw;
   }
   return 'unspecified';
+}
+
+export function sanitizePhotoKind(raw: unknown): ChildPhotoKind {
+  if (
+    raw === 'avatar' ||
+    raw === 'wall' ||
+    raw === 'milestone' ||
+    raw === 'event' ||
+    raw === 'school' ||
+    raw === 'family'
+  ) {
+    return raw;
+  }
+  return 'milestone';
+}
+
+export function sanitizeEventCategory(raw: unknown): MilestoneEventCategory {
+  if (
+    raw === 'birthday' ||
+    raw === 'firsts' ||
+    raw === 'school' ||
+    raw === 'health' ||
+    raw === 'adventure' ||
+    raw === 'celebration'
+  ) {
+    return raw;
+  }
+  return 'celebration';
 }
 
 export function sanitizeId(raw: string): string {

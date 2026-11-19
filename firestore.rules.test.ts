@@ -16,7 +16,8 @@ import fs from 'fs';
 
 /**
  * Security TDD suite verifying all Dirty Dozen adversarial payloads
- * return PERMISSION_DENIED against firestore.rules.
+ * return PERMISSION_DENIED against firestore.rules across children,
+ * measurements, gallery photos, and milestone events.
  */
 export async function runDirtyDozenSecuritySuite() {
   const testEnv: RulesTestEnvironment = await initializeTestEnvironment({
@@ -124,7 +125,7 @@ export async function runDirtyDozenSecuritySuite() {
       }),
     );
 
-    // 5. Orphaned Subcollection Write (Master Gate Bypass)
+    // 5. Orphaned Subcollection Write (Master Gate Bypass on Measurements & Events)
     await assertFails(
       setDoc(doc(aliceDb, 'children', 'missing_child', 'measurements', 'm_1'), {
         ownerId: 'user_alice',
@@ -138,23 +139,40 @@ export async function runDirtyDozenSecuritySuite() {
         updatedAt: serverTimestamp(),
       }),
     );
-
-    // 6. Cross-Tenant Subcollection Injection
     await assertFails(
-      setDoc(doc(bobDb, 'children', 'child_alice', 'measurements', 'm_2'), {
-        ownerId: 'user_bob',
-        childId: 'child_alice',
+      setDoc(doc(aliceDb, 'children', 'missing_child', 'events', 'e_1'), {
+        ownerId: 'user_alice',
+        childId: 'missing_child',
+        title: 'First Day of Preschool',
+        category: 'school',
+        eventDate: '2026-11-18',
         ageMonths: 36,
+        story: 'Loved painting!',
         heightCm: 95,
         weightKg: 14.5,
-        recordedDate: '2026-11-18',
-        note: 'Intrusion',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }),
     );
 
-    // 7. Update-Gap / Raw Base64 Image Injection into avatarDriveFileId
+    // 6. Cross-Tenant Subcollection Injection
+    await assertFails(
+      setDoc(doc(bobDb, 'children', 'child_alice', 'events', 'e_intrusion'), {
+        ownerId: 'user_bob',
+        childId: 'child_alice',
+        title: 'Intrusion',
+        category: 'firsts',
+        eventDate: '2026-11-18',
+        ageMonths: 36,
+        story: 'Unauthorized',
+        heightCm: 0,
+        weightKg: 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+
+    // 7. Update-Gap / Raw Base64 Image Injection into avatarDriveFileId & ChildPhoto
     await assertFails(
       updateDoc(doc(aliceDb, 'children', 'child_alice'), {
         avatarDriveFileId: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD',
@@ -185,7 +203,7 @@ export async function runDirtyDozenSecuritySuite() {
       }),
     );
 
-    // 10. Malformed Date of Birth / Invalid WHO Sex Enum / Out-of-Bounds Biological Values
+    // 10. Malformed Date of Birth / Invalid Category Enum / Oversized Story
     await assertFails(
       updateDoc(doc(aliceDb, 'children', 'child_alice'), {
         birthDate: '11/18/2020',
@@ -193,22 +211,33 @@ export async function runDirtyDozenSecuritySuite() {
       }),
     );
     await assertFails(
-      updateDoc(doc(aliceDb, 'children', 'child_alice'), {
-        sex: 'invalid_enum_value',
+      setDoc(doc(aliceDb, 'children', 'child_alice', 'events', 'e_bad_cat'), {
+        ownerId: 'user_alice',
+        childId: 'child_alice',
+        title: 'Bad Category',
+        category: 'unknown_category',
+        eventDate: '2026-11-18',
+        ageMonths: 48,
+        story: 'Invalid enum',
+        heightCm: 0,
+        weightKg: 0,
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }),
     );
 
     // 11. Path/Payload Mismatch
     await assertFails(
-      setDoc(doc(aliceDb, 'children', 'child_alice', 'measurements', 'm_mismatch'), {
+      setDoc(doc(aliceDb, 'children', 'child_alice', 'events', 'e_mismatch'), {
         ownerId: 'user_alice',
         childId: 'other_child',
+        title: 'Mismatch',
+        category: 'birthday',
+        eventDate: '2026-11-18',
         ageMonths: 36,
+        story: 'Wrong childId',
         heightCm: 95,
         weightKg: 14.5,
-        recordedDate: '2026-11-18',
-        note: 'Mismatch',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }),
@@ -216,18 +245,20 @@ export async function runDirtyDozenSecuritySuite() {
 
     // 12. Blanket List Scraping Attack
     await assertFails(getDocs(collection(bobDb, 'children')));
+    await assertFails(getDocs(collection(bobDb, 'children', 'child_alice', 'events')));
 
     // 13. ChildPhoto Raw Base64 Injection & Cross-Tenant Photo Write
     await assertFails(
       setDoc(doc(aliceDb, 'children', 'child_alice', 'photos', 'p_raw_base64'), {
         ownerId: 'user_alice',
         childId: 'child_alice',
-        kind: 'wall',
+        kind: 'milestone',
         capturedDate: '2026-11-18',
         ageMonths: 48,
         heightCm: 103.0,
         weightKg: 16.5,
-        caption: 'Wall check-in',
+        eventTitle: '4th Birthday',
+        caption: 'Birthday party',
         driveFileId: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),

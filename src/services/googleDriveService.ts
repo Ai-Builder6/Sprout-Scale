@@ -295,7 +295,15 @@ export async function uploadChildPhotoToDrive(
 ): Promise<string> {
   const base64Part = params.jpegDataUrl.split(',')[1] ?? '';
   const safeName = params.childName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'Child';
-  const kindTag = params.kind === 'wall' ? 'WallCheckIn' : 'Portrait';
+  const kindTagMap: Record<ChildPhotoKind, string> = {
+    wall: 'WallCheckIn',
+    avatar: 'Portrait',
+    milestone: 'Milestone',
+    event: 'Event',
+    school: 'School',
+    family: 'FamilyMemory',
+  };
+  const kindTag = kindTagMap[params.kind] || 'Portfolio';
   const metadata = {
     name: `SproutScale_${safeName}_${kindTag}_${params.capturedDate}_${Date.now()}.jpg`,
     mimeType: 'image/jpeg',

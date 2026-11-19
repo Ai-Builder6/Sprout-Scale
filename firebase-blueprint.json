@@ -174,12 +174,12 @@
     },
     "ChildPhoto": {
       "title": "ChildPhoto",
-      "description": "Lightweight metadata for every portrait or wall height photo taken for a child. Raw image bytes are stored locally in IndexedDB and optionally in Google Drive (never in Firestore).",
+      "description": "Synced Firestore gallery portfolio metadata for every portrait, wall/fridge height check-in, milestone, school, or family photo saved for a child, linked by date and optional GrowthMeasurement ID. Raw JPEG image bytes are stored locally in IndexedDB and in Google Drive (never raw base64 in Firestore).",
       "type": "object",
       "properties": {
         "ownerId": {
           "type": "string",
-          "description": "Firebase Auth UID of the parent/guardian who owns this photo record.",
+          "description": "Firebase Auth UID of the parent/guardian who owns this gallery photo record.",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
@@ -193,35 +193,52 @@
         },
         "kind": {
           "type": "string",
-          "description": "Whether the picture was taken in the Avatar Photo Studio or the Wall Height Guesstimator.",
-          "enum": ["avatar", "wall"],
+          "description": "Portfolio category of the saved gallery photo.",
+          "enum": ["avatar", "wall", "milestone", "event", "school", "family"],
           "minLength": 1,
           "maxLength": 16
         },
         "capturedDate": {
           "type": "string",
-          "description": "ISO date YYYY-MM-DD when the photo was taken or saved.",
+          "description": "ISO date YYYY-MM-DD when the photo or milestone moment occurred.",
           "minLength": 10,
           "maxLength": 10,
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
         },
         "ageMonths": {
           "type": "number",
-          "description": "Child's age in months at the time the photo was saved (0 to 216 months)."
+          "description": "Child's age in months on capturedDate (0 to 216 months)."
         },
         "heightCm": {
           "type": "number",
-          "description": "Associated or estimated height in centimeters (0 if unset, up to 210 cm)."
+          "description": "Synced or estimated height in centimeters on capturedDate (0 if unset, up to 210 cm)."
         },
         "weightKg": {
           "type": "number",
-          "description": "Associated weight in kilograms (0 if unset, up to 120 kg)."
+          "description": "Synced weight in kilograms on capturedDate (0 if unset, up to 120 kg)."
+        },
+        "eventTitle": {
+          "type": "string",
+          "description": "Optional milestone or event title for the photo (e.g. 'First Day of Kindergarten', '4th Birthday Party', up to 80 characters).",
+          "minLength": 0,
+          "maxLength": 80
         },
         "caption": {
           "type": "string",
-          "description": "Short caption or source label for the photo (up to 120 characters).",
+          "description": "Memory note or caption for the gallery photo (up to 240 characters).",
           "minLength": 0,
-          "maxLength": 120
+          "maxLength": 240
+        },
+        "linkedMeasurementId": {
+          "type": "string",
+          "description": "Optional ID of a synced GrowthMeasurement recorded for the same milestone/date.",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^([a-zA-Z0-9_\\-]+)?$"
+        },
+        "isFavorite": {
+          "type": "boolean",
+          "description": "Optional flag marking this photo as a starred portfolio highlight."
         },
         "driveFileId": {
           "type": "string",
@@ -254,6 +271,102 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "MilestoneEvent": {
+      "title": "MilestoneEvent",
+      "description": "A special life event, first, birthday, school moment, or checkup chapter along the child's growth journey, synced with dates, photos, and measurements.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the parent/guardian who owns this event.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "childId": {
+          "type": "string",
+          "description": "ID of the parent ChildProfile document.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Headline of the milestone or event (1 to 80 characters).",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of the life event.",
+          "enum": ["birthday", "firsts", "school", "health", "adventure", "celebration"],
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "eventDate": {
+          "type": "string",
+          "description": "ISO date YYYY-MM-DD when the event took place.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "ageMonths": {
+          "type": "number",
+          "description": "Child's age in months on eventDate (0 to 216 months)."
+        },
+        "story": {
+          "type": "string",
+          "description": "Memory story or journal note about this event (0 to 400 characters).",
+          "minLength": 0,
+          "maxLength": 400
+        },
+        "heightCm": {
+          "type": "number",
+          "description": "Optional synced height in centimeters on eventDate (0 if unset, up to 210 cm)."
+        },
+        "weightKg": {
+          "type": "number",
+          "description": "Optional synced weight in kilograms on eventDate (0 if unset, up to 120 kg)."
+        },
+        "linkedMeasurementId": {
+          "type": "string",
+          "description": "Optional ID of a synced GrowthMeasurement.",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^([a-zA-Z0-9_\\-]+)?$"
+        },
+        "linkedPhotoId": {
+          "type": "string",
+          "description": "Optional ID of a primary ChildPhoto in the gallery.",
+          "minLength": 0,
+          "maxLength": 128,
+          "pattern": "^([a-zA-Z0-9_\\-]+)?$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the milestone event was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the milestone event was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "childId",
+        "title",
+        "category",
+        "eventDate",
+        "ageMonths",
+        "story",
+        "heightCm",
+        "weightKg",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -273,7 +386,13 @@
       "schema": {
         "$ref": "#/entities/ChildPhoto"
       },
-      "description": "Stores lightweight metadata and optional Google Drive file IDs for saved child portraits and wall height photos."
+      "description": "Stores synced gallery portfolio photo metadata, event titles, measurement links, and Google Drive file IDs for a child."
+    },
+    "/children/{childId}/events/{eventId}": {
+      "schema": {
+        "$ref": "#/entities/MilestoneEvent"
+      },
+      "description": "Stores life events, firsts, birthdays, and portfolio journal entries synced with dates, photos, and measurements."
     }
   }
 }

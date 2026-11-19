@@ -21,6 +21,9 @@ export interface SavedLocalPhotoRecord {
   heightCm: number;
   weightKg: number;
   caption: string;
+  eventTitle?: string;
+  linkedMeasurementId?: string;
+  isFavorite?: boolean;
   driveFileId: string;
   createdAtMs: number;
 }
@@ -226,7 +229,16 @@ export async function updateLocalPhotoRecord(
   patch: Partial<
     Pick<
       SavedLocalPhotoRecord,
-      'driveFileId' | 'caption' | 'heightCm' | 'weightKg' | 'ageMonths'
+      | 'kind'
+      | 'capturedDate'
+      | 'driveFileId'
+      | 'caption'
+      | 'eventTitle'
+      | 'linkedMeasurementId'
+      | 'isFavorite'
+      | 'heightCm'
+      | 'weightKg'
+      | 'ageMonths'
     >
   >,
 ): Promise<void> {
