@@ -76,20 +76,7 @@ interface MeasurementControlDeckProps {
     skinTone: string;
     hairColor: string;
   }) => Promise<void>;
-  onCreateNewChild: (newChild: {
-    name: string;
-    birthDate: string;
-    sex: BiologicalSex;
-    ageTwoHeightCm: number;
-    ageTwoWeightKg: number;
-    paletteId: PaletteId;
-    accessoryId: AccessoryId;
-    hairStyle: HairStyle;
-    skinTone: string;
-    hairColor: string;
-  }) => Promise<void>;
-  isAddingNewKid: boolean;
-  onSetIsAddingNewKid: (adding: boolean) => void;
+  onOpenAddChildModal: () => void;
   totalChildrenCount: number;
   onDeleteChild: (childId: string) => Promise<void>;
 }
@@ -133,13 +120,11 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   onOpenWallHeightEstimator,
   onRemoveAvatarPhoto,
   onSaveCharacterProfile,
-  onCreateNewChild,
-  isAddingNewKid,
-  onSetIsAddingNewKid,
+  onOpenAddChildModal,
   totalChildrenCount,
   onDeleteChild,
 }) => {
-  // Local state for Child Info, DOB & Avatar customization form synced when childProfile changes
+  // Local state for Child Info, DOB & Avatar customization form synced when childProfile.id changes
   const [editName, setEditName] = useState(childProfile.name);
   const [editBirthDate, setEditBirthDate] = useState(childProfile.birthDate || '');
   const [editSex, setEditSex] = useState<BiologicalSex>(childProfile.sex || 'unspecified');
@@ -157,38 +142,21 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   const [confirmDeleteChild, setConfirmDeleteChild] = useState<boolean>(false);
   const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Keep form synced when switching active child OR entering "Add New Child" mode
+  // Sync form fields whenever the selected child ID changes (never reset mid-typing!)
   React.useEffect(() => {
     setConfirmDeleteChild(false);
-    if (isAddingNewKid) {
-      const paletteOrder: PaletteId[] = ['sunny', 'ocean', 'berry', 'meadow'];
-      const nextPalette = paletteOrder[totalChildrenCount % paletteOrder.length];
-      setEditName('');
-      setEditBirthDate('');
-      setEditSex('unspecified');
-      setEditAgeTwoHeight(86.5);
-      setEditAgeTwoWeight(12.5);
-      setEditPalette(nextPalette);
-      setEditAccessory('sprout');
-      setEditHair('bob');
-      setEditSkinTone(SKIN_TONE_PRESETS[1].hex);
-      setEditHairColor(HAIR_COLOR_PRESETS[1].hex);
-      window.setTimeout(() => {
-        nameInputRef.current?.focus();
-      }, 60);
-    } else {
-      setEditName(childProfile.name);
-      setEditBirthDate(childProfile.birthDate || '');
-      setEditSex(childProfile.sex || 'unspecified');
-      setEditAgeTwoHeight(childProfile.ageTwoHeightCm);
-      setEditAgeTwoWeight(childProfile.ageTwoWeightKg);
-      setEditPalette(childProfile.paletteId);
-      setEditAccessory(childProfile.accessoryId);
-      setEditHair(childProfile.hairStyle);
-      setEditSkinTone(childProfile.skinTone || SKIN_TONE_PRESETS[1].hex);
-      setEditHairColor(childProfile.hairColor || HAIR_COLOR_PRESETS[1].hex);
-    }
-  }, [childProfile, isAddingNewKid, totalChildrenCount]);
+    setEditName(childProfile.name);
+    setEditBirthDate(childProfile.birthDate || '');
+    setEditSex(childProfile.sex || 'unspecified');
+    setEditAgeTwoHeight(childProfile.ageTwoHeightCm);
+    setEditAgeTwoWeight(childProfile.ageTwoWeightKg);
+    setEditPalette(childProfile.paletteId);
+    setEditAccessory(childProfile.accessoryId);
+    setEditHair(childProfile.hairStyle);
+    setEditSkinTone(childProfile.skinTone || SKIN_TONE_PRESETS[1].hex);
+    setEditHairColor(childProfile.hairColor || HAIR_COLOR_PRESETS[1].hex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [childProfile.id]);
 
   const draftYears = Math.floor(draftAgeMonths / 12);
   const draftRemMonths = draftAgeMonths % 12;
@@ -256,7 +224,10 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
   const handleCharacterFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedName = editName.trim().slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN) || 'Sprout';
+    const trimmedName =
+      editName.trim().slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN) ||
+      childProfile.name ||
+      'Sprout';
     const cleanDob = VALIDATION_BOUNDS.DATE_PATTERN.test(editBirthDate) ? editBirthDate : '';
     const payload = {
       name: trimmedName,
@@ -287,16 +258,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
         : HAIR_COLOR_PRESETS[1].hex,
     };
 
-    if (isAddingNewKid) {
-      await onCreateNewChild(payload);
-      onSetIsAddingNewKid(false);
-    } else {
-      await onSaveCharacterProfile(payload);
-    }
-  };
-
-  const startNewKidFlow = () => {
-    onSetIsAddingNewKid(true);
+    await onSaveCharacterProfile(payload);
   };
 
   return (
@@ -354,7 +316,20 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
       </div>
 
       {activeTab === 'measure' ? (
-        <form onSubmit={onSubmitMeasurement} className="space-y-5">
+        <form noValidate onSubmit={onSubmitMeasurement} className="space-y-5">
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-sky-100">
+            <span className="text-xs font-bold text-indigo-950">
+              Measuring: {childProfile.name}
+            </span>
+            <button
+              type="button"
+              onClick={onOpenAddChildModal}
+              className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 hover:text-emerald-950 hover:underline cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
+              + Add Another Child
+            </button>
+          </div>
           {/* Height Slider + Feet & Inches Controls (Imperial Primary, cm Secondary) */}
           <div className="space-y-2.5">
             <div className="flex items-baseline justify-between gap-2">
@@ -446,7 +421,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   type="number"
                   min={0}
                   max={11.9}
-                  step={0.5}
+                  step={0.1}
                   value={draftSplitHeight.inches}
                   onChange={(e) => {
                     const nextIn = clampNumber(parseFloat(e.target.value) || 0, 0, 11.9);
@@ -702,86 +677,66 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
         </form>
       ) : (
         /* Child Info, Date of Birth & Realistic Photo Avatar Form */
-        <form onSubmit={handleCharacterFormSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleCharacterFormSubmit} className="space-y-4">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-indigo-950">
-              {isAddingNewKid ? 'Add Another Child' : `${childProfile.name}’s Info & Avatar`}
+              {childProfile.name}’s Info &amp; Avatar
             </h3>
-            {!isAddingNewKid ? (
-              <button
-                type="button"
-                onClick={startNewKidFlow}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <UserPlus className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
-                Add Another Child
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onSetIsAddingNewKid(false)}
-                className="text-xs font-semibold text-slate-600 hover:text-slate-900 whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                Cancel
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onOpenAddChildModal}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+              Add Another Child
+            </button>
           </div>
 
-          {isAddingNewKid && (
-            <div className="px-3.5 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 leading-relaxed">
-              <strong>Creating Child #{totalChildrenCount + 1}:</strong> Enter their name and
-              birthday below. Your other {totalChildrenCount === 1 ? 'child stays' : `${totalChildrenCount} children stay`}{' '}
-              safely saved in the switcher above.
-            </div>
-          )}
-
           {/* Realistic Child Photo Avatar Strip */}
-          {!isAddingNewKid && (
-            <div className="flex items-center justify-between gap-3 p-3 bg-sky-50/90 border border-sky-200 rounded-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                {avatarPhotoUrl ? (
-                  <img
-                    src={avatarPhotoUrl}
-                    alt={`${childProfile.name} avatar portrait`}
-                    referrerPolicy="no-referrer"
-                    className="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shrink-0"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-amber-100 border-2 border-amber-300 flex items-center justify-center shrink-0">
-                    <Camera className="w-5 h-5 text-amber-800" aria-hidden="true" />
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-indigo-950 truncate">
-                    {avatarPhotoUrl ? 'Real Photo Avatar Active' : 'Realistic Photo Avatar'}
-                  </p>
-                  <p className="text-[11px] text-slate-600">
-                    Take a camera pic or upload a photo
-                  </p>
+          <div className="flex items-center justify-between gap-3 p-3 bg-sky-50/90 border border-sky-200 rounded-xl">
+            <div className="flex items-center gap-3 min-w-0">
+              {avatarPhotoUrl ? (
+                <img
+                  src={avatarPhotoUrl}
+                  alt={`${childProfile.name} avatar portrait`}
+                  referrerPolicy="no-referrer"
+                  className="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-amber-100 border-2 border-amber-300 flex items-center justify-center shrink-0">
+                  <Camera className="w-5 h-5 text-amber-800" aria-hidden="true" />
                 </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-indigo-950 truncate">
+                  {avatarPhotoUrl ? 'Real Photo Avatar Active' : 'Realistic Photo Avatar'}
+                </p>
+                <p className="text-[11px] text-slate-600">
+                  Take a camera pic or upload a photo
+                </p>
               </div>
+            </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={onOpenPhotoStudio}
+                className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+              >
+                {avatarPhotoUrl ? 'Edit Pic' : 'Take / Upload'}
+              </button>
+              {avatarPhotoUrl && (
                 <button
                   type="button"
-                  onClick={onOpenPhotoStudio}
-                  className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                  aria-label="Remove photo from avatar"
+                  onClick={() => void onRemoveAvatarPhoto()}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
                 >
-                  {avatarPhotoUrl ? 'Edit Pic' : 'Take / Upload'}
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
                 </button>
-                {avatarPhotoUrl && (
-                  <button
-                    type="button"
-                    aria-label="Remove photo from avatar"
-                    onClick={() => void onRemoveAvatarPhoto()}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                )}
-              </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Name + Date of Birth */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -894,7 +849,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   id="age2-inches-input"
                   type="number"
                   aria-label="Age 2 extra inches"
-                  step="0.5"
+                  step="0.1"
                   min={0}
                   max={11.9}
                   value={editAgeTwoSplit.inches}
@@ -920,7 +875,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <input
                 id="age2-weight-lbs-input"
                 type="number"
-                step="0.5"
+                step="0.1"
                 min={18}
                 max={55}
                 value={editAgeTwoWeightLbs}
@@ -1077,20 +1032,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           <button
             type="submit"
             disabled={isSaving}
-            className={`w-full h-11 px-4 py-2.5 text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 ${
-              isAddingNewKid
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : 'bg-sky-600 hover:bg-sky-700 text-white'
-            }`}
+            className="w-full h-11 px-4 py-2.5 text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60 bg-sky-600 hover:bg-sky-700 text-white"
           >
             {isSaving
               ? 'Saving...'
-              : isAddingNewKid
-                ? `Save ${editName.trim() || 'New Child'} & Switch to Wall`
-                : `Save ${childProfile.name}’s Info & Avatar`}
+              : `Save ${editName.trim() || childProfile.name}’s Info & Avatar`}
           </button>
 
-          {!isAddingNewKid && totalChildrenCount > 1 && (
+          {totalChildrenCount > 1 && (
             <div className="pt-2 border-t border-slate-100">
               {confirmDeleteChild ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200">

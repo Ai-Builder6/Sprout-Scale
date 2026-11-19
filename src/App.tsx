@@ -42,6 +42,7 @@ import {
   AccessoryId,
   BiologicalSex,
   calculateExactAgeFromDob,
+  CHARACTER_PALETTES,
   ChildPhotoKind,
   ChildPhotoRecord,
   ChildProfile,
@@ -77,6 +78,7 @@ import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { GoogleDriveVaultSection } from './components/GoogleDriveVaultSection';
 import { ChildAvatarPhotoModal } from './components/ChildAvatarPhotoModal';
 import { WallPhotoHeightEstimatorModal } from './components/WallPhotoHeightEstimatorModal';
+import { AddChildModal, NewChildCreationPayload } from './components/AddChildModal';
 import {
   MobileAppDownloadModal,
   OfflineIndicator,
@@ -166,17 +168,23 @@ function SproutScaleWorkspace() {
     Record<string, GrowthMeasurement[]>
   >(loadStoredGuestMeasurements);
 
-  // Cloud Firestore state (when authenticated)
+  // Cloud Firestore state isolated strictly per childId so sibling data never bleeds across children!
   const [cloudChildren, setCloudChildren] = useState<ChildProfile[]>([]);
-  const [cloudMeasurements, setCloudMeasurements] = useState<GrowthMeasurement[]>([]);
-  const [cloudPhotos, setCloudPhotos] = useState<ChildPhotoRecord[]>([]);
-  const [localPhotos, setLocalPhotos] = useState<SavedLocalPhotoRecord[]>([]);
+  const [cloudMeasurementsByChild, setCloudMeasurementsByChild] = useState<
+    Record<string, GrowthMeasurement[]>
+  >({});
+  const [cloudPhotosByChild, setCloudPhotosByChild] = useState<
+    Record<string, ChildPhotoRecord[]>
+  >({});
+  const [localPhotosByChild, setLocalPhotosByChild] = useState<
+    Record<string, SavedLocalPhotoRecord[]>
+  >({});
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
 
   // Active child & UI controls
   const [selectedChildId, setSelectedChildId] = useState<string>(loadStoredSelectedChildId);
   const [activeDeckTab, setActiveDeckTab] = useState<ControlDeckTab>('measure');
-  const [isAddingNewKid, setIsAddingNewKid] = useState<boolean>(false);
+  const [isAddChildModalOpen, setIsAddChildModalOpen] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState(false);
   const [statusBanner, setStatusBanner] = useState<{
     type: 'success' | 'error';
@@ -188,6 +196,17 @@ function SproutScaleWorkspace() {
   const pendingChildIdRef = useRef<string | null>(null);
   const demoChildrenRef = useRef<ChildProfile[]>(demoChildren);
   const demoMeasurementsMapRef = useRef<Record<string, GrowthMeasurement[]>>(demoMeasurementsMap);
+
+  // Synchronously update selectedChildIdRef + localStorage + React state together
+  const selectChildProfile = (nextChildId: string) => {
+    selectedChildIdRef.current = nextChildId;
+    setSelectedChildId(nextChildId);
+    try {
+      window.localStorage.setItem(SELECTED_CHILD_STORAGE_KEY, nextChildId);
+    } catch {
+      // Ignore storage write errors
+    }
+  };
 
   useEffect(() => {
     selectedChildIdRef.current = selectedChildId;
@@ -265,22 +284,30 @@ function SproutScaleWorkspace() {
 
   const activeMeasurements: GrowthMeasurement[] = useMemo(() => {
     if (user) {
-      return cloudMeasurements;
+      return (cloudMeasurementsByChild[activeChild.id] ?? []).filter(
+        (m) => m.childId === activeChild.id,
+      );
     }
     return demoMeasurementsMap[activeChild.id] ?? [];
-  }, [user, cloudMeasurements, demoMeasurementsMap, activeChild.id]);
+  }, [user, cloudMeasurementsByChild, demoMeasurementsMap, activeChild.id]);
 
-  // Merge Firestore photo metadata with IndexedDB local image data for activeChild
+  // Merge Firestore photo metadata with IndexedDB local image data strictly for activeChild
   const activePhotos: ChildPhotoRecord[] = useMemo(() => {
+    const childLocalPhotos = localPhotosByChild[activeChild.id] ?? [];
+    const childCloudPhotos = cloudPhotosByChild[activeChild.id] ?? [];
+
     const localById = new Map<string, SavedLocalPhotoRecord>();
-    for (const lp of localPhotos) {
-      localById.set(lp.id, lp);
+    for (const lp of childLocalPhotos) {
+      if (lp.childId === activeChild.id) {
+        localById.set(lp.id, lp);
+      }
     }
 
     const mergedMap = new Map<string, ChildPhotoRecord>();
 
     if (user) {
-      for (const cp of cloudPhotos) {
+      for (const cp of childCloudPhotos) {
+        if (cp.childId !== activeChild.id) continue;
         const match = localById.get(cp.id);
         mergedMap.set(cp.id, {
           ...cp,
@@ -289,7 +316,8 @@ function SproutScaleWorkspace() {
       }
     }
 
-    for (const lp of localPhotos) {
+    for (const lp of childLocalPhotos) {
+      if (lp.childId !== activeChild.id) continue;
       if (!mergedMap.has(lp.id)) {
         mergedMap.set(lp.id, {
           id: lp.id,
@@ -311,7 +339,7 @@ function SproutScaleWorkspace() {
     const merged = Array.from(mergedMap.values());
     merged.sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0));
     return merged;
-  }, [user, cloudPhotos, localPhotos]);
+  }, [user, cloudPhotosByChild, localPhotosByChild, activeChild.id]);
 
   // Latest recorded milestone for active child (fallback to Age 2 baseline or DOB age)
   const latestMilestone = useMemo(() => {
@@ -334,7 +362,12 @@ function SproutScaleWorkspace() {
     if (!isPlayingTimelapse) {
       setDraftHeightCm(latestMilestone.heightCm);
       setDraftWeightKg(latestMilestone.weightKg);
-      if (activeChild.birthDate && activeMeasurements.length <= 1) {
+      const hasOnlyAgeTwoSeed =
+        activeMeasurements.length === 0 ||
+        (activeMeasurements.length === 1 &&
+          activeMeasurements[0].ageMonths === 24 &&
+          activeMeasurements[0].id.includes('24'));
+      if (activeChild.birthDate && hasOnlyAgeTwoSeed) {
         const calc = calculateExactAgeFromDob(activeChild.birthDate, draftDate);
         setDraftAgeMonths(calc ? calc.totalMonths : latestMilestone.ageMonths);
       } else {
@@ -490,7 +523,7 @@ function SproutScaleWorkspace() {
 
           if (firstMigratedId) {
             pendingChildIdRef.current = firstMigratedId;
-            setSelectedChildId(firstMigratedId);
+            selectChildProfile(firstMigratedId);
           }
         }
       } catch (err) {
@@ -535,65 +568,75 @@ function SproutScaleWorkspace() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const loaded: ChildProfile[] = snapshot.docs.map((docSnap) => {
-          const d = docSnap.data();
-          const rawBirthDate = String(d.birthDate ?? '');
-          const rawDriveFileId = String(d.avatarDriveFileId ?? '');
-          const createdAtField = d.createdAt as { toMillis?: () => number } | undefined;
-          const createdAtMs =
-            createdAtField && typeof createdAtField.toMillis === 'function'
-              ? createdAtField.toMillis()
-              : 0;
-          return {
-            id: docSnap.id,
-            ownerId: String(d.ownerId ?? user.uid),
-            name: String(d.name ?? 'Sprout'),
-            birthDate: VALIDATION_BOUNDS.DATE_PATTERN.test(rawBirthDate) ? rawBirthDate : '',
-            sex: sanitizeBiologicalSex(d.sex),
-            ageTwoHeightCm: Number(d.ageTwoHeightCm ?? 86.5),
-            ageTwoWeightKg: Number(d.ageTwoWeightKg ?? 12.5),
-            paletteId: (d.paletteId as PaletteId) ?? 'meadow',
-            accessoryId: (d.accessoryId as AccessoryId) ?? 'sprout',
-            hairStyle: (d.hairStyle as HairStyle) ?? 'curls',
-            skinTone: sanitizeHexColor(
-              typeof d.skinTone === 'string' ? d.skinTone : undefined,
-              SKIN_TONE_PRESETS[1].hex,
-            ),
-            hairColor: sanitizeHexColor(
-              typeof d.hairColor === 'string' ? d.hairColor : undefined,
-              HAIR_COLOR_PRESETS[1].hex,
-            ),
-            avatarDriveFileId:
-              rawDriveFileId.length > 0 &&
-              rawDriveFileId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
-              VALIDATION_BOUNDS.ID_PATTERN.test(rawDriveFileId)
-                ? rawDriveFileId
-                : '',
-            createdAtMs,
-          };
-        });
-
-        // Stable chronological order so siblings never jump around
-        loaded.sort((a, b) => {
-          const timeDiff = (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0);
-          return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
-        });
-
-        setCloudChildren(loaded);
-
-        const pendingId = pendingChildIdRef.current;
-        if (pendingId) {
-          if (loaded.some((c) => c.id === pendingId)) {
-            pendingChildIdRef.current = null;
-            setSelectedChildId(pendingId);
+        setCloudChildren((prev) => {
+          const prevCreatedMap = new Map<string, number>();
+          for (const existingKid of prev) {
+            if (existingKid.createdAtMs) {
+              prevCreatedMap.set(existingKid.id, existingKid.createdAtMs);
+            }
           }
-          // If pendingId hasn't arrived in this snapshot yet, keep waiting without snapping back!
-        } else if (
-          loaded.length > 0 &&
-          !loaded.some((c) => c.id === selectedChildIdRef.current)
-        ) {
-          setSelectedChildId(loaded[0].id);
-        }
+
+          const loaded: ChildProfile[] = snapshot.docs.map((docSnap) => {
+            const d = docSnap.data();
+            const rawBirthDate = String(d.birthDate ?? '');
+            const rawDriveFileId = String(d.avatarDriveFileId ?? '');
+            const createdAtField = d.createdAt as { toMillis?: () => number } | undefined;
+            const createdAtMs =
+              createdAtField && typeof createdAtField.toMillis === 'function'
+                ? createdAtField.toMillis()
+                : prevCreatedMap.get(docSnap.id) ?? Date.now();
+            return {
+              id: docSnap.id,
+              ownerId: String(d.ownerId ?? user.uid),
+              name: String(d.name ?? 'Sprout'),
+              birthDate: VALIDATION_BOUNDS.DATE_PATTERN.test(rawBirthDate) ? rawBirthDate : '',
+              sex: sanitizeBiologicalSex(d.sex),
+              ageTwoHeightCm: Number(d.ageTwoHeightCm ?? 86.5),
+              ageTwoWeightKg: Number(d.ageTwoWeightKg ?? 12.5),
+              paletteId: (d.paletteId as PaletteId) ?? 'meadow',
+              accessoryId: (d.accessoryId as AccessoryId) ?? 'sprout',
+              hairStyle: (d.hairStyle as HairStyle) ?? 'curls',
+              skinTone: sanitizeHexColor(
+                typeof d.skinTone === 'string' ? d.skinTone : undefined,
+                SKIN_TONE_PRESETS[1].hex,
+              ),
+              hairColor: sanitizeHexColor(
+                typeof d.hairColor === 'string' ? d.hairColor : undefined,
+                HAIR_COLOR_PRESETS[1].hex,
+              ),
+              avatarDriveFileId:
+                rawDriveFileId.length > 0 &&
+                rawDriveFileId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
+                VALIDATION_BOUNDS.ID_PATTERN.test(rawDriveFileId)
+                  ? rawDriveFileId
+                  : '',
+              createdAtMs,
+            };
+          });
+
+          // Stable chronological order so siblings never jump around
+          loaded.sort((a, b) => {
+            const timeDiff = (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0);
+            return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
+          });
+
+          const pendingId = pendingChildIdRef.current;
+          if (pendingId) {
+            if (loaded.some((c) => c.id === pendingId)) {
+              if (!snapshot.metadata.hasPendingWrites) {
+                pendingChildIdRef.current = null;
+              }
+              selectChildProfile(pendingId);
+            }
+          } else if (
+            loaded.length > 0 &&
+            !loaded.some((c) => c.id === selectedChildIdRef.current)
+          ) {
+            selectChildProfile(loaded[0].id);
+          }
+
+          return loaded;
+        });
 
         setIsLoadingCloud(false);
       },
@@ -606,19 +649,22 @@ function SproutScaleWorkspace() {
     return () => unsubscribe();
   }, [isAuthReady, user]);
 
-  // 3. Attach real-time onSnapshot listener for active child's GrowthMeasurements
+  // 3. Attach real-time onSnapshot listener for active child's GrowthMeasurements (stored per childId!)
   useEffect(() => {
     if (!isAuthReady || !user || !activeChild?.id || cloudChildren.length === 0) {
-      setCloudMeasurements([]);
       return;
     }
-    if (!cloudChildren.some((c) => c.id === activeChild.id)) {
+    const targetChildId = activeChild.id;
+    const targetAgeTwoHeight = activeChild.ageTwoHeightCm;
+    const targetAgeTwoWeight = activeChild.ageTwoWeightKg;
+
+    if (!cloudChildren.some((c) => c.id === targetChildId)) {
       return;
     }
 
-    const measurementsPath = `children/${activeChild.id}/measurements`;
+    const measurementsPath = `children/${targetChildId}/measurements`;
     const q = query(
-      collection(db, 'children', activeChild.id, 'measurements'),
+      collection(db, 'children', targetChildId, 'measurements'),
       where('ownerId', '==', user.uid),
     );
 
@@ -630,16 +676,19 @@ function SproutScaleWorkspace() {
           return {
             id: docSnap.id,
             ownerId: String(d.ownerId ?? user.uid),
-            childId: String(d.childId ?? activeChild.id),
+            childId: String(d.childId ?? targetChildId),
             ageMonths: Number(d.ageMonths ?? 24),
-            heightCm: Number(d.heightCm ?? activeChild.ageTwoHeightCm),
-            weightKg: Number(d.weightKg ?? activeChild.ageTwoWeightKg),
+            heightCm: Number(d.heightCm ?? targetAgeTwoHeight),
+            weightKg: Number(d.weightKg ?? targetAgeTwoWeight),
             recordedDate: String(d.recordedDate ?? getTodayIsoDate()),
             note: String(d.note ?? ''),
           };
         });
         loaded.sort((a, b) => a.ageMonths - b.ageMonths);
-        setCloudMeasurements(loaded);
+        setCloudMeasurementsByChild((prev) => ({
+          ...prev,
+          [targetChildId]: loaded,
+        }));
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, measurementsPath);
@@ -649,13 +698,17 @@ function SproutScaleWorkspace() {
     return () => unsubscribe();
   }, [isAuthReady, user, activeChild.id, activeChild.ageTwoHeightCm, activeChild.ageTwoWeightKg, cloudChildren]);
 
-  // 4. Load active child's local Saved Photos from IndexedDB
+  // 4. Load active child's local Saved Photos from IndexedDB (stored per childId!)
   useEffect(() => {
     let cancelled = false;
+    const targetChildId = activeChild.id;
     const loadLocalAlbum = async () => {
-      const records = await listLocalPhotosForChild(activeChild.id);
+      const records = await listLocalPhotosForChild(targetChildId);
       if (!cancelled) {
-        setLocalPhotos(records);
+        setLocalPhotosByChild((prev) => ({
+          ...prev,
+          [targetChildId]: records,
+        }));
       }
     };
     void loadLocalAlbum();
@@ -667,16 +720,16 @@ function SproutScaleWorkspace() {
   // 5. Attach real-time onSnapshot listener for active child's Saved Photos metadata in Firestore
   useEffect(() => {
     if (!isAuthReady || !user || !activeChild?.id || cloudChildren.length === 0) {
-      setCloudPhotos([]);
       return;
     }
-    if (!cloudChildren.some((c) => c.id === activeChild.id)) {
+    const targetChildId = activeChild.id;
+    if (!cloudChildren.some((c) => c.id === targetChildId)) {
       return;
     }
 
-    const photosPath = `children/${activeChild.id}/photos`;
+    const photosPath = `children/${targetChildId}/photos`;
     const q = query(
-      collection(db, 'children', activeChild.id, 'photos'),
+      collection(db, 'children', targetChildId, 'photos'),
       where('ownerId', '==', user.uid),
     );
 
@@ -694,7 +747,7 @@ function SproutScaleWorkspace() {
           return {
             id: docSnap.id,
             ownerId: String(d.ownerId ?? user.uid),
-            childId: String(d.childId ?? activeChild.id),
+            childId: String(d.childId ?? targetChildId),
             kind: kindVal,
             capturedDate: String(d.capturedDate ?? getTodayIsoDate()),
             ageMonths: Number(d.ageMonths ?? 24),
@@ -706,7 +759,10 @@ function SproutScaleWorkspace() {
           };
         });
         loaded.sort((a, b) => b.createdAtMs - a.createdAtMs);
-        setCloudPhotos(loaded);
+        setCloudPhotosByChild((prev) => ({
+          ...prev,
+          [targetChildId]: loaded,
+        }));
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, photosPath);
@@ -718,13 +774,17 @@ function SproutScaleWorkspace() {
 
   // 6. Hydrate any cloud-backed Drive photos that aren't yet cached in IndexedDB on this device
   useEffect(() => {
-    if (!accessToken || cloudPhotos.length === 0) return;
+    const targetChildId = activeChild.id;
+    const childCloudPhotos = cloudPhotosByChild[targetChildId] ?? [];
+    const childLocalPhotos = localPhotosByChild[targetChildId] ?? [];
+    if (!accessToken || childCloudPhotos.length === 0) return;
+
     let cancelled = false;
-    const localIdSet = new Set(localPhotos.map((p) => p.id));
+    const localIdSet = new Set(childLocalPhotos.map((p) => p.id));
 
     const hydrateFromDrive = async () => {
       let hydratedAny = false;
-      for (const cp of cloudPhotos) {
+      for (const cp of childCloudPhotos) {
         if (cancelled) return;
         if (!cp.driveFileId || localIdSet.has(cp.id)) continue;
         try {
@@ -749,8 +809,13 @@ function SproutScaleWorkspace() {
         }
       }
       if (hydratedAny && !cancelled) {
-        const refreshed = await listLocalPhotosForChild(activeChild.id);
-        if (!cancelled) setLocalPhotos(refreshed);
+        const refreshed = await listLocalPhotosForChild(targetChildId);
+        if (!cancelled) {
+          setLocalPhotosByChild((prev) => ({
+            ...prev,
+            [targetChildId]: refreshed,
+          }));
+        }
       }
     };
 
@@ -758,7 +823,7 @@ function SproutScaleWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, [accessToken, cloudPhotos, localPhotos, activeChild.id]);
+  }, [accessToken, cloudPhotosByChild, localPhotosByChild, activeChild.id]);
 
   // Timelapse Playback Cleanup
   useEffect(() => {
@@ -864,7 +929,10 @@ function SproutScaleWorkspace() {
     setAccessToken(null);
     setNeedsDriveAuth(true);
     pendingChildIdRef.current = null;
-    setSelectedChildId(demoChildrenRef.current[0]?.id ?? DEMO_CHILD.id);
+    setCloudChildren([]);
+    setCloudMeasurementsByChild({});
+    setCloudPhotosByChild({});
+    selectChildProfile(demoChildrenRef.current[0]?.id ?? DEMO_CHILD.id);
     setStatusBanner(null);
   };
 
@@ -1007,12 +1075,30 @@ function SproutScaleWorkspace() {
 
     try {
       if (user) {
+        const targetChildId = activeChild.id;
         const measurementId = sanitizeId(`m_${Date.now()}`);
-        const path = `children/${activeChild.id}/measurements/${measurementId}`;
+        const path = `children/${targetChildId}/measurements/${measurementId}`;
+        const optimisticM: GrowthMeasurement = {
+          id: measurementId,
+          ownerId: user.uid,
+          childId: targetChildId,
+          ageMonths: safeAgeMonths,
+          heightCm: safeHeightCm,
+          weightKg: safeWeightKg,
+          recordedDate: safeDate,
+          note: safeNote,
+        };
+        setCloudMeasurementsByChild((prev) => ({
+          ...prev,
+          [targetChildId]: [...(prev[targetChildId] ?? []), optimisticM].sort(
+            (a, b) => a.ageMonths - b.ageMonths,
+          ),
+        }));
+
         try {
-          await setDoc(doc(db, 'children', activeChild.id, 'measurements', measurementId), {
+          await setDoc(doc(db, 'children', targetChildId, 'measurements', measurementId), {
             ownerId: user.uid,
-            childId: activeChild.id,
+            childId: targetChildId,
             ageMonths: safeAgeMonths,
             heightCm: safeHeightCm,
             weightKg: safeWeightKg,
@@ -1213,8 +1299,9 @@ function SproutScaleWorkspace() {
         weightKg: safeWeightKg,
         ageMonths: safeAgeMonths,
       });
-      setLocalPhotos((prev) =>
-        prev.map((p) =>
+      setLocalPhotosByChild((prev) => ({
+        ...prev,
+        [targetChild.id]: (prev[targetChild.id] ?? []).map((p) =>
           p.id === existingPhotoId
             ? {
                 ...p,
@@ -1225,7 +1312,7 @@ function SproutScaleWorkspace() {
               }
             : p,
         ),
-      );
+      }));
       if (user) {
         try {
           await updateDoc(doc(db, 'children', targetChild.id, 'photos', existingPhotoId), {
@@ -1263,7 +1350,13 @@ function SproutScaleWorkspace() {
 
     // Save locally to IndexedDB immediately so the picture is never lost
     await savePhotoToLocalAlbum(localRecord);
-    setLocalPhotos((prev) => [localRecord, ...prev.filter((p) => p.id !== photoId)]);
+    setLocalPhotosByChild((prev) => ({
+      ...prev,
+      [targetChild.id]: [
+        localRecord,
+        ...(prev[targetChild.id] ?? []).filter((p) => p.id !== photoId),
+      ],
+    }));
 
     // Optionally back up to Google Drive if authorized
     let uploadedDriveFileId = '';
@@ -1283,11 +1376,12 @@ function SproutScaleWorkspace() {
         ) {
           uploadedDriveFileId = rawFileId;
           await updateLocalPhotoRecord(photoId, { driveFileId: uploadedDriveFileId });
-          setLocalPhotos((prev) =>
-            prev.map((p) =>
+          setLocalPhotosByChild((prev) => ({
+            ...prev,
+            [targetChild.id]: (prev[targetChild.id] ?? []).map((p) =>
               p.id === photoId ? { ...p, driveFileId: uploadedDriveFileId } : p,
             ),
-          );
+          }));
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : '';
@@ -1354,9 +1448,12 @@ function SproutScaleWorkspace() {
         VALIDATION_BOUNDS.ID_PATTERN.test(rawFileId)
       ) {
         await updateLocalPhotoRecord(photo.id, { driveFileId: rawFileId });
-        setLocalPhotos((prev) =>
-          prev.map((p) => (p.id === photo.id ? { ...p, driveFileId: rawFileId } : p)),
-        );
+        setLocalPhotosByChild((prev) => ({
+          ...prev,
+          [activeChild.id]: (prev[activeChild.id] ?? []).map((p) =>
+            p.id === photo.id ? { ...p, driveFileId: rawFileId } : p,
+          ),
+        }));
         if (user) {
           const photoPath = `children/${activeChild.id}/photos/${photo.id}`;
           try {
@@ -1385,7 +1482,10 @@ function SproutScaleWorkspace() {
 
   const handleDeleteSavedPhoto = async (photo: ChildPhotoRecord) => {
     await deleteLocalPhoto(photo.id);
-    setLocalPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+    setLocalPhotosByChild((prev) => ({
+      ...prev,
+      [activeChild.id]: (prev[activeChild.id] ?? []).filter((p) => p.id !== photo.id),
+    }));
     if (user) {
       const photoPath = `children/${activeChild.id}/photos/${photo.id}`;
       try {
@@ -1428,23 +1528,59 @@ function SproutScaleWorkspace() {
     hairColor: string;
   }) => {
     setIsSaving(true);
+    const targetChildId = activeChild.id;
+    const safeName =
+      updates.name.trim().slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN) ||
+      activeChild.name ||
+      'Sprout';
     const safeBirthDate = VALIDATION_BOUNDS.DATE_PATTERN.test(updates.birthDate)
       ? updates.birthDate
       : '';
     const safeSex = sanitizeBiologicalSex(updates.sex);
     const safeSkinTone = sanitizeHexColor(updates.skinTone, SKIN_TONE_PRESETS[1].hex);
     const safeHairColor = sanitizeHexColor(updates.hairColor, HAIR_COLOR_PRESETS[1].hex);
+    const safeAgeTwoHeightCm = clampNumber(
+      Number(updates.ageTwoHeightCm.toFixed(1)),
+      VALIDATION_BOUNDS.AGE_TWO_HEIGHT_MIN,
+      VALIDATION_BOUNDS.AGE_TWO_HEIGHT_MAX,
+    );
+    const safeAgeTwoWeightKg = clampNumber(
+      Number(updates.ageTwoWeightKg.toFixed(1)),
+      VALIDATION_BOUNDS.AGE_TWO_WEIGHT_MIN,
+      VALIDATION_BOUNDS.AGE_TWO_WEIGHT_MAX,
+    );
 
     try {
       if (user) {
-        const path = `children/${activeChild.id}`;
+        // Optimistically update active child immediately so UI reflects changes on frame 0
+        setCloudChildren((prev) =>
+          prev.map((c) =>
+            c.id === targetChildId
+              ? {
+                  ...c,
+                  name: safeName,
+                  birthDate: safeBirthDate,
+                  sex: safeSex,
+                  ageTwoHeightCm: safeAgeTwoHeightCm,
+                  ageTwoWeightKg: safeAgeTwoWeightKg,
+                  paletteId: updates.paletteId,
+                  accessoryId: updates.accessoryId,
+                  hairStyle: updates.hairStyle,
+                  skinTone: safeSkinTone,
+                  hairColor: safeHairColor,
+                }
+              : c,
+          ),
+        );
+
+        const path = `children/${targetChildId}`;
         try {
-          await updateDoc(doc(db, 'children', activeChild.id), {
-            name: updates.name.slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN),
+          await updateDoc(doc(db, 'children', targetChildId), {
+            name: safeName,
             birthDate: safeBirthDate,
             sex: safeSex,
-            ageTwoHeightCm: updates.ageTwoHeightCm,
-            ageTwoWeightKg: updates.ageTwoWeightKg,
+            ageTwoHeightCm: safeAgeTwoHeightCm,
+            ageTwoWeightKg: safeAgeTwoWeightKg,
             paletteId: updates.paletteId,
             accessoryId: updates.accessoryId,
             hairStyle: updates.hairStyle,
@@ -1452,24 +1588,54 @@ function SproutScaleWorkspace() {
             hairColor: safeHairColor,
             updatedAt: serverTimestamp(),
           });
+
+          // Keep any explicit 24-month baseline measurement in sync when Age 2 baseline changes
+          const existingAge2 = (cloudMeasurementsByChild[targetChildId] ?? []).find(
+            (m) => m.ageMonths === 24 && m.id.includes('_24m'),
+          );
+          if (existingAge2) {
+            await updateDoc(
+              doc(db, 'children', targetChildId, 'measurements', existingAge2.id),
+              {
+                heightCm: safeAgeTwoHeightCm,
+                weightKg: safeAgeTwoWeightKg,
+                updatedAt: serverTimestamp(),
+              },
+            );
+          }
         } catch (err) {
           handleFirestoreError(err, OperationType.UPDATE, path);
         }
       } else {
         setDemoChildren((prev) =>
           prev.map((c) =>
-            c.id === activeChild.id
+            c.id === targetChildId
               ? {
                   ...c,
                   ...updates,
+                  name: safeName,
                   birthDate: safeBirthDate,
                   sex: safeSex,
+                  ageTwoHeightCm: safeAgeTwoHeightCm,
+                  ageTwoWeightKg: safeAgeTwoWeightKg,
                   skinTone: safeSkinTone,
                   hairColor: safeHairColor,
                 }
               : c,
           ),
         );
+        setDemoMeasurementsMap((prev) => ({
+          ...prev,
+          [targetChildId]: (prev[targetChildId] ?? []).map((m) =>
+            m.ageMonths === 24 && m.id.includes('_24')
+              ? {
+                  ...m,
+                  heightCm: safeAgeTwoHeightCm,
+                  weightKg: safeAgeTwoWeightKg,
+                }
+              : m,
+          ),
+        }));
       }
 
       if (safeBirthDate) {
@@ -1478,44 +1644,285 @@ function SproutScaleWorkspace() {
           setDraftAgeMonths(calc.totalMonths);
         }
       }
-      showTransientBanner('success', `Saved ${updates.name}’s info, age & avatar!`);
+      showTransientBanner('success', `Saved ${safeName}’s info, age & avatar!`);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleCreateNewChild = async (newChild: {
-    name: string;
-    birthDate: string;
-    sex: BiologicalSex;
-    ageTwoHeightCm: number;
-    ageTwoWeightKg: number;
-    paletteId: PaletteId;
-    accessoryId: AccessoryId;
-    hairStyle: HairStyle;
-    skinTone: string;
-    hairColor: string;
-  }) => {
+  const handleCreateNewChild = async (newChild: NewChildCreationPayload) => {
     setIsSaving(true);
+    const safeName =
+      newChild.name.trim().slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN) || 'Sprout';
     const safeBirthDate = VALIDATION_BOUNDS.DATE_PATTERN.test(newChild.birthDate)
       ? newChild.birthDate
       : '';
     const safeSex = sanitizeBiologicalSex(newChild.sex);
     const safeSkinTone = sanitizeHexColor(newChild.skinTone, SKIN_TONE_PRESETS[1].hex);
     const safeHairColor = sanitizeHexColor(newChild.hairColor, HAIR_COLOR_PRESETS[1].hex);
+    const todayIso = getTodayIsoDate();
+
+    const safeAgeTwoHeightCm = clampNumber(
+      Number(newChild.ageTwoHeightCm.toFixed(1)),
+      VALIDATION_BOUNDS.AGE_TWO_HEIGHT_MIN,
+      VALIDATION_BOUNDS.AGE_TWO_HEIGHT_MAX,
+    );
+    const safeAgeTwoWeightKg = clampNumber(
+      Number(newChild.ageTwoWeightKg.toFixed(1)),
+      VALIDATION_BOUNDS.AGE_TWO_WEIGHT_MIN,
+      VALIDATION_BOUNDS.AGE_TWO_WEIGHT_MAX,
+    );
+    const safeCurrentHeightCm = clampNumber(
+      Number(newChild.currentHeightCm.toFixed(1)),
+      VALIDATION_BOUNDS.HEIGHT_CM_MIN,
+      VALIDATION_BOUNDS.HEIGHT_CM_MAX,
+    );
+    const safeCurrentWeightKg = clampNumber(
+      Number(newChild.currentWeightKg.toFixed(1)),
+      VALIDATION_BOUNDS.WEIGHT_KG_MIN,
+      VALIDATION_BOUNDS.WEIGHT_KG_MAX,
+    );
+    const safeCurrentAgeMonths = clampNumber(
+      Math.round(newChild.currentAgeMonths),
+      VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+      VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+    );
+
+    const includeAgeTwoBaselineMark = safeCurrentAgeMonths >= 24;
+    const shouldCreateSeparateCurrentMark =
+      !includeAgeTwoBaselineMark ||
+      safeCurrentAgeMonths !== 24 ||
+      Math.abs(safeCurrentHeightCm - safeAgeTwoHeightCm) >= 0.2 ||
+      Math.abs(safeCurrentWeightKg - safeAgeTwoWeightKg) >= 0.2;
 
     try {
       if (user) {
         const childId = sanitizeId(`child_${Date.now()}`);
         const childPath = `children/${childId}`;
+
+        // Upload optional initial avatar photo to Google Drive if authorized
+        let uploadedAvatarDriveId = '';
+        if (newChild.initialAvatarDataUrl) {
+          await saveLocalAvatarDataUrl(childId, newChild.initialAvatarDataUrl);
+          setAvatarPhotoMap((prev) => ({
+            ...prev,
+            [childId]: newChild.initialAvatarDataUrl as string,
+          }));
+          if (accessToken) {
+            try {
+              const rawId = await uploadChildAvatarToDrive(
+                accessToken,
+                childId,
+                safeName,
+                newChild.initialAvatarDataUrl,
+              );
+              if (
+                rawId.length > 0 &&
+                rawId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
+                VALIDATION_BOUNDS.ID_PATTERN.test(rawId)
+              ) {
+                uploadedAvatarDriveId = rawId;
+              }
+            } catch {
+              // Keep local avatar if Drive upload unavailable
+            }
+          }
+        }
+
         const optimisticChild: ChildProfile = {
           id: childId,
           ownerId: user.uid,
-          name: newChild.name.slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN),
+          name: safeName,
           birthDate: safeBirthDate,
           sex: safeSex,
-          ageTwoHeightCm: newChild.ageTwoHeightCm,
-          ageTwoWeightKg: newChild.ageTwoWeightKg,
+          ageTwoHeightCm: safeAgeTwoHeightCm,
+          ageTwoWeightKg: safeAgeTwoWeightKg,
+          paletteId: newChild.paletteId,
+          accessoryId: newChild.accessoryId,
+          hairStyle: newChild.hairStyle,
+          skinTone: safeSkinTone,
+          hairColor: safeHairColor,
+          avatarDriveFileId: uploadedAvatarDriveId,
+          createdAtMs: Date.now(),
+        };
+
+        const baselineMId = sanitizeId(`m_${childId}_24m`);
+        const currentMId = sanitizeId(`m_${childId}_cur_${safeCurrentAgeMonths}m`);
+        const initialMeasurements: GrowthMeasurement[] = [];
+
+        if (includeAgeTwoBaselineMark) {
+          initialMeasurements.push({
+            id: baselineMId,
+            ownerId: user.uid,
+            childId,
+            ageMonths: 24,
+            heightCm: safeAgeTwoHeightCm,
+            weightKg: safeAgeTwoWeightKg,
+            recordedDate: todayIso,
+            note: 'Age 2 starting height & weight',
+          });
+        }
+
+        if (shouldCreateSeparateCurrentMark) {
+          initialMeasurements.push({
+            id: currentMId,
+            ownerId: user.uid,
+            childId,
+            ageMonths: safeCurrentAgeMonths,
+            heightCm: safeCurrentHeightCm,
+            weightKg: safeCurrentWeightKg,
+            recordedDate: todayIso,
+            note: `${safeName}’s initial check-in`,
+          });
+        }
+
+        // Lock pendingChildIdRef and populate isolated child state BEFORE awaiting Firestore!
+        pendingChildIdRef.current = childId;
+        setCloudChildren((prev) => [...prev.filter((c) => c.id !== childId), optimisticChild]);
+        setCloudMeasurementsByChild((prev) => ({
+          ...prev,
+          [childId]: initialMeasurements,
+        }));
+        setCloudPhotosByChild((prev) => ({
+          ...prev,
+          [childId]: [],
+        }));
+        selectChildProfile(childId);
+        setDraftHeightCm(safeCurrentHeightCm);
+        setDraftWeightKg(safeCurrentWeightKg);
+        setDraftAgeMonths(safeCurrentAgeMonths);
+        setDraftDate(todayIso);
+        setDraftNote('');
+
+        try {
+          await setDoc(doc(db, 'children', childId), {
+            ownerId: user.uid,
+            name: safeName,
+            birthDate: safeBirthDate,
+            sex: safeSex,
+            ageTwoHeightCm: safeAgeTwoHeightCm,
+            ageTwoWeightKg: safeAgeTwoWeightKg,
+            paletteId: newChild.paletteId,
+            accessoryId: newChild.accessoryId,
+            hairStyle: newChild.hairStyle,
+            skinTone: safeSkinTone,
+            hairColor: safeHairColor,
+            avatarDriveFileId: uploadedAvatarDriveId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          if (includeAgeTwoBaselineMark) {
+            await setDoc(doc(db, 'children', childId, 'measurements', baselineMId), {
+              ownerId: user.uid,
+              childId,
+              ageMonths: 24,
+              heightCm: safeAgeTwoHeightCm,
+              weightKg: safeAgeTwoWeightKg,
+              recordedDate: todayIso,
+              note: 'Age 2 starting height & weight',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
+
+          if (shouldCreateSeparateCurrentMark) {
+            await setDoc(doc(db, 'children', childId, 'measurements', currentMId), {
+              ownerId: user.uid,
+              childId,
+              ageMonths: safeCurrentAgeMonths,
+              heightCm: safeCurrentHeightCm,
+              weightKg: safeCurrentWeightKg,
+              recordedDate: todayIso,
+              note: `${safeName}’s initial check-in`,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
+
+          // Also save initial uploaded photo to the new child's Saved Photos Album
+          const rawAlbumPhoto = newChild.initialRawPhotoDataUrl || newChild.initialAvatarDataUrl;
+          if (rawAlbumPhoto) {
+            const photoId = sanitizeId(`photo_avatar_${Date.now()}`);
+            const compressed = await compressPhotoToStorageJpeg(rawAlbumPhoto, 1200, 0.85);
+            const localPhotoRec: SavedLocalPhotoRecord = {
+              id: photoId,
+              childId,
+              kind: 'avatar',
+              dataUrl: compressed,
+              capturedDate: todayIso,
+              ageMonths: safeCurrentAgeMonths,
+              heightCm: safeCurrentHeightCm,
+              weightKg: safeCurrentWeightKg,
+              caption: `${safeName} portrait photo`,
+              driveFileId: uploadedAvatarDriveId,
+              createdAtMs: Date.now(),
+            };
+            await savePhotoToLocalAlbum(localPhotoRec);
+            setLocalPhotosByChild((prev) => ({
+              ...prev,
+              [childId]: [localPhotoRec],
+            }));
+            await setDoc(doc(db, 'children', childId, 'photos', photoId), {
+              ownerId: user.uid,
+              childId,
+              kind: 'avatar',
+              capturedDate: todayIso,
+              ageMonths: safeCurrentAgeMonths,
+              heightCm: safeCurrentHeightCm,
+              weightKg: safeCurrentWeightKg,
+              caption: `${safeName} portrait photo`.slice(0, VALIDATION_BOUNDS.CAPTION_MAX_LEN),
+              driveFileId: uploadedAvatarDriveId,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        } catch (err) {
+          pendingChildIdRef.current = null;
+          handleFirestoreError(err, OperationType.CREATE, childPath);
+        }
+      } else {
+        const childId = sanitizeId(`demo_child_${Date.now()}`);
+        if (newChild.initialAvatarDataUrl) {
+          await saveLocalAvatarDataUrl(childId, newChild.initialAvatarDataUrl);
+          setAvatarPhotoMap((prev) => ({
+            ...prev,
+            [childId]: newChild.initialAvatarDataUrl as string,
+          }));
+        }
+
+        const rawAlbumPhoto = newChild.initialRawPhotoDataUrl || newChild.initialAvatarDataUrl;
+        if (rawAlbumPhoto) {
+          const photoId = sanitizeId(`photo_avatar_${Date.now()}`);
+          const compressed = await compressPhotoToStorageJpeg(rawAlbumPhoto, 1200, 0.85);
+          const localPhotoRec: SavedLocalPhotoRecord = {
+            id: photoId,
+            childId,
+            kind: 'avatar',
+            dataUrl: compressed,
+            capturedDate: todayIso,
+            ageMonths: safeCurrentAgeMonths,
+            heightCm: safeCurrentHeightCm,
+            weightKg: safeCurrentWeightKg,
+            caption: `${safeName} portrait photo`,
+            driveFileId: '',
+            createdAtMs: Date.now(),
+          };
+          await savePhotoToLocalAlbum(localPhotoRec);
+          setLocalPhotosByChild((prev) => ({
+            ...prev,
+            [childId]: [localPhotoRec],
+          }));
+        }
+
+        const created: ChildProfile = {
+          id: childId,
+          ownerId: 'demo_family',
+          name: safeName,
+          birthDate: safeBirthDate,
+          sex: safeSex,
+          ageTwoHeightCm: safeAgeTwoHeightCm,
+          ageTwoWeightKg: safeAgeTwoWeightKg,
           paletteId: newChild.paletteId,
           accessoryId: newChild.accessoryId,
           hairStyle: newChild.hairStyle,
@@ -1525,89 +1932,50 @@ function SproutScaleWorkspace() {
           createdAtMs: Date.now(),
         };
 
-        // Lock pendingChildIdRef BEFORE setDoc so onSnapshot never snaps back to child #1!
-        pendingChildIdRef.current = childId;
-        setCloudChildren((prev) => [...prev.filter((c) => c.id !== childId), optimisticChild]);
-        setSelectedChildId(childId);
+        const initialDemoMarks: GrowthMeasurement[] = [];
 
-        try {
-          await setDoc(doc(db, 'children', childId), {
-            ownerId: user.uid,
-            name: optimisticChild.name,
-            birthDate: safeBirthDate,
-            sex: safeSex,
-            ageTwoHeightCm: newChild.ageTwoHeightCm,
-            ageTwoWeightKg: newChild.ageTwoWeightKg,
-            paletteId: newChild.paletteId,
-            accessoryId: newChild.accessoryId,
-            hairStyle: newChild.hairStyle,
-            skinTone: safeSkinTone,
-            hairColor: safeHairColor,
-            avatarDriveFileId: '',
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-
-          // Create starting Age 2 mark on their wall
-          const baselineMId = sanitizeId(`m_${childId}_24m`);
-          await setDoc(doc(db, 'children', childId, 'measurements', baselineMId), {
-            ownerId: user.uid,
+        if (includeAgeTwoBaselineMark) {
+          initialDemoMarks.push({
+            id: sanitizeId(`demo_m_${childId}_24`),
+            ownerId: 'demo_family',
             childId,
             ageMonths: 24,
-            heightCm: newChild.ageTwoHeightCm,
-            weightKg: newChild.ageTwoWeightKg,
-            recordedDate: getTodayIsoDate(),
+            heightCm: safeAgeTwoHeightCm,
+            weightKg: safeAgeTwoWeightKg,
+            recordedDate: todayIso,
             note: 'Age 2 starting height & weight',
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
           });
-        } catch (err) {
-          pendingChildIdRef.current = null;
-          handleFirestoreError(err, OperationType.CREATE, childPath);
         }
-        setIsAddingNewKid(false);
-        setActiveDeckTab('measure');
-      } else {
-        const childId = sanitizeId(`demo_child_${Date.now()}`);
-        const created: ChildProfile = {
-          id: childId,
-          ownerId: 'demo_family',
-          ...newChild,
-          birthDate: safeBirthDate,
-          sex: safeSex,
-          skinTone: safeSkinTone,
-          hairColor: safeHairColor,
-          avatarDriveFileId: '',
-          createdAtMs: Date.now(),
-        };
+
+        if (shouldCreateSeparateCurrentMark) {
+          initialDemoMarks.push({
+            id: sanitizeId(`demo_m_${childId}_cur`),
+            ownerId: 'demo_family',
+            childId,
+            ageMonths: safeCurrentAgeMonths,
+            heightCm: safeCurrentHeightCm,
+            weightKg: safeCurrentWeightKg,
+            recordedDate: todayIso,
+            note: `${safeName}’s initial check-in`,
+          });
+        }
+
         setDemoChildren((prev) => [...prev, created]);
         setDemoMeasurementsMap((prev) => ({
           ...prev,
-          [childId]: [
-            {
-              id: sanitizeId(`demo_m_${childId}_24`),
-              ownerId: 'demo_family',
-              childId,
-              ageMonths: 24,
-              heightCm: newChild.ageTwoHeightCm,
-              weightKg: newChild.ageTwoWeightKg,
-              recordedDate: getTodayIsoDate(),
-              note: 'Age 2 starting height & weight',
-            },
-          ],
+          [childId]: initialDemoMarks,
         }));
-        setSelectedChildId(childId);
-        setIsAddingNewKid(false);
-        setActiveDeckTab('measure');
+        selectChildProfile(childId);
+        setDraftHeightCm(safeCurrentHeightCm);
+        setDraftWeightKg(safeCurrentWeightKg);
+        setDraftAgeMonths(safeCurrentAgeMonths);
+        setDraftDate(todayIso);
+        setDraftNote('');
       }
 
-      if (safeBirthDate) {
-        const calc = calculateExactAgeFromDob(safeBirthDate, draftDate);
-        if (calc) {
-          setDraftAgeMonths(calc.totalMonths);
-        }
-      }
-      showTransientBanner('success', `Saved ${newChild.name} and switched to their Growth Wall!`);
+      setIsAddChildModalOpen(false);
+      setActiveDeckTab('measure');
+      showTransientBanner('success', `Added ${safeName} and switched to their Growth Wall!`);
     } finally {
       setIsSaving(false);
     }
@@ -1628,9 +1996,26 @@ function SproutScaleWorkspace() {
         delete next[childIdToDelete];
         return next;
       });
+      setLocalPhotosByChild((prev) => {
+        const next = { ...prev };
+        delete next[childIdToDelete];
+        return next;
+      });
 
       if (user) {
         const childPath = `children/${childIdToDelete}`;
+        setCloudChildren(remaining);
+        setCloudMeasurementsByChild((prev) => {
+          const next = { ...prev };
+          delete next[childIdToDelete];
+          return next;
+        });
+        setCloudPhotosByChild((prev) => {
+          const next = { ...prev };
+          delete next[childIdToDelete];
+          return next;
+        });
+
         try {
           const mSnap = await getDocs(
             query(
@@ -1655,7 +2040,7 @@ function SproutScaleWorkspace() {
           handleFirestoreError(err, OperationType.DELETE, childPath);
         }
         pendingChildIdRef.current = fallbackChildId;
-        setSelectedChildId(fallbackChildId);
+        selectChildProfile(fallbackChildId);
       } else {
         setDemoChildren(remaining);
         setDemoMeasurementsMap((prev) => {
@@ -1663,10 +2048,9 @@ function SproutScaleWorkspace() {
           delete next[childIdToDelete];
           return next;
         });
-        setSelectedChildId(fallbackChildId);
+        selectChildProfile(fallbackChildId);
       }
 
-      setIsAddingNewKid(false);
       showTransientBanner(
         'success',
         `Removed ${target?.name ?? 'child'}’s profile.`,
@@ -1679,9 +2063,14 @@ function SproutScaleWorkspace() {
   const handleDeleteMeasurement = async (measurementId: string) => {
     if (measurementId === 'synthetic_age_2') return;
     if (user) {
-      const path = `children/${activeChild.id}/measurements/${measurementId}`;
+      const targetChildId = activeChild.id;
+      setCloudMeasurementsByChild((prev) => ({
+        ...prev,
+        [targetChildId]: (prev[targetChildId] ?? []).filter((m) => m.id !== measurementId),
+      }));
+      const path = `children/${targetChildId}/measurements/${measurementId}`;
       try {
-        await deleteDoc(doc(db, 'children', activeChild.id, 'measurements', measurementId));
+        await deleteDoc(doc(db, 'children', targetChildId, 'measurements', measurementId));
       } catch (err) {
         handleFirestoreError(err, OperationType.DELETE, path);
       }
@@ -1863,41 +2252,71 @@ function SproutScaleWorkspace() {
                 <div
                   role="group"
                   aria-label="Select child profile"
-                  className="flex flex-wrap items-center gap-1 p-1 bg-sky-200/80 rounded-lg border border-sky-300/70"
+                  className="flex flex-wrap items-center gap-1.5 p-1 bg-sky-200/80 rounded-lg border border-sky-300/70"
                 >
-                  {activeChildrenList.map((kid) => (
-                    <button
-                      key={kid.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedChildId(kid.id);
-                        setIsAddingNewKid(false);
-                      }}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                        kid.id === activeChild.id && !isAddingNewKid
-                          ? 'bg-amber-400 text-slate-950 shadow-xs'
-                          : 'text-indigo-950/80 hover:text-indigo-950 hover:bg-white/60'
-                      }`}
-                    >
-                      {kid.name}
-                    </button>
-                  ))}
+                  {activeChildrenList.map((kid) => {
+                    const isSelected = kid.id === activeChild.id;
+                    const kidThumb = avatarPhotoMap[kid.id] ?? null;
+                    const kidAgeShort = kid.birthDate
+                      ? calculateExactAgeFromDob(kid.birthDate)?.formattedShortAge
+                      : null;
+                    const accentHex =
+                      CHARACTER_PALETTES[kid.paletteId]?.accentHex ?? '#0284c7';
+
+                    return (
+                      <button
+                        key={kid.id}
+                        type="button"
+                        onClick={() => {
+                          if (isPlayingTimelapse && timelapseTimerRef.current !== null) {
+                            window.clearInterval(timelapseTimerRef.current);
+                            timelapseTimerRef.current = null;
+                            setIsPlayingTimelapse(false);
+                          }
+                          pendingChildIdRef.current = null;
+                          setDraftNote('');
+                          selectChildProfile(kid.id);
+                        }}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-400 text-slate-950 shadow-xs'
+                            : 'text-indigo-950/85 hover:text-indigo-950 hover:bg-white/70'
+                        }`}
+                      >
+                        {kidThumb ? (
+                          <img
+                            src={kidThumb}
+                            alt=""
+                            aria-hidden="true"
+                            className="w-4 h-4 rounded-full object-cover border border-white/80 shrink-0"
+                          />
+                        ) : (
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 10 10"
+                            aria-hidden="true"
+                            className="shrink-0"
+                          >
+                            <circle cx="5" cy="5" r="4.5" fill={accentHex} />
+                          </svg>
+                        )}
+                        <span>{kid.name}</span>
+                        {kidAgeShort && (
+                          <span className="font-mono tabular-nums text-[10px] opacity-75">
+                            · {kidAgeShort}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveDeckTab('character');
-                      setIsAddingNewKid(true);
-                      document
-                        .getElementById('control-deck-panel')
-                        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    }}
-                    className={`px-2.5 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                      isAddingNewKid
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-sky-900 hover:text-indigo-950 hover:bg-white/60'
-                    }`}
+                    onClick={() => setIsAddChildModalOpen(true)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
-                    + Child
+                    <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                    Add Child
                   </button>
                 </div>
 
@@ -2012,9 +2431,7 @@ function SproutScaleWorkspace() {
                   onOpenWallHeightEstimator={() => setIsWallEstimatorOpen(true)}
                   onRemoveAvatarPhoto={handleRemoveAvatarPhoto}
                   onSaveCharacterProfile={handleSaveCharacterProfile}
-                  onCreateNewChild={handleCreateNewChild}
-                  isAddingNewKid={isAddingNewKid}
-                  onSetIsAddingNewKid={setIsAddingNewKid}
+                  onOpenAddChildModal={() => setIsAddChildModalOpen(true)}
                   totalChildrenCount={activeChildrenList.length}
                   onDeleteChild={handleDeleteChild}
                 />
@@ -2221,6 +2638,15 @@ function SproutScaleWorkspace() {
         isIOS={isIOS}
         isAndroid={isAndroid}
         onTriggerInstall={install}
+      />
+
+      {/* Dedicated Multi-Child Profile Creator Modal */}
+      <AddChildModal
+        isOpen={isAddChildModalOpen}
+        existingChildren={activeChildrenList}
+        isSaving={isSaving}
+        onClose={() => setIsAddChildModalOpen(false)}
+        onCreateChild={handleCreateNewChild}
       />
     </div>
   );
