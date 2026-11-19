@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Plus,
   Ruler,
+  Share2,
   Star,
   Trash2,
   UserCheck,
@@ -38,6 +39,7 @@ import {
   VALIDATION_BOUNDS,
 } from '../types';
 import { InitialMemoryModalContext } from './AddPortfolioMemoryModal';
+import { SocialShareInitialContext } from './SocialShareConnectorModal';
 
 type PortfolioViewMode = 'timeline' | 'grid';
 type GalleryFilter = 'all' | 'favorites' | 'wall' | 'milestones' | 'avatar';
@@ -71,6 +73,7 @@ interface ChildPhotoAlbumSectionProps {
   onDeletePhoto: (photo: ChildPhotoRecord) => Promise<void>;
   onDeleteEvent: (event: MilestoneEventRecord) => Promise<void>;
   onInspectMilestone?: (measurement: GrowthMeasurement) => void;
+  onOpenSocialShare?: (context?: SocialShareInitialContext) => void;
   onSignInForDrive: () => void;
 }
 
@@ -104,6 +107,7 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
   onDeletePhoto,
   onDeleteEvent,
   onInspectMilestone,
+  onOpenSocialShare,
   onSignInForDrive,
 }) => {
   const [viewMode, setViewMode] = useState<PortfolioViewMode>('timeline');
@@ -422,6 +426,17 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
             Portrait
           </button>
 
+          {onOpenSocialShare && (
+            <button
+              type="button"
+              onClick={() => onOpenSocialShare()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-indigo-950 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Share2 className="w-3.5 h-3.5 text-rose-600" aria-hidden="true" />
+              Share FB / IG
+            </button>
+          )}
+
           {unsyncedLocalPhotos.length > 0 && (
             <button
               type="button"
@@ -721,6 +736,41 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
                           <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                           Add Photo / Note
                         </button>
+
+                        {onOpenSocialShare && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onOpenSocialShare({
+                                photoId:
+                                  chapter.photos.find((p) => Boolean(p.localDataUrl))?.id ??
+                                  undefined,
+                                dateIso: VALIDATION_BOUNDS.DATE_PATTERN.test(chapter.dateKey)
+                                  ? chapter.dateKey
+                                  : undefined,
+                                ageMonths: chapter.ageMonths,
+                                heightCm:
+                                  chapter.bestHeightCm > 0 ? chapter.bestHeightCm : undefined,
+                                weightKg:
+                                  chapter.bestWeightKg > 0 ? chapter.bestWeightKg : undefined,
+                                headline:
+                                  chapter.events[0]?.title ||
+                                  chapter.photos[0]?.eventTitle ||
+                                  primaryMeasurement?.note ||
+                                  '',
+                                caption:
+                                  chapter.events[0]?.story ||
+                                  chapter.photos[0]?.caption ||
+                                  primaryMeasurement?.note ||
+                                  '',
+                              })
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                          >
+                            <Share2 className="w-3.5 h-3.5 text-rose-600" aria-hidden="true" />
+                            Share Story
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1086,6 +1136,26 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
                                 Edit
                               </button>
                             )}
+                            {photo.localDataUrl && onOpenSocialShare && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onOpenSocialShare({
+                                    photoId: photo.id,
+                                    dateIso: photo.capturedDate,
+                                    ageMonths: photo.ageMonths,
+                                    heightCm: photo.heightCm > 0 ? photo.heightCm : undefined,
+                                    weightKg: photo.weightKg > 0 ? photo.weightKg : undefined,
+                                    headline: photo.eventTitle || '',
+                                    caption: photo.caption || '',
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-rose-900 bg-rose-100 hover:bg-rose-200 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                              >
+                                <Share2 className="w-3 h-3" aria-hidden="true" />
+                                Share
+                              </button>
+                            )}
                             {photo.localDataUrl && (
                               <button
                                 type="button"
@@ -1302,6 +1372,28 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
                     'Saved in SproutScale portfolio — click Edit Details to add an event story.'}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
+                  {onOpenSocialShare && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = lightboxPhoto;
+                        closeLightbox();
+                        onOpenSocialShare({
+                          photoId: target.id,
+                          dateIso: target.capturedDate,
+                          ageMonths: target.ageMonths,
+                          heightCm: target.heightCm > 0 ? target.heightCm : undefined,
+                          weightKg: target.weightKg > 0 ? target.weightKg : undefined,
+                          headline: target.eventTitle || '',
+                          caption: target.caption || '',
+                        });
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-900 bg-rose-100 hover:bg-rose-200 rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      Share FB / IG
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {

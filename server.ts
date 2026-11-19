@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,99 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
+const META_GRAPH_VERSION = 'v21.0';
+const META_SESSION_COOKIE = 'sproutscale_meta_sid';
+const META_STATE_COOKIE = 'sproutscale_meta_state';
+
+interface MetaStoredPage {
+  id: string;
+  name: string;
+  category?: string;
+  accessToken: string;
+  instagramAccount?: {
+    id: string;
+    username: string;
+    name: string;
+    profilePictureUrl?: string;
+  } | null;
+}
+
+interface MetaStoredSession {
+  userId: string;
+  userName: string;
+  userAccessToken: string;
+  pages: MetaStoredPage[];
+  createdAtMs: number;
+}
+
+interface StagedShareMedia {
+  buffer: Buffer;
+  expiresAtMs: number;
+}
+
+const metaSessions = new Map<string, MetaStoredSession>();
+const stagedShareMedia = new Map<string, StagedShareMedia>();
+
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!cookieHeader) return result;
+  for (const part of cookieHeader.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx <= 0) continue;
+    const key = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    try {
+      result[key] = decodeURIComponent(val);
+    } catch {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
+function getCanonicalAppUrl(): string {
+  const envUrl = (process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  if (envUrl) return envUrl;
+  return `http://localhost:${PORT}`;
+}
+
+function getMetaCallbackUrl(): string {
+  return `${getCanonicalAppUrl()}/auth/meta/callback`;
+}
+
+function isMetaOAuthConfigured(): boolean {
+  const appId = (process.env.META_APP_ID || '').trim();
+  const appSecret = (process.env.META_APP_SECRET || '').trim();
+  return (
+    appId.length > 0 &&
+    appSecret.length > 0 &&
+    appId !== 'MY_META_APP_ID' &&
+    appSecret !== 'MY_META_APP_SECRET'
+  );
+}
+
+function cleanupExpiredStagedMedia(): void {
+  const now = Date.now();
+  for (const [key, item] of stagedShareMedia.entries()) {
+    if (item.expiresAtMs <= now) {
+      stagedShareMedia.delete(key);
+    }
+  }
+  while (stagedShareMedia.size > 40) {
+    const oldestKey = stagedShareMedia.keys().next().value;
+    if (!oldestKey) break;
+    stagedShareMedia.delete(oldestKey);
+  }
+}
+
+function escapeHtmlAttr(raw: string): string {
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function getGenAIClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -477,6 +571,448 @@ async function startServer(): Promise<void> {
       res.status(500).json({
         error: `Could not generate milestone song (${msg.slice(0, 160)}). Please try again.`,
       });
+    }
+  });
+
+  // ============================================================================
+  // Meta (Facebook & Instagram) Third-Party OAuth & Graph API Publishing Routes
+  // ============================================================================
+
+  app.get('/api/meta/status', (req, res) => {
+    const configured = isMetaOAuthConfigured();
+    const callbackUrl = getMetaCallbackUrl();
+    const cookies = parseCookies(req.headers.cookie);
+    const sid = cookies[META_SESSION_COOKIE];
+    const session = sid ? metaSessions.get(sid) : undefined;
+
+    if (!session) {
+      res.json({
+        configured,
+        connected: false,
+        callbackUrl,
+        account: null,
+      });
+      return;
+    }
+
+    res.json({
+      configured,
+      connected: true,
+      callbackUrl,
+      account: {
+        userId: session.userId,
+        userName: session.userName,
+        pages: session.pages.map((p) => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          instagramAccount: p.instagramAccount ?? null,
+        })),
+      },
+    });
+  });
+
+  app.get('/api/meta/auth-url', (_req, res) => {
+    const callbackUrl = getMetaCallbackUrl();
+    if (!isMetaOAuthConfigured()) {
+      res.status(503).json({
+        error:
+          'Facebook & Instagram OAuth is not configured yet. Add META_APP_ID and META_APP_SECRET in AI Studio Secrets, and add the callback URL in your Meta Developer App.',
+        callbackUrl,
+      });
+      return;
+    }
+
+    const state = crypto.randomBytes(20).toString('hex');
+    res.cookie(META_STATE_COOKIE, state, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 1000 * 60 * 15,
+      path: '/',
+    });
+
+    const params = new URLSearchParams({
+      client_id: process.env.META_APP_ID!.trim(),
+      redirect_uri: callbackUrl,
+      state,
+      response_type: 'code',
+      scope: [
+        'public_profile',
+        'pages_show_list',
+        'pages_read_engagement',
+        'pages_manage_posts',
+        'instagram_basic',
+        'instagram_content_publish',
+      ].join(','),
+    });
+
+    const authUrl = `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
+    res.json({ url: authUrl, callbackUrl });
+  });
+
+  const handleMetaOAuthCallback: express.RequestHandler = async (req, res) => {
+    const sendPopupResult = (type: 'META_OAUTH_SUCCESS' | 'META_OAUTH_ERROR', message: string) => {
+      const safeJsonPayload = JSON.stringify({ type, message }).replace(/</g, '\\u003c');
+      const safeVisibleText = escapeHtmlAttr(message);
+      res.status(200).type('html').send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SproutScale — Facebook &amp; Instagram Connection</title>
+  </head>
+  <body style="font-family: system-ui, -apple-system, sans-serif; padding: 24px; color: #0f172a;">
+    <p>${safeVisibleText}</p>
+    <script>
+      if (window.opener) {
+        window.opener.postMessage(${safeJsonPayload}, '*');
+        window.close();
+      } else {
+        window.location.href = '/';
+      }
+    </script>
+  </body>
+</html>`);
+    };
+
+    try {
+      const errorDesc = typeof req.query.error_description === 'string'
+        ? req.query.error_description
+        : typeof req.query.error === 'string'
+          ? req.query.error
+          : '';
+      if (errorDesc) {
+        sendPopupResult('META_OAUTH_ERROR', `Facebook & Instagram sign-in cancelled: ${errorDesc}`);
+        return;
+      }
+
+      const code = typeof req.query.code === 'string' ? req.query.code : '';
+      const returnedState = typeof req.query.state === 'string' ? req.query.state : '';
+      const cookies = parseCookies(req.headers.cookie);
+      const expectedState = cookies[META_STATE_COOKIE];
+
+      res.clearCookie(META_STATE_COOKIE, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        path: '/',
+      });
+
+      if (!code) {
+        sendPopupResult('META_OAUTH_ERROR', 'Missing authorization code from Meta.');
+        return;
+      }
+      if (expectedState && returnedState !== expectedState) {
+        sendPopupResult('META_OAUTH_ERROR', 'OAuth state mismatch. Please try connecting again.');
+        return;
+      }
+      if (!isMetaOAuthConfigured()) {
+        sendPopupResult('META_OAUTH_ERROR', 'Server is missing META_APP_ID / META_APP_SECRET.');
+        return;
+      }
+
+      const callbackUrl = getMetaCallbackUrl();
+      const tokenParams = new URLSearchParams({
+        client_id: process.env.META_APP_ID!.trim(),
+        client_secret: process.env.META_APP_SECRET!.trim(),
+        redirect_uri: callbackUrl,
+        code,
+      });
+
+      const tokenRes = await fetch(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token?${tokenParams.toString()}`,
+      );
+      const tokenJson = (await tokenRes.json().catch(() => ({}))) as {
+        access_token?: string;
+        error?: { message?: string };
+      };
+      if (!tokenRes.ok || !tokenJson.access_token) {
+        sendPopupResult(
+          'META_OAUTH_ERROR',
+          tokenJson.error?.message || 'Could not exchange Meta OAuth authorization code.',
+        );
+        return;
+      }
+
+      const userAccessToken = tokenJson.access_token;
+
+      // Fetch user profile name
+      const meRes = await fetch(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/me?fields=id,name&access_token=${encodeURIComponent(userAccessToken)}`,
+      );
+      const meJson = (await meRes.json().catch(() => ({}))) as {
+        id?: string;
+        name?: string;
+      };
+
+      // Fetch Facebook Pages & linked Instagram Business/Creator accounts
+      const pagesRes = await fetch(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts?fields=id,name,category,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(userAccessToken)}`,
+      );
+      const pagesJson = (await pagesRes.json().catch(() => ({}))) as {
+        data?: Array<{
+          id?: string;
+          name?: string;
+          category?: string;
+          access_token?: string;
+          instagram_business_account?: {
+            id?: string;
+            username?: string;
+            name?: string;
+            profile_picture_url?: string;
+          };
+        }>;
+      };
+
+      const pages: MetaStoredPage[] = (pagesJson.data ?? [])
+        .filter((p): p is NonNullable<typeof p> => Boolean(p && p.id && p.access_token))
+        .map((p) => ({
+          id: String(p.id),
+          name: String(p.name || 'Facebook Page'),
+          category: p.category ? String(p.category) : undefined,
+          accessToken: String(p.access_token),
+          instagramAccount: p.instagram_business_account?.id
+            ? {
+                id: String(p.instagram_business_account.id),
+                username: String(
+                  p.instagram_business_account.username ||
+                    p.instagram_business_account.name ||
+                    'instagram',
+                ),
+                name: String(
+                  p.instagram_business_account.name ||
+                    p.instagram_business_account.username ||
+                    'Instagram',
+                ),
+                profilePictureUrl: p.instagram_business_account.profile_picture_url,
+              }
+            : null,
+        }));
+
+      const sid = crypto.randomBytes(24).toString('hex');
+      metaSessions.set(sid, {
+        userId: String(meJson.id || 'meta_user'),
+        userName: String(meJson.name || 'Facebook User'),
+        userAccessToken,
+        pages,
+        createdAtMs: Date.now(),
+      });
+
+      res.cookie(META_SESSION_COOKIE, sid, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        maxAge: 1000 * 60 * 60 * 24 * 7,
+        path: '/',
+      });
+
+      sendPopupResult(
+        'META_OAUTH_SUCCESS',
+        'Connected to Facebook & Instagram! This window will close automatically.',
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unexpected OAuth callback error.';
+      sendPopupResult('META_OAUTH_ERROR', msg);
+    }
+  };
+
+  app.get(['/auth/meta/callback', '/auth/meta/callback/'], handleMetaOAuthCallback);
+
+  app.post('/api/meta/disconnect', (req, res) => {
+    const cookies = parseCookies(req.headers.cookie);
+    const sid = cookies[META_SESSION_COOKIE];
+    if (sid) {
+      metaSessions.delete(sid);
+    }
+    res.clearCookie(META_SESSION_COOKIE, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      path: '/',
+    });
+    res.json({ ok: true });
+  });
+
+  app.get('/api/meta/media/:mediaId.jpg', (req, res) => {
+    cleanupExpiredStagedMedia();
+    const mediaId = String(req.params.mediaId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const staged = stagedShareMedia.get(mediaId);
+    if (!staged) {
+      res.status(404).send('Media expired or not found.');
+      return;
+    }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.send(staged.buffer);
+  });
+
+  app.post('/api/meta/publish', async (req, res) => {
+    try {
+      const cookies = parseCookies(req.headers.cookie);
+      const sid = cookies[META_SESSION_COOKIE];
+      const session = sid ? metaSessions.get(sid) : undefined;
+      if (!session) {
+        res.status(401).json({
+          error: 'Please connect your Facebook & Instagram account first.',
+        });
+        return;
+      }
+
+      const { target, pageId, instagramAccountId, imageDataUrl, caption } = req.body as {
+        target?: 'facebook_photo' | 'instagram_feed' | 'instagram_story';
+        pageId?: string;
+        instagramAccountId?: string;
+        imageDataUrl?: string;
+        caption?: string;
+      };
+
+      if (!imageDataUrl || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
+        res.status(400).json({ error: 'Missing rendered share image to publish.' });
+        return;
+      }
+
+      const match = imageDataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+      if (!match) {
+        res.status(400).json({ error: 'Could not decode rendered share image.' });
+        return;
+      }
+
+      const page = session.pages.find((p) => p.id === pageId);
+      if (!page) {
+        res.status(400).json({
+          error:
+            'No authorized Facebook Page selected. Make sure you granted Page access during Facebook Login.',
+        });
+        return;
+      }
+
+      const imgBuffer = Buffer.from(match[2], 'base64');
+      const safeCaption = String(caption || '').trim().slice(0, 2000);
+
+      if (target === 'facebook_photo') {
+        const form = new FormData();
+        form.append('source', new Blob([imgBuffer], { type: 'image/jpeg' }), 'sproutscale-milestone.jpg');
+        if (safeCaption) {
+          form.append('caption', safeCaption);
+        }
+        form.append('access_token', page.accessToken);
+
+        const fbRes = await fetch(
+          `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(page.id)}/photos`,
+          {
+            method: 'POST',
+            body: form,
+          },
+        );
+        const fbJson = (await fbRes.json().catch(() => ({}))) as {
+          id?: string;
+          post_id?: string;
+          error?: { message?: string };
+        };
+        if (!fbRes.ok || (!fbJson.id && !fbJson.post_id)) {
+          res.status(502).json({
+            error:
+              fbJson.error?.message ||
+              'Facebook Page photo upload failed. Verify pages_manage_posts permission.',
+          });
+          return;
+        }
+
+        res.json({
+          ok: true,
+          postId: String(fbJson.post_id || fbJson.id),
+          platformLabel: `Facebook (${page.name})`,
+        });
+        return;
+      }
+
+      // Instagram Feed Post or Instagram Story requires a linked Instagram Business/Creator Account
+      const igAccount = page.instagramAccount;
+      if (!igAccount || (instagramAccountId && igAccount.id !== instagramAccountId)) {
+        res.status(400).json({
+          error:
+            'Selected Facebook Page does not have a linked Instagram Business/Creator account.',
+        });
+        return;
+      }
+
+      // Stage temporary public JPEG URL on APP_URL so Meta's Instagram servers can fetch it
+      cleanupExpiredStagedMedia();
+      const mediaId = crypto.randomBytes(16).toString('hex');
+      stagedShareMedia.set(mediaId, {
+        buffer: imgBuffer,
+        expiresAtMs: Date.now() + 1000 * 60 * 10,
+      });
+      const publicImageUrl = `${getCanonicalAppUrl()}/api/meta/media/${mediaId}.jpg`;
+
+      const createParams = new URLSearchParams({
+        image_url: publicImageUrl,
+        access_token: page.accessToken,
+      });
+      if (target === 'instagram_story') {
+        createParams.set('media_type', 'STORIES');
+      } else if (safeCaption) {
+        createParams.set('caption', safeCaption);
+      }
+
+      const containerRes = await fetch(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(igAccount.id)}/media`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: createParams.toString(),
+        },
+      );
+      const containerJson = (await containerRes.json().catch(() => ({}))) as {
+        id?: string;
+        error?: { message?: string };
+      };
+      if (!containerRes.ok || !containerJson.id) {
+        res.status(502).json({
+          error:
+            containerJson.error?.message ||
+            'Instagram could not fetch or stage the image container.',
+        });
+        return;
+      }
+
+      const publishParams = new URLSearchParams({
+        creation_id: containerJson.id,
+        access_token: page.accessToken,
+      });
+
+      const publishRes = await fetch(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(igAccount.id)}/media_publish`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: publishParams.toString(),
+        },
+      );
+      const publishJson = (await publishRes.json().catch(() => ({}))) as {
+        id?: string;
+        error?: { message?: string };
+      };
+      if (!publishRes.ok || !publishJson.id) {
+        res.status(502).json({
+          error:
+            publishJson.error?.message ||
+            'Instagram media container created, but publishing failed.',
+        });
+        return;
+      }
+
+      res.json({
+        ok: true,
+        postId: String(publishJson.id),
+        platformLabel:
+          target === 'instagram_story'
+            ? `Instagram Story (@${igAccount.username})`
+            : `Instagram Post (@${igAccount.username})`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unexpected publishing error.';
+      res.status(500).json({ error: msg });
     }
   });
 

@@ -85,6 +85,10 @@ import {
   CreatePortfolioMemoryPayload,
   InitialMemoryModalContext,
 } from './components/AddPortfolioMemoryModal';
+import {
+  SocialShareConnectorModal,
+  SocialShareInitialContext,
+} from './components/SocialShareConnectorModal';
 import { HowToMeasureSection } from './components/HowToMeasureSection';
 import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { GoogleDriveVaultSection } from './components/GoogleDriveVaultSection';
@@ -222,6 +226,9 @@ function SproutScaleWorkspace() {
   const [isMemoryModalOpen, setIsMemoryModalOpen] = useState<boolean>(false);
   const [memoryModalContext, setMemoryModalContext] =
     useState<InitialMemoryModalContext | null>(null);
+  const [isSocialShareOpen, setIsSocialShareOpen] = useState<boolean>(false);
+  const [socialShareContext, setSocialShareContext] =
+    useState<SocialShareInitialContext | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [statusBanner, setStatusBanner] = useState<{
     type: 'success' | 'error';
@@ -249,6 +256,11 @@ function SproutScaleWorkspace() {
   const openAddMemoryModal = (ctx?: InitialMemoryModalContext) => {
     setMemoryModalContext(ctx ?? null);
     setIsMemoryModalOpen(true);
+  };
+
+  const openSocialShareModal = (ctx?: SocialShareInitialContext) => {
+    setSocialShareContext(ctx ?? null);
+    setIsSocialShareOpen(true);
   };
 
   useEffect(() => {
@@ -3078,6 +3090,15 @@ function SproutScaleWorkspace() {
                   <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                   Add Photos / Event
                 </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => openSocialShareModal()}
+                  className="inline-flex items-center gap-1 font-bold text-rose-700 hover:text-indigo-950 hover:underline whitespace-nowrap cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  Share to FB / IG
+                </button>
               </div>
             </div>
 
@@ -3316,6 +3337,7 @@ function SproutScaleWorkspace() {
           onDeletePhoto={handleDeleteSavedPhoto}
           onDeleteEvent={handleDeleteMilestoneEvent}
           onInspectMilestone={handleInspectMilestone}
+          onOpenSocialShare={openSocialShareModal}
           onSignInForDrive={() => void handleGoogleSignIn()}
         />
 
@@ -3521,6 +3543,21 @@ function SproutScaleWorkspace() {
           setMemoryModalContext(null);
         }}
         onSaveMemory={handleCreatePortfolioMemory}
+      />
+
+      {/* Facebook & Instagram Story / Post Share Studio & Meta OAuth Connector */}
+      <SocialShareConnectorModal
+        isOpen={isSocialShareOpen}
+        childProfile={activeChild}
+        avatarPhotoUrl={activeAvatarPhotoUrl}
+        photos={activePhotos}
+        events={activeEvents}
+        measurements={activeMeasurements}
+        initialContext={socialShareContext}
+        onClose={() => {
+          setIsSocialShareOpen(false);
+          setSocialShareContext(null);
+        }}
       />
     </div>
   );
