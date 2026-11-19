@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Camera,
   Check,
+  ChevronDown,
+  ChevronUp,
   FolderOpen,
   RefreshCw,
   Ruler,
@@ -16,11 +18,13 @@ import {
   openGoogleDrivePicker,
 } from '../services/googleDriveService';
 import {
+  CALIBRATED_FRIDGE_SPOT,
   formatInchesDetailed,
   PreparedWallPhoto,
   prepareWallPhotoForAnalysis,
   requestAiWallHeightEstimate,
   WALL_REFERENCE_PRESETS,
+  WallCalibrationMode,
   WallHeightAiEstimate,
 } from '../services/wallHeightEstimatorService';
 
@@ -48,6 +52,14 @@ type CaptureViewMode = 'workspace' | 'camera';
 type DragHandleId = 'crown' | 'heel' | 'refTop' | 'refBottom' | null;
 type SelectedResultSource = 'ai' | 'ruler';
 
+const FRIDGE_GUIDE_TICKS = [
+  { inches: 61.5, label: '61.5" Handle Top' },
+  { inches: 54.5, label: '54.5" Red Magnet' },
+  { inches: 30.5, label: '30.5" Handle Bot' },
+  { inches: 27.5, label: '27.5" Seam' },
+  { inches: 24.0, label: '24.0" Handle' },
+];
+
 export const WallPhotoHeightEstimatorModal: React.FC<
   WallPhotoHeightEstimatorModalProps
 > = ({
@@ -59,20 +71,24 @@ export const WallPhotoHeightEstimatorModal: React.FC<
   onApplyEstimatedInches,
   onSaveCapturedPhoto,
 }) => {
+  const [calibrationMode, setCalibrationMode] =
+    useState<WallCalibrationMode>('kitchen_fridge');
+  const [showTapeReferencePhotos, setShowTapeReferencePhotos] =
+    useState<boolean>(false);
   const [viewMode, setViewMode] = useState<CaptureViewMode>('workspace');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [preparedPhoto, setPreparedPhoto] = useState<PreparedWallPhoto | null>(null);
 
   // Draggable normalized Y ratios (0.0 top of photo -> 1.0 bottom of photo)
-  const [crownRatioY, setCrownRatioY] = useState<number>(0.22);
+  const [crownRatioY, setCrownRatioY] = useState<number>(0.36);
   const [heelRatioY, setHeelRatioY] = useState<number>(0.92);
-  const [refTopRatioY, setRefTopRatioY] = useState<number>(0.36);
-  const [refBottomRatioY, setRefBottomRatioY] = useState<number>(0.58);
+  const [refTopRatioY, setRefTopRatioY] = useState<number>(0.14);
+  const [refBottomRatioY, setRefBottomRatioY] = useState<number>(0.92);
   const [activeDrag, setActiveDrag] = useState<DragHandleId>(null);
 
-  // Reference object inches for 2-bracket pixel calibration
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('paper_tall');
-  const [refInches, setRefInches] = useState<number>(11.0);
+  // Reference object inches for 2-bracket pixel calibration (default to calibrated 69.0" fridge!)
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('fridge_full');
+  const [refInches, setRefInches] = useState<number>(CALIBRATED_FRIDGE_SPOT.totalInches);
   const [showRefBracket, setShowRefBracket] = useState<boolean>(true);
 
   // AI Vision Guesstimate state
@@ -117,7 +133,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
       stopCamera();
       if (!navigator.mediaDevices?.getUserMedia) {
         setErrorMessage(
-          'Camera access is not supported in this browser. Use Upload Wall Photo instead.',
+          'Camera access is not supported in this browser. Use Upload Photo instead.',
         );
         return;
       }
@@ -141,7 +157,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
         }
       } catch {
         setErrorMessage(
-          'Could not open camera. Allow camera permission in your browser or upload a wall photo.',
+          'Could not open camera. Allow camera permission in your browser or upload a photo.',
         );
       }
     };
@@ -153,7 +169,25 @@ export const WallPhotoHeightEstimatorModal: React.FC<
     };
   }, [isOpen, viewMode, facingMode]);
 
-  const runAiGuesstimate = async (photoToAnalyze: PreparedWallPhoto) => {
+  const handleSelectCalibrationMode = (mode: WallCalibrationMode) => {
+    setCalibrationMode(mode);
+    if (mode === 'kitchen_fridge') {
+      setSelectedPresetId('fridge_full');
+      setRefInches(CALIBRATED_FRIDGE_SPOT.totalInches);
+    } else if (selectedPresetId.startsWith('fridge_')) {
+      setSelectedPresetId('paper_tall');
+      setRefInches(11.0);
+    }
+    if (preparedPhoto) {
+      void runAiGuesstimate(preparedPhoto, mode);
+    }
+  };
+
+  const runAiGuesstimate = async (
+    photoToAnalyze: PreparedWallPhoto,
+    modeOverride?: WallCalibrationMode,
+  ) => {
+    const activeMode = modeOverride ?? calibrationMode;
     setIsAnalyzingAi(true);
     setErrorMessage(null);
     try {
@@ -161,6 +195,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
         imageDataUrl: photoToAnalyze.dataUrl,
         ageMonths,
         childName,
+        calibrationMode: activeMode,
       });
       setAiEstimate(result);
       setSelectedSource('ai');
@@ -175,10 +210,27 @@ export const WallPhotoHeightEstimatorModal: React.FC<
         ),
       );
 
-      // If AI spotted a real wall reference object, snap reference lines & inches too
+      // Snap reference bracket to matched calibrated fridge or detected wall object
       if (result.detectedReferenceInches >= 3) {
         setRefInches(result.detectedReferenceInches);
-        setSelectedPresetId('custom');
+        if (
+          result.usedCalibratedSpot &&
+          Math.abs(result.detectedReferenceInches - 69.0) <= 0.5
+        ) {
+          setSelectedPresetId('fridge_full');
+        } else if (
+          result.usedCalibratedSpot &&
+          Math.abs(result.detectedReferenceInches - 41.5) <= 0.5
+        ) {
+          setSelectedPresetId('fridge_upper_door');
+        } else if (
+          result.usedCalibratedSpot &&
+          Math.abs(result.detectedReferenceInches - 31.0) <= 0.5
+        ) {
+          setSelectedPresetId('fridge_vertical_handle');
+        } else {
+          setSelectedPresetId('custom');
+        }
         setRefTopRatioY(clampNumber(result.refTopRatioY, 0.03, 0.9));
         setRefBottomRatioY(
           clampNumber(
@@ -196,7 +248,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
         void onSaveCapturedPhoto({
           dataUrl: photoToAnalyze.dataUrl,
           kind: 'wall',
-          caption: `Wall check-in · ${estFmt.feetInchesLabel} (${estFmt.totalInchesLabel})`,
+          caption: `${result.usedCalibratedSpot ? 'Fridge check-in' : 'Wall check-in'} · ${estFmt.feetInchesLabel} (${estFmt.totalInchesLabel})`,
           heightCmOverride: estCm,
           existingPhotoId: activeSavedPhotoIdRef.current,
         });
@@ -205,7 +257,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
       setErrorMessage(
         err instanceof Error
           ? err.message
-          : 'Could not run AI guesstimate. Drag the Crown, Heel, and Reference lines to measure inches!',
+          : 'Could not run AI calculation. Drag the Crown, Heel, and Reference lines to measure inches!',
       );
       setSelectedSource('ruler');
     } finally {
@@ -213,7 +265,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
     }
   };
 
-  const loadNewWallPhoto = async (rawDataUrl: string, sourceCaption = 'Wall height photo') => {
+  const loadNewWallPhoto = async (rawDataUrl: string, sourceCaption = 'Fridge height photo') => {
     setErrorMessage(null);
     setAiEstimate(null);
     setIsPhotoSavedToAlbum(false);
@@ -236,7 +288,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
       await runAiGuesstimate(prepared);
     } catch (err) {
       setErrorMessage(
-        err instanceof Error ? err.message : 'Failed to process wall photo.',
+        err instanceof Error ? err.message : 'Failed to process photo.',
       );
     }
   };
@@ -258,7 +310,10 @@ export const WallPhotoHeightEstimatorModal: React.FC<
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const snappedUrl = canvas.toDataURL('image/jpeg', 0.9);
     stopCamera();
-    void loadNewWallPhoto(snappedUrl, 'Wall camera photo');
+    void loadNewWallPhoto(
+      snappedUrl,
+      calibrationMode === 'kitchen_fridge' ? 'Fridge camera photo' : 'Wall camera photo',
+    );
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,7 +321,10 @@ export const WallPhotoHeightEstimatorModal: React.FC<
     if (!file) return;
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      await loadNewWallPhoto(dataUrl, 'Uploaded wall photo');
+      await loadNewWallPhoto(
+        dataUrl,
+        calibrationMode === 'kitchen_fridge' ? 'Uploaded fridge photo' : 'Uploaded wall photo',
+      );
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Could not read photo file.');
     } finally {
@@ -281,11 +339,11 @@ export const WallPhotoHeightEstimatorModal: React.FC<
       const picked = await openGoogleDrivePicker(accessToken, {
         viewMode: 'images',
         includeUploadView: true,
-        title: `Select wall photo of ${childName}`,
+        title: `Select photo of ${childName}`,
       });
       if (picked) {
         const dataUrl = await downloadDriveImageAsDataUrl(accessToken, picked.id);
-        await loadNewWallPhoto(dataUrl, `Drive wall photo (${picked.name.slice(0, 50)})`);
+        await loadNewWallPhoto(dataUrl, `Drive photo (${picked.name.slice(0, 50)})`);
       }
     } catch (err) {
       setErrorMessage(
@@ -346,6 +404,17 @@ export const WallPhotoHeightEstimatorModal: React.FC<
   const refTopY = refTopRatioY * svgH;
   const refBotY = refBottomRatioY * svgH;
 
+  const showFridgeTickOverlay =
+    showRefBracket &&
+    calibrationMode === 'kitchen_fridge' &&
+    Math.abs(refInches - CALIBRATED_FRIDGE_SPOT.totalInches) <= 0.5 &&
+    refBotY - refTopY >= 120;
+
+  const visiblePresets =
+    calibrationMode === 'kitchen_fridge'
+      ? WALL_REFERENCE_PRESETS
+      : WALL_REFERENCE_PRESETS.filter((p) => p.category === 'general');
+
   const handleApplyToWall = () => {
     const clampedCm = Number(
       clampNumber(activeInchesToApply * 2.54, 65, 175).toFixed(1),
@@ -353,8 +422,8 @@ export const WallPhotoHeightEstimatorModal: React.FC<
     const clampedIn = Number((clampedCm / 2.54).toFixed(1));
     const sourceLabel =
       selectedSource === 'ai' && aiEstimate
-        ? `AI Wall Guesstimate (${aiEstimate.detectedReferenceLabel})`
-        : `Photo Reference Ruler (${refInches}" reference)`;
+        ? `${aiEstimate.usedCalibratedSpot ? 'Calibrated Fridge AI' : 'AI Wall Photo'} (${aiEstimate.detectedReferenceLabel})`
+        : `Calibrated Ruler (${refInches}" reference)`;
 
     if (preparedPhoto && onSaveCapturedPhoto) {
       void onSaveCapturedPhoto({
@@ -392,49 +461,83 @@ export const WallPhotoHeightEstimatorModal: React.FC<
               id="wall-photo-estimator-title"
               className="text-lg sm:text-xl font-bold text-indigo-950"
             >
-              Wall Photo Height Guesstimator — How Many Inches Tall?
+              Photo Height Calculator — Calibrated to Your 69.0&quot; Kitchen Fridge
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 max-w-3xl">
-              Stand {childName} barefoot flat against a wall from head to heels. Snap or upload a
-              photo for an instant AI guesstimate in inches, or line up a known item (like an
-              11-inch sheet of paper, light switch, or door) for sharper accuracy!
+              Stand {childName} barefoot flat in front of your Whirlpool kitchen fridge (tape-verified
+              at <strong className="font-mono tabular-nums text-indigo-950">5&apos; 9.0&quot; / 69.0 in</strong> from
+              floor to door top) or any wall for a precision photo measurement.
             </p>
           </div>
           <button
             type="button"
-            aria-label="Close wall photo height guesstimator"
+            aria-label="Close photo height calculator"
             onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-600 hover:bg-sky-50 hover:text-indigo-950 transition-colors shrink-0 cursor-pointer"
+            className="w-10 h-10 flex items-center justify-center rounded-lg text-slate-600 hover:bg-sky-50 hover:text-indigo-950 transition-colors shrink-0 cursor-pointer"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
-        {/* Photo Source Action Strip */}
+        {/* Calibration Spot Switcher + Photo Source Action Strip */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
+          {/* Interactive Segmented Control for Spot Mode */}
+          <div
+            role="group"
+            aria-label="Calibration spot mode"
+            className="inline-flex items-center gap-1 p-1 bg-slate-100 rounded-xl"
+          >
+            <button
+              type="button"
+              onClick={() => handleSelectCalibrationMode('kitchen_fridge')}
+              className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                calibrationMode === 'kitchen_fridge'
+                  ? 'bg-white text-indigo-950 shadow-xs'
+                  : 'text-slate-600 hover:text-indigo-950'
+              }`}
+            >
+              Kitchen Fridge (69.0&quot; Calibrated)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectCalibrationMode('general_wall')}
+              className={`px-3 py-2 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                calibrationMode === 'general_wall'
+                  ? 'bg-white text-indigo-950 shadow-xs'
+                  : 'text-slate-600 hover:text-indigo-950'
+              }`}
+            >
+              Any Wall / Room
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() =>
                 setViewMode((prev) => (prev === 'camera' ? 'workspace' : 'camera'))
               }
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 viewMode === 'camera'
                   ? 'bg-rose-600 text-white'
                   : 'bg-amber-400 hover:bg-amber-300 text-slate-950'
               }`}
             >
               <Camera className="w-4 h-4" aria-hidden="true" />
-              {viewMode === 'camera' ? 'Close Camera' : 'Take Wall Picture'}
+              {viewMode === 'camera'
+                ? 'Close Camera'
+                : calibrationMode === 'kitchen_fridge'
+                  ? 'Take Fridge Picture'
+                  : 'Take Wall Picture'}
             </button>
 
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Upload className="w-4 h-4" aria-hidden="true" />
-              Upload Wall Photo
+              Upload Photo
             </button>
 
             <input
@@ -449,26 +552,103 @@ export const WallPhotoHeightEstimatorModal: React.FC<
               <button
                 type="button"
                 onClick={() => void handlePickDrivePhoto()}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-sky-900 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-sky-900 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <FolderOpen className="w-4 h-4" aria-hidden="true" />
-                Pick from Google Drive
+                Google Drive
+              </button>
+            )}
+
+            {preparedPhoto && viewMode === 'workspace' && (
+              <button
+                type="button"
+                disabled={isAnalyzingAi}
+                onClick={() => void runAiGuesstimate(preparedPhoto)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-indigo-950 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+                {isAnalyzingAi ? 'Measuring...' : 'Re-Run AI'}
               </button>
             )}
           </div>
-
-          {preparedPhoto && viewMode === 'workspace' && (
-            <button
-              type="button"
-              disabled={isAnalyzingAi}
-              onClick={() => void runAiGuesstimate(preparedPhoto)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-950 bg-emerald-100 hover:bg-emerald-200 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
-              {isAnalyzingAi ? 'Scanning Wall Cues...' : 'Re-Run AI Guesstimate'}
-            </button>
-          )}
         </div>
+
+        {/* Collapsible Tape-Verified Kitchen Fridge Reference Banner (when Fridge Mode is active & photo loaded) */}
+        {calibrationMode === 'kitchen_fridge' && preparedPhoto && viewMode === 'workspace' && (
+          <div className="border border-sky-200 bg-sky-50/60 rounded-xl px-4 py-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-700">
+                <strong className="text-indigo-950">Calibrated Fridge Scale Active</strong>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono tabular-nums">69.0&quot; Door Top</span>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono tabular-nums">54.5&quot; Red Magnet</span>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono tabular-nums">30.5&quot;–61.5&quot; Vertical Handles</span>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono tabular-nums">27.5&quot; Freezer Seam</span>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono tabular-nums">24.0&quot; Freezer Handle</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTapeReferencePhotos((prev) => !prev)}
+                className="inline-flex items-center gap-1 text-xs font-bold text-sky-800 hover:text-indigo-950 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                {showTapeReferencePhotos ? 'Hide Tape Photos' : 'View Tape Photos'}
+                {showTapeReferencePhotos ? (
+                  <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                )}
+              </button>
+            </div>
+
+            {showTapeReferencePhotos && (
+              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-sky-200/70">
+                <figure className="space-y-1">
+                  <div className="aspect-[3/4] rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                    <img
+                      src={CALIBRATED_FRIDGE_SPOT.tapeFullPhotoUrl}
+                      alt="Full kitchen fridge height with yellow measuring tape reaching 69.0 inches"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <figcaption className="text-[11px] text-slate-600 font-mono tabular-nums">
+                    Full Door: 0&quot; → 69.0&quot; (5&apos; 9.0&quot;)
+                  </figcaption>
+                </figure>
+                <figure className="space-y-1">
+                  <div className="aspect-[3/4] rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                    <img
+                      src={CALIBRATED_FRIDGE_SPOT.tapeCloseUpPhotoUrl}
+                      alt="Close-up measuring tape from floor 0 inches to freezer handle at 24.0 inches"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <figcaption className="text-[11px] text-slate-600 font-mono tabular-nums">
+                    Lower: 3.0&quot; Door · 24.0&quot; Handle
+                  </figcaption>
+                </figure>
+                <figure className="space-y-1">
+                  <div className="aspect-[3/4] rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                    <img
+                      src={CALIBRATED_FRIDGE_SPOT.cleanPhotoUrl}
+                      alt="Clean Whirlpool stainless steel kitchen fridge measuring spot without tape"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <figcaption className="text-[11px] text-slate-600">
+                    Clean Measuring Spot Reference
+                  </figcaption>
+                </figure>
+              </div>
+            )}
+          </div>
+        )}
 
         {errorMessage && (
           <div
@@ -479,7 +659,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
           </div>
         )}
 
-        {/* Live Camera Viewfinder OR Interactive Wall Measurement Workspace */}
+        {/* Live Camera Viewfinder OR Interactive Measurement Workspace */}
         {viewMode === 'camera' ? (
           <div className="space-y-4">
             <div className="relative mx-auto max-w-md aspect-[3/4] rounded-2xl overflow-hidden bg-slate-900 border-2 border-sky-300">
@@ -491,75 +671,115 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                   facingMode === 'user' ? '-scale-x-100' : ''
                 }`}
               />
-              {/* Full-Body Wall Alignment Guide Overlay */}
+              {/* Full-Body Fridge or Wall Alignment Guide Overlay */}
               <svg
                 viewBox="0 0 300 400"
                 className="absolute inset-0 w-full h-full pointer-events-none"
                 aria-hidden="true"
               >
-                {/* Crown Line */}
-                <line
-                  x1={40}
-                  y1={56}
-                  x2={260}
-                  y2={56}
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  strokeDasharray="6 4"
-                />
-                <text
-                  x={150}
-                  y={48}
-                  textAnchor="middle"
-                  fill="#bbf7d0"
-                  fontSize={10}
-                  fontWeight={700}
-                >
-                  KEEP TOP OF HEAD IN FRAME
-                </text>
+                {calibrationMode === 'kitchen_fridge' ? (
+                  <>
+                    <line
+                      x1={32}
+                      y1={46}
+                      x2={268}
+                      y2={46}
+                      stroke="#facc15"
+                      strokeWidth={2}
+                      strokeDasharray="6 4"
+                    />
+                    <text
+                      x={150}
+                      y={38}
+                      textAnchor="middle"
+                      fill="#fef08a"
+                      fontSize={9.5}
+                      fontWeight={700}
+                    >
+                      TOP OF FRIDGE DOOR (69.0&quot;)
+                    </text>
 
-                {/* Floor / Heels Line */}
-                <line
-                  x1={30}
-                  y1={362}
-                  x2={270}
-                  y2={362}
-                  stroke="#22c55e"
-                  strokeWidth={2.5}
-                />
-                <text
-                  x={150}
-                  y={380}
-                  textAnchor="middle"
-                  fill="#bbf7d0"
-                  fontSize={10}
-                  fontWeight={700}
-                >
-                  INCLUDE HEELS TOUCHING FLOOR
-                </text>
+                    <line
+                      x1={44}
+                      y1={236}
+                      x2={256}
+                      y2={236}
+                      stroke="#38bdf8"
+                      strokeWidth={1.5}
+                      strokeDasharray="4 4"
+                    />
+                    <text
+                      x={150}
+                      y={229}
+                      textAnchor="middle"
+                      fill="#bae6fd"
+                      fontSize={9}
+                      fontWeight={700}
+                    >
+                      FREEZER SEAM (27.5&quot;)
+                    </text>
 
-                {/* Optional Paper / Switch Reference Hint Box */}
-                <rect
-                  x={210}
-                  y={130}
-                  width={48}
-                  height={64}
-                  rx={4}
-                  fill="none"
-                  stroke="#facc15"
-                  strokeWidth={2}
-                  strokeDasharray="4 3"
-                />
-                <text
-                  x={234}
-                  y={122}
-                  textAnchor="middle"
-                  fill="#fef08a"
-                  fontSize={8.5}
-                  fontWeight={700}
-                >
-                  11&quot; PAPER / SWITCH
-                </text>
+                    <line
+                      x1={30}
+                      y1={362}
+                      x2={270}
+                      y2={362}
+                      stroke="#22c55e"
+                      strokeWidth={2.5}
+                    />
+                    <text
+                      x={150}
+                      y={380}
+                      textAnchor="middle"
+                      fill="#bbf7d0"
+                      fontSize={9.5}
+                      fontWeight={700}
+                    >
+                      CHILD HEELS ON FLOOR (0.0&quot;)
+                    </text>
+                  </>
+                ) : (
+                  <>
+                    <line
+                      x1={40}
+                      y1={56}
+                      x2={260}
+                      y2={56}
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                      strokeDasharray="6 4"
+                    />
+                    <text
+                      x={150}
+                      y={48}
+                      textAnchor="middle"
+                      fill="#bbf7d0"
+                      fontSize={10}
+                      fontWeight={700}
+                    >
+                      KEEP TOP OF HEAD IN FRAME
+                    </text>
+
+                    <line
+                      x1={30}
+                      y1={362}
+                      x2={270}
+                      y2={362}
+                      stroke="#22c55e"
+                      strokeWidth={2.5}
+                    />
+                    <text
+                      x={150}
+                      y={380}
+                      textAnchor="middle"
+                      fill="#bbf7d0"
+                      fontSize={10}
+                      fontWeight={700}
+                    >
+                      INCLUDE HEELS TOUCHING FLOOR
+                    </text>
+                  </>
+                )}
               </svg>
             </div>
 
@@ -582,59 +802,145 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Camera className="w-4 h-4" aria-hidden="true" />
-                Snap Wall Photo &amp; Guesstimate
+                Snap Photo &amp; Calculate Height
               </button>
             </div>
           </div>
         ) : !preparedPhoto ? (
-          /* Empty State with Helpful How-It-Works Visual Guide */
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-sky-50/70 border border-sky-200 rounded-2xl p-6">
-            <div className="md:col-span-5 flex flex-col items-center text-center space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-amber-100 border-2 border-amber-300 flex items-center justify-center">
-                <Ruler className="w-7 h-7 text-amber-800" aria-hidden="true" />
+          /* Empty State: Calibrated Fridge Reference Showcase OR General Wall Guide */
+          calibrationMode === 'kitchen_fridge' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start bg-sky-50/70 border border-sky-200 rounded-2xl p-5">
+              {/* Left: User's Tape-Measured Fridge Photos */}
+              <div className="lg:col-span-5 grid grid-cols-2 gap-3">
+                <figure className="space-y-1.5">
+                  <div className="aspect-[3/4] rounded-xl overflow-hidden border border-sky-200 bg-slate-100">
+                    <img
+                      src={CALIBRATED_FRIDGE_SPOT.tapeFullPhotoUrl}
+                      alt="Kitchen fridge with yellow measuring tape showing exact 69.0 inch height"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <figcaption className="text-[11px] font-medium text-slate-600 font-mono tabular-nums">
+                    Tape Verified: 0&quot; → 69.0&quot;
+                  </figcaption>
+                </figure>
+                <figure className="space-y-1.5">
+                  <div className="aspect-[3/4] rounded-xl overflow-hidden border border-sky-200 bg-slate-100">
+                    <img
+                      src={CALIBRATED_FRIDGE_SPOT.cleanPhotoUrl}
+                      alt="Whirlpool stainless steel fridge measuring spot"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <figcaption className="text-[11px] font-medium text-slate-600">
+                    Stand {childName} Here
+                  </figcaption>
+                </figure>
               </div>
-              <h4 className="text-base font-bold text-indigo-950">
-                Yes — We Can Guesstimate Inches From a Wall Photo!
-              </h4>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Take or upload a full-body photo from crown to heels. Hold the camera near
-                tummy height pointing straight at the wall so perspective stays flat.
-              </p>
-            </div>
 
-            <div className="md:col-span-7 space-y-3 text-xs text-slate-700">
-              <p className="font-bold text-indigo-950">
-                3 Easy Ways to Make Your Photo Guesstimate Super Close:
-              </p>
-              <div className="space-y-2">
-                <p>
-                  <strong className="text-sky-900">1. Stand Next to a Door or Light Switch:</strong>{' '}
-                  Our AI Vision spots standard 80-inch doors, 48-inch wall switches, and 36-inch
-                  doorknobs automatically (~±1.5 inches).
-                </p>
-                <p>
-                  <strong className="text-emerald-900">
-                    2. Tape a Regular Sheet of Printer Paper (11 inches):
-                  </strong>{' '}
-                  Tape a standard 8.5 × 11&quot; piece of paper flat on the wall beside {childName}{' '}
-                  and drag the Amber reference bars to its top and bottom (~±0.5–1 inch!).
-                </p>
-                <p>
-                  <strong className="text-amber-900">3. Bare Wall Quick Guess:</strong> Even on a
-                  blank wall, AI Vision estimates inches from proportions (~±3–4 inches) so you get
-                  an instant ballpark mark!
+              {/* Right: Saved Exact Landmarks + Quick Instructions */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-indigo-950">
+                    Your Kitchen Fridge Is Calibrated! (5&apos; 9.0&quot; / 69.0 in)
+                  </h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    We read your measuring tape photos and locked in exact floor-to-landmark
+                    measurements for your Whirlpool fridge. Now whenever you snap or upload a photo
+                    of {childName} standing barefoot right against the fridge, AI Vision compares
+                    against these exact marks (~±0.5–1.0 in accuracy).
+                  </p>
+                </div>
+
+                {/* Clean Tabular Landmark Table (no pill badges) */}
+                <div className="bg-white border border-sky-200/80 rounded-xl divide-y divide-slate-100 text-xs">
+                  <div className="grid grid-cols-12 px-3 py-2 font-bold text-slate-500">
+                    <span className="col-span-7">Fridge Landmark</span>
+                    <span className="col-span-3 text-right font-mono tabular-nums">Height</span>
+                    <span className="col-span-2 text-right font-mono tabular-nums">Inches</span>
+                  </div>
+                  {[
+                    { name: 'Top lip of stainless fridge door', ft: '5\' 9.0"', inch: '69.0"' },
+                    { name: 'Top tips of vertical French handles', ft: '5\' 1.5"', inch: '61.5"' },
+                    { name: 'Bottom of red Measuring Lane magnet', ft: '4\' 6.5"', inch: '54.5"' },
+                    { name: 'Bottom tips of vertical French handles', ft: '2\' 6.5"', inch: '30.5"' },
+                    { name: 'Freezer drawer / upper door seam', ft: '2\' 3.5"', inch: '27.5"' },
+                    { name: 'Bottom of horizontal freezer handle', ft: '2\' 0.0"', inch: '24.0"' },
+                    { name: 'Bottom edge of stainless freezer door', ft: '0\' 3.0"', inch: '3.0"' },
+                  ].map((row) => (
+                    <div
+                      key={row.name}
+                      className="grid grid-cols-12 px-3 py-1.5 text-slate-700"
+                    >
+                      <span className="col-span-7 truncate">{row.name}</span>
+                      <span className="col-span-3 text-right font-mono tabular-nums font-semibold text-indigo-950">
+                        {row.ft}
+                      </span>
+                      <span className="col-span-2 text-right font-mono tabular-nums text-slate-500">
+                        {row.inch}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[11px] text-slate-600">
+                  <strong>Best photo tip:</strong> Stand {childName} flat against the fridge doors
+                  barefoot and step back 6–8 feet with your phone held near chest height so both the
+                  wood floor and the fridge top (or handles) stay straight in frame.
                 </p>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center bg-sky-50/70 border border-sky-200 rounded-2xl p-6">
+              <div className="md:col-span-5 flex flex-col items-center text-center space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-amber-100 border-2 border-amber-300 flex items-center justify-center">
+                  <Ruler className="w-7 h-7 text-amber-800" aria-hidden="true" />
+                </div>
+                <h4 className="text-base font-bold text-indigo-950">
+                  Measure Against Any Wall in Your Home
+                </h4>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Take or upload a full-body photo from crown to heels. Hold the camera near tummy
+                  height pointing straight at the wall so perspective stays flat.
+                </p>
+              </div>
+
+              <div className="md:col-span-7 space-y-3 text-xs text-slate-700">
+                <p className="font-bold text-indigo-950">
+                  3 Easy Ways to Make Any Wall Photo Accurate:
+                </p>
+                <div className="space-y-2">
+                  <p>
+                    <strong className="text-sky-900">1. Stand Next to a Door or Light Switch:</strong>{' '}
+                    AI Vision spots standard 80-inch doors, 48-inch wall switches, and 36-inch
+                    doorknobs automatically (~±1.5 inches).
+                  </p>
+                  <p>
+                    <strong className="text-emerald-900">
+                      2. Tape a Regular Sheet of Printer Paper (11 inches):
+                    </strong>{' '}
+                    Tape a standard 8.5 × 11&quot; piece of paper flat on the wall beside {childName}{' '}
+                    and drag the Amber reference bars to its top and bottom (~±0.5–1 inch).
+                  </p>
+                  <p>
+                    <strong className="text-amber-900">3. Switch to Kitchen Fridge Mode:</strong>{' '}
+                    Standing in front of your calibrated 69.0&quot; Whirlpool fridge gives the sharpest
+                    automatic readings with zero extra setup!
+                  </p>
+                </div>
+              </div>
+            </div>
+          )
         ) : (
-          /* Loaded Photo Interactive Guesstimator Split View */
+          /* Loaded Photo Interactive Split View */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left: Interactive SVG Photo + Draggable Crown / Heel / Reference Lines */}
+            {/* Left: Interactive SVG Photo + Draggable Crown / Heel / Reference Lines + Projected Fridge Landmarks */}
             <div className="lg:col-span-6 space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-600">
                 <span className="font-semibold text-indigo-950">
-                  Drag lines on the photo to fine-tune head, heels &amp; reference
+                  Drag green (child) &amp; amber (fridge/ref) lines to fine-tune
                 </span>
                 <label className="inline-flex items-center gap-1.5 font-semibold text-amber-900 cursor-pointer">
                   <input
@@ -643,7 +949,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                     onChange={(e) => setShowRefBracket(e.target.checked)}
                     className="rounded accent-amber-500"
                   />
-                  Show Reference Bars
+                  Show Reference Scale
                 </label>
               </div>
 
@@ -669,6 +975,47 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                     height={svgH}
                     preserveAspectRatio="none"
                   />
+
+                  {/* Projected Calibrated Fridge Landmark Ticks when 69.0" Full Fridge Span is active */}
+                  {showFridgeTickOverlay &&
+                    FRIDGE_GUIDE_TICKS.map((tick) => {
+                      const fracFromFloor =
+                        tick.inches / CALIBRATED_FRIDGE_SPOT.totalInches;
+                      const tickY = refBotY - fracFromFloor * (refBotY - refTopY);
+                      return (
+                        <g key={tick.inches} opacity={0.85} className="pointer-events-none">
+                          <line
+                            x1={328}
+                            y1={tickY}
+                            x2={504}
+                            y2={tickY}
+                            stroke="#38bdf8"
+                            strokeWidth={1.5}
+                            strokeDasharray="3 3"
+                          />
+                          <rect
+                            x={396}
+                            y={tickY - 9}
+                            width={106}
+                            height={15}
+                            rx={3}
+                            fill="#0c4a6e"
+                            fillOpacity={0.85}
+                          />
+                          <text
+                            x={449}
+                            y={tickY + 2}
+                            textAnchor="middle"
+                            fill="#e0f2fe"
+                            fontSize={8.5}
+                            fontWeight={700}
+                            fontFamily="JetBrains Mono, monospace"
+                          >
+                            {tick.label}
+                          </text>
+                        </g>
+                      );
+                    })}
 
                   {/* Child Vertical Span Connector */}
                   <line
@@ -711,23 +1058,25 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                           strokeWidth={3}
                         />
                         <rect
-                          x={354}
+                          x={338}
                           y={Math.max(4, refTopY - 22)}
-                          width={146}
+                          width={164}
                           height={20}
                           rx={5}
                           fill="#f59e0b"
                         />
                         <text
-                          x={427}
+                          x={420}
                           y={Math.max(4, refTopY - 22) + 14}
                           textAnchor="middle"
                           fill="#0f172a"
-                          fontSize={10.5}
+                          fontSize={10}
                           fontWeight={700}
                           fontFamily="JetBrains Mono, monospace"
                         >
-                          {`REF TOP (${refInches}")`}
+                          {selectedPresetId === 'fridge_full'
+                            ? `FRIDGE TOP (${refInches}")`
+                            : `REF TOP (${refInches}")`}
                         </text>
                         <rect
                           x={280}
@@ -755,23 +1104,25 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                           strokeWidth={3}
                         />
                         <rect
-                          x={366}
+                          x={354}
                           y={Math.min(svgH - 24, refBotY + 4)}
-                          width={134}
+                          width={148}
                           height={20}
                           rx={5}
                           fill="#f59e0b"
                         />
                         <text
-                          x={433}
+                          x={428}
                           y={Math.min(svgH - 24, refBotY + 4) + 14}
                           textAnchor="middle"
                           fill="#0f172a"
-                          fontSize={10.5}
+                          fontSize={10}
                           fontWeight={700}
                           fontFamily="JetBrains Mono, monospace"
                         >
-                          REF BOTTOM
+                          {selectedPresetId === 'fridge_full'
+                            ? 'FLOOR (0.0")'
+                            : 'REF BOTTOM'}
                         </text>
                         <rect
                           x={280}
@@ -863,9 +1214,9 @@ export const WallPhotoHeightEstimatorModal: React.FC<
               </div>
             </div>
 
-            {/* Right: AI Guesstimate + Reference Object Inches Calibration */}
+            {/* Right: AI Result + Calibrated Reference Ruler */}
             <div className="lg:col-span-6 space-y-5">
-              {/* Method 1: AI Vision Wall Guesstimate */}
+              {/* Method 1: AI Vision Calibrated Calculation */}
               <div
                 className={`rounded-2xl p-4 border-2 transition-colors space-y-2.5 ${
                   selectedSource === 'ai' && aiEstimate
@@ -876,13 +1227,17 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
                     <Sparkles className="w-4 h-4 text-emerald-600" aria-hidden="true" />
-                    <span>AI Wall Scene Guesstimate</span>
+                    <span>
+                      {aiEstimate?.usedCalibratedSpot
+                        ? 'AI Fridge-Calibrated Measurement'
+                        : 'AI Photo Height Calculation'}
+                    </span>
                   </div>
                   {aiEstimate && (
                     <button
                       type="button"
                       onClick={() => setSelectedSource('ai')}
-                      className={`px-2.5 py-1 text-xs font-bold rounded-md cursor-pointer ${
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap shrink-0 cursor-pointer ${
                         selectedSource === 'ai'
                           ? 'bg-emerald-600 text-white'
                           : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
@@ -895,7 +1250,9 @@ export const WallPhotoHeightEstimatorModal: React.FC<
 
                 {isAnalyzingAi ? (
                   <p className="text-xs font-medium text-slate-700 py-2">
-                    Inspecting wall photo for doors, switches, baseboards, and head-to-heel height in inches...
+                    {calibrationMode === 'kitchen_fridge'
+                      ? 'Comparing photo against your 69.0" tape-verified Whirlpool fridge landmarks...'
+                      : 'Inspecting wall photo for doors, switches, baseboards, and head-to-heel height...'}
                   </p>
                 ) : aiEstimate && aiFormatted ? (
                   <div className="space-y-2">
@@ -913,12 +1270,17 @@ export const WallPhotoHeightEstimatorModal: React.FC<
 
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
                       <span>
-                        Scale cue: <strong className="text-slate-900">{aiEstimate.detectedReferenceLabel}</strong>
+                        Reference:{' '}
+                        <strong className="text-slate-900">
+                          {aiEstimate.detectedReferenceLabel}
+                        </strong>
                       </span>
                       <span aria-hidden="true">·</span>
                       <span>
                         Confidence:{' '}
-                        <strong className="capitalize text-slate-900">{aiEstimate.confidence}</strong>
+                        <strong className="capitalize text-slate-900">
+                          {aiEstimate.confidence}
+                        </strong>
                       </span>
                     </div>
 
@@ -928,12 +1290,12 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                   </div>
                 ) : (
                   <p className="text-xs text-slate-600">
-                    Click <strong>Re-Run AI Guesstimate</strong> above or use the Reference Object Ruler below.
+                    Click <strong>Re-Run AI</strong> above or align the Reference Ruler below.
                   </p>
                 )}
               </div>
 
-              {/* Method 2: Interactive Reference Object Calibration */}
+              {/* Method 2: Interactive Reference Ruler */}
               <div
                 className={`rounded-2xl p-4 border-2 transition-colors space-y-3.5 ${
                   selectedSource === 'ruler'
@@ -944,7 +1306,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
                     <Ruler className="w-4 h-4 text-amber-600" aria-hidden="true" />
-                    <span>Reference Object Ruler (Sharper Inches)</span>
+                    <span>Interactive Calibrated Ruler</span>
                   </div>
                   <button
                     type="button"
@@ -952,7 +1314,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                       setShowRefBracket(true);
                       setSelectedSource('ruler');
                     }}
-                    className={`px-2.5 py-1 text-xs font-bold rounded-md cursor-pointer ${
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap shrink-0 cursor-pointer ${
                       selectedSource === 'ruler'
                         ? 'bg-amber-400 text-slate-950'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -976,10 +1338,10 @@ export const WallPhotoHeightEstimatorModal: React.FC<
 
                 <div className="space-y-1.5">
                   <span className="block text-xs font-semibold text-slate-700">
-                    What wall reference are the Amber bars lined up with?
+                    Match Amber bars to a calibrated fridge or room reference:
                   </span>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                    {WALL_REFERENCE_PRESETS.map((preset) => (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {visiblePresets.map((preset) => (
                       <button
                         key={preset.id}
                         type="button"
@@ -989,7 +1351,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                           setShowRefBracket(true);
                           setSelectedSource('ruler');
                         }}
-                        className={`px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border text-left transition-colors whitespace-nowrap truncate cursor-pointer ${
+                        className={`px-2.5 py-2 text-[11px] font-semibold rounded-lg border text-left transition-colors whitespace-nowrap truncate cursor-pointer ${
                           selectedPresetId === preset.id
                             ? 'border-amber-500 bg-amber-100/80 text-slate-950'
                             : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -1007,7 +1369,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                       htmlFor="custom-ref-inches"
                       className="block text-xs font-semibold text-slate-700"
                     >
-                      Reference Size (inches)
+                      Reference Span (inches)
                     </label>
                     <input
                       id="custom-ref-inches"
@@ -1018,15 +1380,16 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                       value={refInches}
                       onChange={(e) => {
                         setSelectedPresetId('custom');
-                        setRefInches(clampNumber(parseFloat(e.target.value) || 11, 2, 96));
+                        setRefInches(clampNumber(parseFloat(e.target.value) || 69, 2, 96));
                         setSelectedSource('ruler');
                       }}
-                      className="w-full h-9 px-3 text-sm font-mono tabular-nums bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      className="w-full h-10 px-3 text-sm font-mono tabular-nums bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
                   <p className="text-[11px] text-slate-600 leading-snug">
-                    Drag <strong>REF TOP</strong> &amp; <strong>REF BOTTOM</strong> on the photo to
-                    match this known height in inches.
+                    {selectedPresetId === 'fridge_full'
+                      ? 'Line FRIDGE TOP up with the top lip of the door and FLOOR up with the wood floor — check that blue handle & seam ticks match!'
+                      : 'Drag REF TOP & REF BOTTOM on the photo to match this exact inch span.'}
                   </p>
                 </div>
               </div>
@@ -1055,7 +1418,9 @@ export const WallPhotoHeightEstimatorModal: React.FC<
                 )}
               </>
             ) : (
-              <span>Photo guesstimates are great for playful check-ins; verify with a book &amp; tape for doctor records.</span>
+              <span>
+                Your Whirlpool fridge landmarks (0.0&quot; to 69.0&quot;) are saved and ready for every child in your family.
+              </span>
             )}
           </div>
 
@@ -1063,7 +1428,7 @@ export const WallPhotoHeightEstimatorModal: React.FC<
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Cancel
             </button>

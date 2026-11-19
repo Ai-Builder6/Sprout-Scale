@@ -2233,7 +2233,7 @@ function SproutScaleWorkspace() {
                   className="inline-flex items-center gap-1 font-bold text-emerald-800 hover:text-indigo-950 hover:underline cursor-pointer"
                 >
                   <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
-                  Guesstimate Inches from Wall Photo
+                  Measure by Fridge / Wall Photo (69&quot; Calibrated)
                 </button>
                 <span aria-hidden="true">·</span>
                 <a
