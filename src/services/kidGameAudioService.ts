@@ -160,3 +160,70 @@ export function playVictoryFanfare(): void {
     osc.stop(start + 0.48);
   });
 }
+
+/**
+ * Warm wooden xylophone/marimba bar note across C major scale (C4..C5)
+ */
+export function playXylophoneNote(noteIndex: number): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const cMajorHz = [261.63, 293.66, 329.63, 349.23, 392.0, 440.0, 523.25];
+  const freq = cMajorHz[Math.abs(noteIndex) % cMajorHz.length];
+
+  // Primary warm fundamental
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq, now);
+
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.linearRampToValueAtTime(0.24, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.58);
+
+  // Soft wooden overtone ping
+  const overtone = ctx.createOscillator();
+  const overtoneGain = ctx.createGain();
+  overtone.type = 'sine';
+  overtone.frequency.setValueAtTime(freq * 2, now);
+
+  overtoneGain.gain.setValueAtTime(0.001, now);
+  overtoneGain.gain.linearRampToValueAtTime(0.07, now + 0.008);
+  overtoneGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+  overtone.connect(overtoneGain);
+  overtoneGain.connect(ctx.destination);
+  overtone.start(now);
+  overtone.stop(now + 0.18);
+}
+
+/**
+ * Soft playful swish-plink when flipping a memory card
+ */
+export function playCardFlipSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(340, now);
+  osc.frequency.exponentialRampToValueAtTime(520, now + 0.07);
+
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.linearRampToValueAtTime(0.12, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.12);
+}
+

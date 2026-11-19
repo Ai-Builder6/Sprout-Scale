@@ -3319,7 +3319,7 @@ function SproutScaleWorkspace() {
                   className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:text-indigo-950 hover:underline whitespace-nowrap cursor-pointer"
                 >
                   <Gamepad2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  Kids Playroom (Ages 2–4)
+                  Kids Playroom (Ages 2–5)
                 </button>
               </div>
             </div>
@@ -3607,7 +3607,7 @@ function SproutScaleWorkspace() {
                 onClick={navigateToPlayroom}
                 className="font-semibold text-emerald-700 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
               >
-                Kids Games (Ages 2–4)
+                Kids Games (Ages 2–5)
               </button>
               <button
                 type="button"

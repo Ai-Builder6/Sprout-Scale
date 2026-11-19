@@ -19,12 +19,27 @@ import {
 import { SunflowerSproutGame } from './SunflowerSproutGame';
 import { BubblePopAnimalGame } from './BubblePopAnimalGame';
 import { TallShortFriendsGame } from './TallShortFriendsGame';
+import { RainbowMusicGame } from './RainbowMusicGame';
+import { CountingFruitBasketGame } from './CountingFruitBasketGame';
+import { AnimalMemoryMatchGame } from './AnimalMemoryMatchGame';
 
 import sunflowerCardImg from '../../assets/images/game_sunflower_garden_1795060511785.jpg';
 import bubbleCardImg from '../../assets/images/game_bubble_meadow_1795060511345.jpg';
 import tallShortCardImg from '../../assets/images/game_tall_short_friends_1795060511989.jpg';
+import rainbowMusicCardImg from '../../assets/images/game_rainbow_music_1795078485188.jpg';
+import fruitCountingCardImg from '../../assets/images/game_fruit_counting_1795078484557.jpg';
+import animalMemoryCardImg from '../../assets/images/game_animal_memory_1795078484282.jpg';
 
-export type PlayroomGameId = 'hub' | 'sunflower' | 'bubbles' | 'tall_short';
+export type PlayroomGameId =
+  | 'hub'
+  | 'sunflower'
+  | 'bubbles'
+  | 'tall_short'
+  | 'rainbow_music'
+  | 'fruit_counting'
+  | 'animal_memory';
+
+type AgeGroupFilter = 'all' | '2_4' | '3_5';
 
 interface KidsPlayroomPageProps {
   activeChild: ChildProfile;
@@ -39,10 +54,12 @@ interface GameCatalogItem {
   id: Exclude<PlayroomGameId, 'hub'>;
   title: string;
   shortLabel: string;
+  ageGroup: '2_4' | '3_5';
   metaLine: string;
   description: string;
   imageSrc: string;
   imageAlt: string;
+  imageClassName?: string;
   fallbackBgClass: string;
   ctaClass: string;
   borderClass: string;
@@ -50,9 +67,53 @@ interface GameCatalogItem {
 
 const PLAYROOM_GAMES: GameCatalogItem[] = [
   {
+    id: 'rainbow_music',
+    title: 'Rainbow Xylophone & Song',
+    shortLabel: 'Xylophone',
+    ageGroup: '3_5',
+    metaLine: 'Ages 3–5 · Music & Color Patterns · 2 Modes',
+    description:
+      'Tap glowing rainbow xylophone keys to play guided nursery tunes or follow colorful musical patterns to earn 4 stars.',
+    imageSrc: rainbowMusicCardImg,
+    imageAlt: 'Colorful rainbow wooden xylophone in a sunny meadow with singing bluebirds and musical notes',
+    fallbackBgClass: 'from-purple-100 via-amber-50 to-sky-100',
+    ctaClass: 'bg-purple-600 hover:bg-purple-700 text-white',
+    borderClass: 'border-purple-200 hover:border-purple-400',
+  },
+  {
+    id: 'fruit_counting',
+    title: 'Counting Fruit Basket',
+    shortLabel: 'Count Fruit',
+    ageGroup: '3_5',
+    metaLine: 'Ages 3–5 · Counting 1 to 5 · Orchard Picnic',
+    description:
+      'Pick shiny red apples, yellow bananas, strawberries, oranges, and purple plums from the sunny tree into your picnic basket.',
+    imageSrc: fruitCountingCardImg,
+    imageAlt: 'Sunny orchard tree bursting with apples, bananas, and strawberries above a woven picnic basket',
+    imageClassName: 'scale-[1.16] hover:scale-[1.2]',
+    fallbackBgClass: 'from-rose-100 via-amber-50 to-emerald-100',
+    ctaClass: 'bg-rose-500 hover:bg-rose-600 text-white',
+    borderClass: 'border-rose-200 hover:border-rose-400',
+  },
+  {
+    id: 'animal_memory',
+    title: 'Animal Memory Match',
+    shortLabel: 'Memory',
+    ageGroup: '3_5',
+    metaLine: 'Ages 3–5 · Flip & Match · 4 or 6 Pairs',
+    description:
+      'Flip oversized star cards on a sunny picnic blanket to match smiling lions, dinosaurs, whales, pandas, unicorns, and owls.',
+    imageSrc: animalMemoryCardImg,
+    imageAlt: 'Colorful animal picture cards spread on a sunny meadow picnic blanket with a lion, dino, whale, and panda',
+    fallbackBgClass: 'from-teal-100 via-amber-50 to-pink-100',
+    ctaClass: 'bg-teal-600 hover:bg-teal-700 text-white',
+    borderClass: 'border-teal-200 hover:border-teal-400',
+  },
+  {
     id: 'sunflower',
     title: 'Grow a Giant Sunflower',
     shortLabel: 'Sunflower',
+    ageGroup: '2_4',
     metaLine: 'Ages 2–4 · Tap & Grow · Height Ruler',
     description:
       'Tap the smiling sun, watering can, and rain cloud to sprout a sunflower taller than your own height mark!',
@@ -66,6 +127,7 @@ const PLAYROOM_GAMES: GameCatalogItem[] = [
     id: 'bubbles',
     title: 'Peek-a-Boo Animal Bubbles',
     shortLabel: 'Bubbles',
+    ageGroup: '2_4',
     metaLine: 'Ages 2–4 · Colors & Animals · 2 Modes',
     description:
       'Pop giant floating soap bubbles filled with cute ducks, bunnies, penguins, and frogs with gentle musical pops.',
@@ -79,6 +141,7 @@ const PLAYROOM_GAMES: GameCatalogItem[] = [
     id: 'tall_short',
     title: 'Tall & Short Animal Friends',
     shortLabel: 'Tall & Short',
+    ageGroup: '2_4',
     metaLine: 'Ages 2–4 · Early Measuring · 5 Stars',
     description:
       'Compare friendly giraffes, elephants, bunnies, and baby turtles standing side-by-side to spot who is taller or shorter.',
@@ -99,6 +162,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
   onBackToGrowthWall,
 }) => {
   const [selectedGame, setSelectedGame] = useState<PlayroomGameId>('hub');
+  const [ageFilter, setAgeFilter] = useState<AgeGroupFilter>('all');
   const [isMuted, setIsMuted] = useState<boolean>(() => isKidGamesMuted());
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
@@ -109,6 +173,10 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
   };
 
   const activeHeightFormatted = formatFeetInches(activeChildHeightCm);
+  const visibleGames =
+    ageFilter === 'all'
+      ? PLAYROOM_GAMES
+      : PLAYROOM_GAMES.filter((g) => g.ageGroup === ageFilter);
 
   return (
     <section aria-label="Kids Playroom" className="space-y-6">
@@ -120,17 +188,17 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
               <Gamepad2 className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
               <span>Kids Playroom</span>
               <span aria-hidden="true">·</span>
-              <span>Interactive Games for Ages 2–4</span>
+              <span>6 Interactive Games for Ages 2–5</span>
               <span aria-hidden="true">·</span>
               <span className="font-mono tabular-nums text-emerald-700">
                 {activeChild.name}: {activeHeightFormatted}
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-display font-extrabold text-indigo-950">
-              Hi {activeChild.name}! Ready to play?
+              Hi {activeChild.name}! Pick a colorful game to play!
             </h1>
             <p className="text-sm text-slate-600 max-w-2xl">
-              Big tap targets, friendly animals, and gentle musical chimes with no timers or penalties — designed for little fingers ages two to four.
+              Rainbow xylophone songs, fruit counting, memory matching, bubble popping, and height games — big touch targets, cheerful sounds, and zero timers.
             </p>
           </div>
 
@@ -210,53 +278,79 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
         )}
       </div>
 
-      {/* Quick Game Switcher Tabs (Always 1-tap away so toddlers/parents can hop between games) */}
-      <div
-        role="tablist"
-        aria-label="Choose a kids game"
-        className="flex flex-wrap items-center gap-2.5"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={selectedGame === 'hub'}
-          onClick={() => setSelectedGame('hub')}
-          className={`min-h-[48px] inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-display font-extrabold transition-all cursor-pointer whitespace-nowrap ${
-            selectedGame === 'hub'
-              ? 'bg-indigo-950 text-white shadow-sm'
-              : 'bg-white border-2 border-slate-200 text-slate-700 hover:border-indigo-300'
-          }`}
+      {/* Quick Game Switcher Tabs (Always 1-tap away so kids/parents can hop between all 6 games) */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          role="tablist"
+          aria-label="Choose a kids game"
+          className="flex flex-wrap items-center gap-2"
         >
-          <LayoutGrid className="w-4 h-4 shrink-0" aria-hidden="true" />
-          All Games (3)
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={selectedGame === 'hub'}
+            onClick={() => setSelectedGame('hub')}
+            className={`min-h-[46px] inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-display font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+              selectedGame === 'hub'
+                ? 'bg-indigo-950 text-white shadow-sm'
+                : 'bg-white border-2 border-slate-200 text-slate-700 hover:border-indigo-300'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4 shrink-0" aria-hidden="true" />
+            All Games ({PLAYROOM_GAMES.length})
+          </button>
 
-        {PLAYROOM_GAMES.map((game) => {
-          const isActive = selectedGame === game.id;
-          return (
-            <button
-              key={game.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setSelectedGame(game.id)}
-              className={`min-h-[48px] inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-display font-extrabold transition-all cursor-pointer whitespace-nowrap ${
-                isActive
-                  ? `${game.ctaClass} shadow-sm`
-                  : 'bg-white border-2 border-slate-200 text-slate-700 hover:border-amber-300'
-              }`}
-            >
-              <Play className="w-3.5 h-3.5 fill-current shrink-0" aria-hidden="true" />
-              {game.shortLabel}
-            </button>
-          );
-        })}
+          {PLAYROOM_GAMES.map((game) => {
+            const isActive = selectedGame === game.id;
+            return (
+              <button
+                key={game.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setSelectedGame(game.id)}
+                className={`min-h-[46px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-display font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  isActive
+                    ? `${game.ctaClass} shadow-sm`
+                    : 'bg-white border-2 border-slate-200 text-slate-700 hover:border-amber-300'
+                }`}
+              >
+                <Play className="w-3.5 h-3.5 fill-current shrink-0" aria-hidden="true" />
+                {game.shortLabel}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Age Filter Controls (shown on Hub view) */}
+        {selectedGame === 'hub' && (
+          <div className="flex items-center gap-1.5 bg-white/90 p-1 rounded-xl border border-amber-200">
+            {[
+              { id: 'all' as const, label: 'All Ages (6)' },
+              { id: '3_5' as const, label: 'Ages 3–5 (3)' },
+              { id: '2_4' as const, label: 'Ages 2–4 (3)' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setAgeFilter(opt.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                  ageFilter === opt.id
+                    ? 'bg-amber-400 text-slate-950 shadow-xs'
+                    : 'text-slate-600 hover:text-indigo-950'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Playroom Hub View: 3-Column Illustrated Game Cards */}
+      {/* Playroom Hub View: 3-Column Illustrated Game Cards (6 Total Games) */}
       {selectedGame === 'hub' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {PLAYROOM_GAMES.map((game) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {visibleGames.map((game) => (
             <article
               key={game.id}
               className={`bg-white rounded-3xl border-2 ${game.borderClass} shadow-xs hover:shadow-md transition-all overflow-hidden flex flex-col`}
@@ -274,7 +368,9 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
                     onError={() =>
                       setBrokenImages((prev) => ({ ...prev, [game.id]: true }))
                     }
-                    className="w-full h-full object-cover hover:scale-[1.03] transition-transform duration-300"
+                    className={`w-full h-full object-cover transition-transform duration-300 ${
+                      game.imageClassName ?? 'hover:scale-[1.03]'
+                    }`}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center p-6 text-center">
@@ -283,7 +379,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
                 )}
               </div>
 
-              {/* Card Body & Single Big Toddler-Friendly Play CTA */}
+              {/* Card Body & Single Big Kid-Friendly Play CTA */}
               <div className="p-5 flex-1 flex flex-col justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold text-slate-500">{game.metaLine}</p>
@@ -310,6 +406,18 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
       )}
 
       {/* Active Mini-Game Stage */}
+      {selectedGame === 'rainbow_music' && (
+        <RainbowMusicGame childProfile={activeChild} />
+      )}
+
+      {selectedGame === 'fruit_counting' && (
+        <CountingFruitBasketGame childProfile={activeChild} />
+      )}
+
+      {selectedGame === 'animal_memory' && (
+        <AnimalMemoryMatchGame childProfile={activeChild} />
+      )}
+
       {selectedGame === 'sunflower' && (
         <SunflowerSproutGame
           childProfile={activeChild}
