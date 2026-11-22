@@ -3516,7 +3516,7 @@ function SproutScaleWorkspace() {
                   className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400 hover:text-indigo-950 dark:hover:text-white hover:underline whitespace-nowrap cursor-pointer"
                 >
                   <Gamepad2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  Kids Playroom (Ages 2–6)
+                  Kids Playroom (Ages 2–8)
                 </button>
               </div>
             </div>
@@ -3767,10 +3767,13 @@ function SproutScaleWorkspace() {
           onSignInForDrive={() => void handleGoogleSignIn()}
         />
 
-        {/* Section 4: Google Drive Keepsake Vault & Google Picker */}
+        {/* Section 4: Color-Coded Google Drive Keepsake Vault, Google Sheets & Firestore Sync */}
         <GoogleDriveVaultSection
           childProfile={activeChild}
           measurements={activeMeasurements}
+          events={activeEvents}
+          photos={activePhotos}
+          isFirestoreSignedIn={Boolean(user)}
           accessToken={accessToken}
           needsDriveAuth={needsDriveAuth}
           isSigningIn={isLoggingIn}
@@ -3828,7 +3831,7 @@ function SproutScaleWorkspace() {
                 onClick={navigateToPlayroom}
                 className="font-semibold text-emerald-700 dark:text-emerald-400 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap cursor-pointer"
               >
-                Kids Games (Ages 2–6)
+                Kids Games (Ages 2–8)
               </button>
               <button
                 type="button"

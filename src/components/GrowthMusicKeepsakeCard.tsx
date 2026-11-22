@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { Download, Loader2, Music, Sparkles } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Download, Loader2, Music, Pause, Play, Sparkles, Volume2 } from 'lucide-react';
 import { ChildProfile, GrowthMeasurement } from '../types';
 import {
   generateGrowthMilestoneMusic,
   GenerateGrowthMusicResult,
-  MusicDurationMode,
   MusicStylePreset,
+  MusicVoiceMode,
 } from '../services/growthMusicService';
 import { GrowthProgressSummary } from '../services/growthPdfReportService';
 
@@ -20,22 +20,22 @@ const STYLE_OPTIONS: { id: MusicStylePreset; label: string; subtitle: string }[]
   {
     id: 'sunny-folk',
     label: 'Sunny Acoustic Folk',
-    subtitle: 'Strummed guitar, handclaps & joyful family vocals',
+    subtitle: 'Cheerful guitar chords, handclaps & joyful melody',
   },
   {
     id: 'playful-ukulele',
     label: 'Playful Ukulele & Marimba',
-    subtitle: 'Bright storybook singalong melody',
+    subtitle: 'Bouncy storybook singalong chimes & strums',
   },
   {
     id: 'indie-pop',
-    label: 'Upbeat Indie Pop Anthem',
-    subtitle: 'Energetic piano, crisp drums & celebration chorus',
+    label: 'Upbeat Celebration Pop',
+    subtitle: 'Bright electric piano, crisp beat & happy hook',
   },
   {
     id: 'lullaby-piano',
     label: 'Gentle Lullaby Piano',
-    subtitle: 'Tender keepsake piano & warm strings',
+    subtitle: 'Tender keepsake piano arpeggios & music-box sparkle',
   },
 ];
 
@@ -43,16 +43,17 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
   childProfile,
   measurements,
   progressSummary,
-  avatarPhotoUrl,
 }) => {
   const [stylePreset, setStylePreset] = useState<MusicStylePreset>('sunny-folk');
-  const [durationMode, setDurationMode] = useState<MusicDurationMode>('clip');
+  const [voiceMode, setVoiceMode] = useState<MusicVoiceMode>('with-vocals');
   const [customPrompt, setCustomPrompt] = useState<string>('');
-  const [usePortraitInspiration, setUsePortraitInspiration] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [generatedTrack, setGeneratedTrack] =
     useState<GenerateGrowthMusicResult | null>(null);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const sortedDesc = [...measurements].sort((a, b) => b.ageMonths - a.ageMonths);
   const latestNote = sortedDesc[0]?.note ?? '';
@@ -60,6 +61,7 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
   const handleGenerateSong = async () => {
     setIsGenerating(true);
     setErrorMessage(null);
+    setIsPlaying(false);
 
     try {
       const result = await generateGrowthMilestoneMusic({
@@ -69,12 +71,22 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
         gainedSummary: `${progressSummary.totalHeightGainPrimary} and ${progressSummary.totalWeightGainPrimary}`,
         latestNote,
         stylePreset,
-        durationMode,
+        voiceMode,
         customPrompt: customPrompt.trim() || undefined,
-        avatarDataUrl:
-          usePortraitInspiration && avatarPhotoUrl ? avatarPhotoUrl : null,
       });
       setGeneratedTrack(result);
+      // Auto-play right after generation on user click
+      window.setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0;
+          audioRef.current
+            .play()
+            .then(() => setIsPlaying(true))
+            .catch(() => {
+              // User can press Play manually if browser blocks delayed playback
+            });
+        }
+      }, 60);
     } catch (err) {
       const msg =
         err instanceof Error
@@ -83,6 +95,19 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
       setErrorMessage(msg);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleTogglePlayback = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) {
+      el.play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {});
+    } else {
+      el.pause();
+      setIsPlaying(false);
     }
   };
 
@@ -95,10 +120,10 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
             <Music className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
-            <span>Milestone Keepsake Song Studio</span>
+            <span>Milestone Keepsake Jingle Studio</span>
             <span aria-hidden="true">·</span>
             <span className="font-mono tabular-nums text-slate-600 dark:text-slate-400">
-              Lyria 3 Audio &amp; Lyrics
+              Quick ~15s Keepsake Song (.WAV)
             </span>
           </div>
           <h3 className="text-lg sm:text-xl font-bold text-indigo-950 dark:text-white">
@@ -106,38 +131,38 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
           </h3>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-2xl">
             Turn {childProfile.name}’s wall milestones ({progressSummary.latestHeightPrimary},{' '}
-            {progressSummary.totalHeightGainPrimary} since Age 2) into an original MP3
-            soundtrack to play alongside their Growth Wall timelapse.
+            {progressSummary.totalHeightGainPrimary} since Age 2) into a snappy, joyful
+            celebration jingle with custom lyrics you can play right away or download.
           </p>
         </div>
 
-        {/* Duration Mode Selector: 30s Clip (lyria-3-clip-preview) vs Full Song (lyria-3-pro-preview) */}
+        {/* Audio Mix Selector: Vocals + Music vs Instrumental Jingle */}
         <div
           role="group"
-          aria-label="Song length"
+          aria-label="Audio mix mode"
           className="flex items-center gap-1 p-1 bg-amber-100/80 dark:bg-slate-800 rounded-lg self-start sm:self-center shrink-0"
         >
           <button
             type="button"
-            onClick={() => setDurationMode('clip')}
+            onClick={() => setVoiceMode('with-vocals')}
             className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-              durationMode === 'clip'
+              voiceMode === 'with-vocals'
                 ? 'bg-amber-400 text-slate-950 shadow-xs'
                 : 'text-amber-950/80 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
             }`}
           >
-            30s Clip
+            Voice + Music
           </button>
           <button
             type="button"
-            onClick={() => setDurationMode('full')}
+            onClick={() => setVoiceMode('instrumental')}
             className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-              durationMode === 'full'
+              voiceMode === 'instrumental'
                 ? 'bg-indigo-900 dark:bg-sky-500 text-white dark:text-slate-950 shadow-xs'
                 : 'text-amber-950/80 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
             }`}
           >
-            Full Track
+            Music Only
           </button>
         </div>
       </div>
@@ -166,7 +191,7 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
         })}
       </div>
 
-      {/* Optional Family Detail & Portrait Inspiration Toggle */}
+      {/* Optional Family Detail & Compose Action */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3">
         <div className="flex-1 space-y-1.5">
           <label
@@ -190,38 +215,24 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          {avatarPhotoUrl && (
-            <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={usePortraitInspiration}
-                onChange={(e) => setUsePortraitInspiration(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-amber-500 focus:ring-amber-400"
-              />
-              <span>Inspire from {childProfile.name}’s photo</span>
-            </label>
+        <button
+          type="button"
+          onClick={() => void handleGenerateSong()}
+          disabled={isGenerating}
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 disabled:opacity-60 rounded-lg shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+        >
+          {isGenerating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              Composing Keepsake Jingle...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 text-amber-900" aria-hidden="true" />
+              Compose Milestone Song
+            </>
           )}
-
-          <button
-            type="button"
-            onClick={() => void handleGenerateSong()}
-            disabled={isGenerating}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 active:bg-amber-500 disabled:opacity-60 rounded-lg shadow-xs transition-colors whitespace-nowrap cursor-pointer"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                Composing {durationMode === 'full' ? 'Full Song' : '30s Clip'}...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4 text-amber-900" aria-hidden="true" />
-                Compose Milestone Song
-              </>
-            )}
-          </button>
-        </div>
+        </button>
       </div>
 
       {errorMessage && (
@@ -237,30 +248,53 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
         <div className="bg-sky-50/80 dark:bg-slate-800/80 border border-sky-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+              <Volume2 className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" aria-hidden="true" />
               <span className="font-bold text-indigo-950 dark:text-white">
-                {childProfile.name}’s Keepsake Track Ready
+                {generatedTrack.songTitle}
               </span>
               <span aria-hidden="true">·</span>
               <span className="font-mono tabular-nums text-sky-800 dark:text-sky-300">
-                {generatedTrack.modelUsed === 'lyria-3-pro-preview'
-                  ? 'Full Track (Lyria Pro)'
-                  : '30s Clip (Lyria Clip)'}
+                {generatedTrack.durationSec}s · {generatedTrack.engineLabel}
               </span>
             </div>
 
-            <a
-              href={generatedTrack.audioDataUrl}
-              download={`SproutScale_${safeChildSlug}_Milestone_Song.mp3`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-950 dark:text-white bg-white dark:bg-slate-900 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-300 dark:border-slate-600 rounded-lg transition-colors whitespace-nowrap shrink-0"
-            >
-              <Download className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" aria-hidden="true" />
-              Download MP3
-            </a>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleTogglePlayback}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+              >
+                {isPlaying ? (
+                  <>
+                    <Pause className="w-3.5 h-3.5" aria-hidden="true" />
+                    Pause
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                    Play Song
+                  </>
+                )}
+              </button>
+
+              <a
+                href={generatedTrack.audioDataUrl}
+                download={`SproutScale_${safeChildSlug}_Milestone_Song.wav`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-950 dark:text-white bg-white dark:bg-slate-900 hover:bg-sky-100 dark:hover:bg-slate-700 border border-sky-300 dark:border-slate-600 rounded-lg transition-colors whitespace-nowrap shrink-0"
+              >
+                <Download className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" aria-hidden="true" />
+                Download WAV
+              </a>
+            </div>
           </div>
 
           <audio
+            ref={audioRef}
             controls
             src={generatedTrack.audioDataUrl}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => setIsPlaying(false)}
             className="w-full h-10"
           >
             Your browser does not support HTML5 audio playback.
@@ -268,10 +302,10 @@ export const GrowthMusicKeepsakeCard: React.FC<GrowthMusicKeepsakeCardProps> = (
 
           {generatedTrack.lyrics && (
             <div className="bg-white dark:bg-slate-900 border border-sky-100 dark:border-slate-700 rounded-lg p-3.5 space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-sky-800 dark:text-sky-300">
-                Generated Keepsake Lyrics &amp; Notes
+              <p className="text-[11px] font-bold tracking-wide text-sky-800 dark:text-sky-300">
+                Keepsake Lyrics for {childProfile.name}
               </p>
-              <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-line leading-relaxed max-h-44 overflow-y-auto">
+              <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 whitespace-pre-line leading-relaxed">
                 {generatedTrack.lyrics}
               </p>
             </div>

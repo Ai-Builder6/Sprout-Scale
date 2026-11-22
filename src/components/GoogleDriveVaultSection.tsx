@@ -1,17 +1,26 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  Database,
   Download,
   ExternalLink,
+  FileJson,
   FileSpreadsheet,
   FolderOpen,
   Image,
   RefreshCw,
   Save,
+  Sparkles,
+  TableProperties,
   Trash2,
   Upload,
 } from 'lucide-react';
-import { ChildProfile, GrowthMeasurement } from '../types';
+import {
+  ChildPhotoRecord,
+  ChildProfile,
+  GrowthMeasurement,
+  MilestoneEventRecord,
+} from '../types';
 import {
   deleteDriveFile,
   downloadDriveGrowthBackup,
@@ -24,11 +33,19 @@ import {
   saveGrowthBackupToDrive,
   saveKeepsakeChartToDrive,
 } from '../services/googleDriveService';
+import {
+  ColorCodedSheetResult,
+  createColorCodedGrowthSheet,
+  syncExistingColorCodedGrowthSheet,
+} from '../services/googleSheetsService';
 import { GoogleSignInButton } from './GoogleSignInButton';
 
 interface GoogleDriveVaultSectionProps {
   childProfile: ChildProfile;
   measurements: GrowthMeasurement[];
+  events?: MilestoneEventRecord[];
+  photos?: ChildPhotoRecord[];
+  isFirestoreSignedIn?: boolean;
   accessToken: string | null;
   needsDriveAuth: boolean;
   isSigningIn: boolean;
@@ -45,12 +62,16 @@ type PendingDriveConfirm =
   | {
       kind: 'overwrite';
       file: DriveFileSummary;
+    }
+  | {
+      kind: 'sync_sheet';
+      file: DriveFileSummary;
     };
 
 function formatFileSize(bytesStr?: string): string {
-  if (!bytesStr) return 'Drive file';
+  if (!bytesStr) return 'Google Doc / Sheet';
   const bytes = Number(bytesStr);
-  if (Number.isNaN(bytes) || bytes <= 0) return 'Drive file';
+  if (Number.isNaN(bytes) || bytes <= 0) return 'Google Sheet';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -63,9 +84,79 @@ function formatModifiedDate(iso?: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+type DriveFileCategory = 'sheet' | 'folder' | 'json' | 'svg' | 'photo';
+
+function classifyDriveFile(file: DriveFileSummary): DriveFileCategory {
+  if (file.mimeType === 'application/vnd.google-apps.spreadsheet') return 'sheet';
+  if (file.mimeType === 'application/vnd.google-apps.folder') return 'folder';
+  if (
+    file.mimeType === 'application/json' ||
+    file.name.toLowerCase().endsWith('.json')
+  ) {
+    return 'json';
+  }
+  if (
+    file.mimeType === 'image/svg+xml' ||
+    file.name.toLowerCase().endsWith('.svg')
+  ) {
+    return 'svg';
+  }
+  return 'photo';
+}
+
+const FILE_COLOR_STYLES: Record<
+  DriveFileCategory,
+  {
+    label: string;
+    rowBg: string;
+    iconBg: string;
+    iconText: string;
+    labelText: string;
+  }
+> = {
+  sheet: {
+    label: 'Color-Coded Google Sheet',
+    rowBg: 'hover:bg-emerald-50/70 dark:hover:bg-emerald-950/30',
+    iconBg: 'bg-emerald-100 dark:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700',
+    iconText: 'text-emerald-700 dark:text-emerald-300',
+    labelText: 'text-emerald-800 dark:text-emerald-300',
+  },
+  folder: {
+    label: 'Bright Green Vault Folder',
+    rowBg: 'hover:bg-teal-50/70 dark:hover:bg-teal-950/30',
+    iconBg: 'bg-teal-100 dark:bg-teal-900/60 border border-teal-300 dark:border-teal-700',
+    iconText: 'text-teal-700 dark:text-teal-300',
+    labelText: 'text-teal-800 dark:text-teal-300',
+  },
+  json: {
+    label: 'JSON Growth Backup',
+    rowBg: 'hover:bg-sky-50/70 dark:hover:bg-sky-950/30',
+    iconBg: 'bg-sky-100 dark:bg-sky-900/60 border border-sky-300 dark:border-sky-700',
+    iconText: 'text-sky-700 dark:text-sky-300',
+    labelText: 'text-sky-800 dark:text-sky-300',
+  },
+  svg: {
+    label: 'Printable Keepsake Poster',
+    rowBg: 'hover:bg-amber-50/70 dark:hover:bg-amber-950/30',
+    iconBg: 'bg-amber-100 dark:bg-amber-900/60 border border-amber-300 dark:border-amber-700',
+    iconText: 'text-amber-700 dark:text-amber-300',
+    labelText: 'text-amber-800 dark:text-amber-300',
+  },
+  photo: {
+    label: 'Memory Photo / Media',
+    rowBg: 'hover:bg-rose-50/70 dark:hover:bg-rose-950/30',
+    iconBg: 'bg-rose-100 dark:bg-rose-900/60 border border-rose-300 dark:border-rose-700',
+    iconText: 'text-rose-700 dark:text-rose-300',
+    labelText: 'text-rose-800 dark:text-rose-300',
+  },
+};
+
 export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = ({
   childProfile,
   measurements,
+  events = [],
+  photos = [],
+  isFirestoreSignedIn = false,
   accessToken,
   needsDriveAuth,
   isSigningIn,
@@ -75,6 +166,7 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
 }) => {
   const [driveFiles, setDriveFiles] = useState<DriveFileSummary[]>([]);
   const [pickedAttachments, setPickedAttachments] = useState<PickedDriveItem[]>([]);
+  const [latestSheet, setLatestSheet] = useState<ColorCodedSheetResult | null>(null);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
@@ -82,19 +174,21 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
     message: string;
   } | null>(null);
 
-  // Mandatory explicit user confirmation modal state for destructive / mutating Drive calls
+  // Mandatory explicit user confirmation modal state for destructive / mutating Drive & Sheets calls
   const [pendingConfirm, setPendingConfirm] = useState<PendingDriveConfirm | null>(
     null,
   );
 
   const handleDriveError = useCallback(
     (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Google Drive action failed.';
+      const msg =
+        err instanceof Error ? err.message : 'Google Workspace action failed.';
       if (msg.includes('AUTH_REQUIRED')) {
         onRequireReauth();
         setFeedback({
           type: 'error',
-          message: 'Please sign in with Google to authorize Google Drive access.',
+          message:
+            'Please click "Sign in with Google" to authorize Google Drive & Google Sheets access.',
         });
       } else {
         setFeedback({ type: 'error', message: msg });
@@ -126,6 +220,34 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
       setDriveFiles([]);
     }
   }, [accessToken, needsDriveAuth, refreshDriveFiles]);
+
+  const handleCreateColorCodedSheet = async () => {
+    if (!accessToken) {
+      onRequireReauth();
+      return;
+    }
+    setActiveAction('create-sheet');
+    setFeedback(null);
+    try {
+      const created = await createColorCodedGrowthSheet(
+        accessToken,
+        childProfile,
+        measurements,
+        events,
+        photos,
+      );
+      setLatestSheet(created);
+      setFeedback({
+        type: 'success',
+        message: `Created brightly color-coded 4-tab Google Sheet "${created.title}" inside your bright green "${created.folderName}" Google Drive folder!`,
+      });
+      await refreshDriveFiles();
+    } catch (err) {
+      handleDriveError(err);
+    } finally {
+      setActiveAction(null);
+    }
+  };
 
   const handleSaveNewBackup = async () => {
     if (!accessToken) {
@@ -301,6 +423,27 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
       } finally {
         setActiveAction(null);
       }
+    } else if (target.kind === 'sync_sheet') {
+      setActiveAction(`sync-sheet-${target.file.id}`);
+      try {
+        await syncExistingColorCodedGrowthSheet(
+          accessToken,
+          target.file.id,
+          childProfile,
+          measurements,
+          events,
+          photos,
+        );
+        setFeedback({
+          type: 'success',
+          message: `Refreshed all 4 color-coded tabs inside "${target.file.name}" with ${childProfile.name}’s latest Firestore & wall milestones.`,
+        });
+        await refreshDriveFiles();
+      } catch (err) {
+        handleDriveError(err);
+      } finally {
+        setActiveAction(null);
+      }
     }
   };
 
@@ -309,12 +452,12 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-indigo-950 dark:text-white">
-            Google Drive Keepsake Vault &amp; Picker
+            Color-Coded Google Sheets, Drive Vault &amp; Firestore Sync
           </h2>
           <p className="text-sm text-slate-700 dark:text-slate-300 max-w-2xl">
-            Export {childProfile.name}’s Age 2-to-today growth records and printable SVG
-            posters to your Google Drive, or use Google Picker to import backups and attach
-            checkup files.
+            Export {childProfile.name}’s growth records into a brightly color-coded 4-tab
+            Google Sheet organized inside a bright green Google Drive vault folder, alongside
+            live Firestore cloud sync.
           </p>
         </div>
 
@@ -329,42 +472,105 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
               className={`w-3.5 h-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`}
               aria-hidden="true"
             />
-            Refresh Drive Files
+            Refresh Drive &amp; Sheets
           </button>
         )}
+      </div>
+
+      {/* Bright Color-Coded Cloud Sync Overview Strip (Firestore + 4 Sheet Tabs Legend) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="rounded-xl p-3.5 bg-violet-50 dark:bg-violet-950/40 border-2 border-violet-200 dark:border-violet-800/80">
+          <div className="flex items-center gap-2 text-xs font-bold text-violet-900 dark:text-violet-200">
+            <Database className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" aria-hidden="true" />
+            <span>Firestore Cloud DB</span>
+          </div>
+          <p className="mt-1 text-xs font-mono tabular-nums font-bold text-slate-900 dark:text-white">
+            {measurements.length} Marks · {events.length} Events · {photos.length} Photos
+          </p>
+          <p className="text-[11px] text-violet-800 dark:text-violet-300 mt-0.5">
+            {isFirestoreSignedIn ? 'Live real-time sync active' : 'Sign in to sync across devices'}
+          </p>
+        </div>
+
+        <div className="rounded-xl p-3.5 bg-sky-50 dark:bg-sky-950/40 border-2 border-sky-200 dark:border-sky-800/80">
+          <div className="text-xs font-bold text-sky-900 dark:text-sky-200">
+            Tab 1 · Growth Milestones
+          </div>
+          <p className="mt-1 text-[11px] text-sky-800 dark:text-sky-300 leading-snug">
+            Sky-blue header, color-coded height/weight columns &amp; live MAX formulas.
+          </p>
+        </div>
+
+        <div className="rounded-xl p-3.5 bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-200 dark:border-amber-800/80">
+          <div className="text-xs font-bold text-amber-900 dark:text-amber-200">
+            Tab 2 · Growth Velocity
+          </div>
+          <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-300 leading-snug">
+            Marigold header with emerald Spurt &amp; sunny Steady Pace highlights.
+          </p>
+        </div>
+
+        <div className="rounded-xl p-3.5 bg-rose-50 dark:bg-rose-950/40 border-2 border-rose-200 dark:border-rose-800/80">
+          <div className="text-xs font-bold text-rose-900 dark:text-rose-200">
+            Tab 3 · Memories &amp; Events
+          </div>
+          <p className="mt-1 text-[11px] text-rose-800 dark:text-rose-300 leading-snug">
+            Coral header with color-coded Birthday, Firsts, School &amp; Photo rows.
+          </p>
+        </div>
+
+        <div className="rounded-xl p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-200 dark:border-emerald-800/80">
+          <div className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+            Tab 4 · Family Profile
+          </div>
+          <p className="mt-1 text-[11px] text-emerald-800 dark:text-emerald-300 leading-snug">
+            Emerald summary card saved inside your bright green Drive folder.
+          </p>
+        </div>
       </div>
 
       {feedback && (
         <div
           role="status"
-          className={`px-4 py-3 rounded-xl text-xs font-medium border ${
+          className={`px-4 py-3 rounded-xl text-xs font-medium border flex flex-wrap items-center justify-between gap-3 ${
             feedback.type === 'success'
               ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'
               : 'bg-red-50 dark:bg-red-950/60 text-red-900 dark:text-red-200 border-red-200 dark:border-red-800'
           }`}
         >
-          {feedback.message}
+          <span>{feedback.message}</span>
+          {feedback.type === 'success' && latestSheet && (
+            <a
+              href={latestSheet.spreadsheetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg whitespace-nowrap shrink-0"
+            >
+              Open Color Sheet
+              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+            </a>
+          )}
         </div>
       )}
 
       {needsDriveAuth || !accessToken ? (
         /* Auth Required Card with Official "Sign in with Google" Button */
-        <div className="bg-white dark:bg-slate-900 border-2 border-amber-200 dark:border-slate-700 rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xs">
+        <div className="bg-white dark:bg-slate-900 border-2 border-emerald-200 dark:border-slate-700 rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xs">
           <div className="space-y-2 max-w-xl">
             <h3 className="text-lg font-bold text-indigo-950 dark:text-white">
-              Connect Google Drive &amp; Google Picker
+              Connect Google Sheets, Google Drive &amp; Picker
             </h3>
             <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-              Sign in with Google to save {childProfile.name}’s growth backups and
-              printable keepsake charts to your Google Drive, or browse files with Google
-              Picker.
+              Sign in with Google to generate {childProfile.name}’s brightly color-coded
+              4-tab Google Sheet inside a green Google Drive vault folder, save printable SVG
+              posters, and sync Firestore milestones.
             </p>
-            <div className="text-xs text-sky-800 dark:text-sky-300 font-medium pt-0.5">
-              <span>JSON Growth Backups</span>
+            <div className="text-xs text-emerald-800 dark:text-emerald-300 font-medium pt-0.5">
+              <span>4-Tab Color-Coded Google Sheets</span>
               <span className="mx-1.5" aria-hidden="true">·</span>
-              <span>Printable SVG Growth Posters</span>
+              <span>Bright Green Drive Folder</span>
               <span className="mx-1.5" aria-hidden="true">·</span>
-              <span>Google Picker File Selector</span>
+              <span>JSON Backups &amp; Printable Posters</span>
             </div>
           </div>
 
@@ -375,27 +581,57 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
           />
         </div>
       ) : (
-        /* Connected Google Drive & Picker Workspace */
+        /* Connected Google Sheets & Drive Workspace */
         <div className="bg-white dark:bg-slate-900 border-2 border-sky-200 dark:border-slate-700 rounded-2xl p-5 sm:p-6 space-y-6 shadow-xs">
-          {/* Action Toolbar */}
+          {/* Primary Featured Color-Coded Google Sheets Action Banner */}
+          <div className="rounded-xl p-4 sm:p-5 bg-gradient-to-r from-emerald-50 via-sky-50 to-amber-50 dark:from-emerald-950/50 dark:via-sky-950/40 dark:to-amber-950/40 border-2 border-emerald-300 dark:border-emerald-700/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                <TableProperties className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
+                <span>Bright Color-Coded Google Sheets + Emerald Drive Folder</span>
+              </div>
+              <h3 className="text-base font-bold text-indigo-950 dark:text-white">
+                Create {childProfile.name}’s 4-Tab Color Growth Tracker in Google Sheets
+              </h3>
+              <p className="text-xs text-slate-700 dark:text-slate-300 max-w-xl">
+                Exports all {measurements.length} measurements, annualized velocity spurts,{' '}
+                {events.length} memories, and {photos.length} album items with colorful tabs,
+                banded rows, live formulas, and a bright green Google Drive folder.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleCreateColorCodedSheet()}
+              disabled={activeAction !== null}
+              className="h-11 px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 shrink-0" aria-hidden="true" />
+              {activeAction === 'create-sheet'
+                ? 'Building Color Sheet...'
+                : 'Create Color-Coded Google Sheet'}
+            </button>
+          </div>
+
+          {/* Secondary Bright Color-Coded Drive Action Toolbar */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <button
               type="button"
               onClick={() => void handleSaveNewBackup()}
               disabled={activeAction !== null}
-              className="h-11 px-4 py-2.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 disabled:opacity-60 rounded-lg transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+              className="h-11 px-4 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-60 rounded-lg transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Save className="w-4 h-4 shrink-0" aria-hidden="true" />
               {activeAction === 'save-backup'
                 ? 'Saving Backup...'
-                : 'Save Backup (.json) to Drive'}
+                : 'Save JSON Backup to Drive'}
             </button>
 
             <button
               type="button"
               onClick={() => void handleSaveKeepsakeSvg()}
               disabled={activeAction !== null}
-              className="h-11 px-4 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded-lg transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+              className="h-11 px-4 py-2.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 disabled:opacity-60 rounded-lg transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Image className="w-4 h-4 shrink-0" aria-hidden="true" />
               {activeAction === 'save-poster'
@@ -407,24 +643,24 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
               type="button"
               onClick={() => void handlePickBackupViaPicker()}
               disabled={activeAction !== null}
-              className="h-11 px-4 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-60 rounded-lg transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+              className="h-11 px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-lg transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <FolderOpen className="w-4 h-4 shrink-0" aria-hidden="true" />
               {activeAction === 'pick-backup'
                 ? 'Opening Picker...'
-                : 'Pick Backup via Google Picker'}
+                : 'Pick Backup via Picker'}
             </button>
 
             <button
               type="button"
               onClick={() => void handlePickOrUploadAttachment()}
               disabled={activeAction !== null}
-              className="h-11 px-4 py-2.5 text-xs font-bold text-indigo-950 dark:text-sky-200 bg-sky-100 dark:bg-slate-800 hover:bg-sky-200 dark:hover:bg-slate-700 disabled:opacity-60 rounded-lg transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+              className="h-11 px-4 py-2.5 text-xs font-bold text-white bg-rose-500 hover:bg-rose-600 disabled:opacity-60 rounded-lg transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Upload className="w-4 h-4 text-sky-700 dark:text-sky-400 shrink-0" aria-hidden="true" />
+              <Upload className="w-4 h-4 shrink-0" aria-hidden="true" />
               {activeAction === 'pick-attachment'
                 ? 'Opening Picker...'
-                : 'Pick or Upload Checkup File'}
+                : 'Pick / Upload Checkup File'}
             </button>
           </div>
 
@@ -467,29 +703,39 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
             </div>
           )}
 
-          {/* SproutScale Files Stored in Google Drive */}
+          {/* Color-Coded SproutScale Files Stored in Google Drive & Sheets */}
           <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                Saved SproutScale Files in Your Google Drive
+                Color-Coded SproutScale Files in Google Drive &amp; Sheets
               </h3>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                {driveFiles.length} {driveFiles.length === 1 ? 'file' : 'files'}
-              </span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold">
+                <span className="text-emerald-700 dark:text-emerald-400">Emerald: Sheets</span>
+                <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+                <span className="text-sky-700 dark:text-sky-400">Sky: JSON Backups</span>
+                <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+                <span className="text-amber-700 dark:text-amber-400">Amber: Posters</span>
+                <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+                <span className="text-rose-700 dark:text-rose-400">Rose: Photos</span>
+                <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+                <span className="font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                  {driveFiles.length} {driveFiles.length === 1 ? 'item' : 'items'}
+                </span>
+              </div>
             </div>
 
             {isLoadingFiles ? (
               <p className="py-6 text-center text-xs text-slate-500 dark:text-slate-400">
-                Loading your SproutScale files from Google Drive...
+                Loading your SproutScale files &amp; color-coded Google Sheets...
               </p>
             ) : driveFiles.length === 0 ? (
               <div className="py-6 text-center space-y-1">
                 <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  No SproutScale exports saved in your Google Drive yet
+                  No SproutScale sheets or exports saved in your Google Drive yet
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Click “Save Backup (.json) to Drive” or “Save Keepsake Poster (.svg)” above
-                  to store your first growth file.
+                  Click “Create Color-Coded Google Sheet” above to build your bright 4-tab
+                  growth workbook inside Google Drive!
                 </p>
               </div>
             ) : (
@@ -497,41 +743,87 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                      <th className="py-2.5 pr-4">File Name</th>
-                      <th className="py-2.5 px-4">Details</th>
+                      <th className="py-2.5 pr-4">Color-Coded File / Sheet</th>
+                      <th className="py-2.5 px-4">Type &amp; Details</th>
                       <th className="py-2.5 pl-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                     {driveFiles.map((file) => {
-                      const isJson =
-                        file.mimeType === 'application/json' ||
-                        file.name.toLowerCase().endsWith('.json');
+                      const cat = classifyDriveFile(file);
+                      const style = FILE_COLOR_STYLES[cat];
+                      const isJson = cat === 'json';
+                      const isSheet = cat === 'sheet';
+
                       return (
                         <tr
                           key={file.id}
-                          className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors"
+                          className={`${style.rowBg} transition-colors`}
                         >
                           <td className="py-3 pr-4">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <FileSpreadsheet
-                                className="w-4 h-4 text-slate-400 shrink-0"
-                                aria-hidden="true"
-                              />
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${style.iconBg}`}
+                              >
+                                {cat === 'sheet' && (
+                                  <FileSpreadsheet
+                                    className={`w-4 h-4 ${style.iconText}`}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {cat === 'folder' && (
+                                  <FolderOpen
+                                    className={`w-4 h-4 ${style.iconText}`}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {cat === 'json' && (
+                                  <FileJson
+                                    className={`w-4 h-4 ${style.iconText}`}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                {(cat === 'svg' || cat === 'photo') && (
+                                  <Image
+                                    className={`w-4 h-4 ${style.iconText}`}
+                                    aria-hidden="true"
+                                  />
+                                )}
+                              </span>
                               <span className="font-semibold text-slate-900 dark:text-white truncate max-w-xs">
                                 {file.name}
                               </span>
                             </div>
                           </td>
                           <td className="py-3 px-4 font-mono tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                            <span>{isJson ? 'JSON Backup' : 'SVG Poster'}</span>
+                            <span className={`font-sans font-bold ${style.labelText}`}>
+                              {style.label}
+                            </span>
                             <span className="mx-1.5" aria-hidden="true">·</span>
                             <span>{formatModifiedDate(file.modifiedTime)}</span>
-                            <span className="mx-1.5" aria-hidden="true">·</span>
-                            <span>{formatFileSize(file.size)}</span>
+                            {cat !== 'folder' && (
+                              <>
+                                <span className="mx-1.5" aria-hidden="true">·</span>
+                                <span>{formatFileSize(file.size)}</span>
+                              </>
+                            )}
                           </td>
                           <td className="py-3 pl-4 text-right whitespace-nowrap">
                             <div className="inline-flex items-center justify-end gap-3">
+                              {isSheet && (
+                                <button
+                                  type="button"
+                                  disabled={activeAction !== null}
+                                  onClick={() =>
+                                    setPendingConfirm({ kind: 'sync_sheet', file })
+                                  }
+                                  className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 disabled:opacity-50 whitespace-nowrap shrink-0 cursor-pointer"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                                  Sync Sheet
+                                </button>
+                              )}
+
                               {isJson && (
                                 <>
                                   <button
@@ -593,7 +885,7 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
         </div>
       )}
 
-      {/* Mandatory Explicit Confirmation Modal for Mutating / Destructive Google Drive Operations */}
+      {/* Mandatory Explicit Confirmation Modal for Mutating / Destructive Google Drive & Sheets Operations */}
       {pendingConfirm && (
         <div
           role="dialog"
@@ -616,12 +908,16 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
                 >
                   {pendingConfirm.kind === 'delete'
                     ? `Delete "${pendingConfirm.file.name}" from Google Drive?`
-                    : `Update contents of "${pendingConfirm.file.name}"?`}
+                    : pendingConfirm.kind === 'sync_sheet'
+                      ? `Update Google Sheet "${pendingConfirm.file.name}"?`
+                      : `Update contents of "${pendingConfirm.file.name}"?`}
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                   {pendingConfirm.kind === 'delete'
                     ? `This will permanently delete 1 file ("${pendingConfirm.file.name}") from your Google Drive. This action cannot be undone.`
-                    : `This will overwrite "${pendingConfirm.file.name}" in your Google Drive with ${childProfile.name}’s latest Age 2 baseline and ${measurements.length} recorded growth milestone(s).`}
+                    : pendingConfirm.kind === 'sync_sheet'
+                      ? `This will overwrite all 4 color-coded tabs inside "${pendingConfirm.file.name}" with ${childProfile.name}’s latest ${measurements.length} milestone(s), velocity speeds, ${events.length} event(s), and ${photos.length} album photo(s).`
+                      : `This will overwrite "${pendingConfirm.file.name}" in your Google Drive with ${childProfile.name}’s latest Age 2 baseline and ${measurements.length} recorded growth milestone(s).`}
                 </p>
               </div>
             </div>
@@ -643,7 +939,11 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
                     : 'bg-emerald-600 hover:bg-emerald-700'
                 }`}
               >
-                {pendingConfirm.kind === 'delete' ? 'Delete File' : 'Confirm Update'}
+                {pendingConfirm.kind === 'delete'
+                  ? 'Delete File'
+                  : pendingConfirm.kind === 'sync_sheet'
+                    ? 'Confirm Sheet Sync'
+                    : 'Confirm Update'}
               </button>
             </div>
           </div>

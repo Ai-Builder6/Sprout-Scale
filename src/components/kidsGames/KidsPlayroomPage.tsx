@@ -16,6 +16,7 @@ import {
 import {
   isKidGamesMuted,
   setKidGamesMuted,
+  unlockKidGameAudio,
 } from '../../services/kidGameAudioService';
 import { useDefaultAppAvatar } from '../../services/defaultAvatarService';
 import { SunflowerSproutGame } from './SunflowerSproutGame';
@@ -27,6 +28,9 @@ import { AnimalMemoryMatchGame } from './AnimalMemoryMatchGame';
 import { LetterPhonicsGardenGame } from './LetterPhonicsGardenGame';
 import { ShapeRocketBuilderGame } from './ShapeRocketBuilderGame';
 import { DinoSnackMathGame } from './DinoSnackMathGame';
+import { ClockRoutineQuestGame } from './ClockRoutineQuestGame';
+import { WordBridgeQuestGame } from './WordBridgeQuestGame';
+import { PlanetMathMissionGame } from './PlanetMathMissionGame';
 
 import sunflowerCardImg from '../../assets/images/game_sunflower_garden_1795060511785.jpg';
 import bubbleCardImg from '../../assets/images/game_bubble_meadow_1795060511345.jpg';
@@ -37,9 +41,15 @@ import animalMemoryCardImg from '../../assets/images/game_animal_memory_17950784
 import letterGardenCardImg from '../../assets/images/game_letter_phonics_garden_1795320213382.jpg';
 import shapeRocketCardImg from '../../assets/images/game_shape_rocket_builder_1795320212849.jpg';
 import dinoMathCardImg from '../../assets/images/game_dino_snack_math_1795320212169.jpg';
+import clockRoutineCardImg from '../../assets/images/game_clock_routine_quest_1795323640283.jpg';
+import wordBridgeCardImg from '../../assets/images/game_word_bridge_quest_1795323640865.jpg';
+import planetMathCardImg from '../../assets/images/game_planet_math_mission_1795323639986.jpg';
 
 export type PlayroomGameId =
   | 'hub'
+  | 'clock_routine'
+  | 'word_bridge'
+  | 'planet_math'
   | 'letter_garden'
   | 'shape_rocket'
   | 'dino_math'
@@ -50,7 +60,7 @@ export type PlayroomGameId =
   | 'bubbles'
   | 'tall_short';
 
-type AgeGroupFilter = 'all' | '3_6' | '3_5' | '2_4';
+type AgeGroupFilter = 'all' | '2_4' | '3_5' | '3_6' | '4_7' | '5_8';
 
 interface KidsPlayroomPageProps {
   activeChild: ChildProfile;
@@ -67,7 +77,7 @@ interface GameCatalogItem {
   id: Exclude<PlayroomGameId, 'hub'>;
   title: string;
   shortLabel: string;
-  ageGroup: '3_6' | '3_5' | '2_4';
+  ageGroup: '2_4' | '3_5' | '3_6' | '4_7' | '5_8';
   metaLine: string;
   description: string;
   imageSrc: string;
@@ -79,6 +89,48 @@ interface GameCatalogItem {
 }
 
 const PLAYROOM_GAMES: GameCatalogItem[] = [
+  {
+    id: 'clock_routine',
+    title: 'Sunny Clock & Daily Routines',
+    shortLabel: 'Clock Quest',
+    ageGroup: '3_6',
+    metaLine: 'Ages 3–6 · Telling Time & Routines · 2 Modes',
+    description:
+      'Move and read a cheerful sunflower clock to match breakfast, playtime, storytime, and bedtime — starting with O’Clock (3–5) and stepping up to Half-Past (4–6).',
+    imageSrc: clockRoutineCardImg,
+    imageAlt: 'Cheerful sunny wooden clock with friendly smiling hands beside breakfast pancakes and a bedtime moon',
+    fallbackBgClass: 'from-amber-100 via-sky-50 to-orange-100 dark:from-amber-950 dark:via-slate-900 dark:to-orange-950',
+    ctaClass: 'bg-orange-500 hover:bg-orange-600 text-white',
+    borderClass: 'border-orange-200 hover:border-orange-400 dark:border-orange-800/80 dark:hover:border-orange-500',
+  },
+  {
+    id: 'word_bridge',
+    title: 'Sight-Word Treasure Bridge',
+    shortLabel: 'Word Bridge',
+    ageGroup: '4_7',
+    metaLine: 'Ages 4–7 · Phonics & 5-Letter Spelling · 2 Modes',
+    description:
+      'Snap wooden letter planks across a sparkling river to guide Pip the explorer to the treasure chest — from missing-letter clues (4–5) to full 5-letter spelling (5–7).',
+    imageSrc: wordBridgeCardImg,
+    imageAlt: 'Wooden alphabet planks forming a colorful stepping bridge across a sparkling river toward a golden treasure chest',
+    fallbackBgClass: 'from-cyan-100 via-emerald-50 to-amber-100 dark:from-cyan-950 dark:via-slate-900 dark:to-amber-950',
+    ctaClass: 'bg-cyan-600 hover:bg-cyan-700 text-white',
+    borderClass: 'border-cyan-200 hover:border-cyan-400 dark:border-cyan-800/80 dark:hover:border-cyan-500',
+  },
+  {
+    id: 'planet_math',
+    title: 'Planet Orbit Math & Logic',
+    shortLabel: 'Planet Math',
+    ageGroup: '5_8',
+    metaLine: 'Ages 5–8 · Skip-Counting, 2-Digit Sums & Arrays · 2 Modes',
+    description:
+      'Power up your starship across vibrant planets by solving skip-counting patterns and 2-digit sums (5–6), or step up to visual star-grid multiplication arrays (6–8).',
+    imageSrc: planetMathCardImg,
+    imageAlt: 'Colorful ringed planets, glowing constellations, and a friendly cartoon rocket soaring through a starry indigo galaxy',
+    fallbackBgClass: 'from-violet-100 via-indigo-50 to-sky-100 dark:from-violet-950 dark:via-slate-900 dark:to-sky-950',
+    ctaClass: 'bg-violet-600 hover:bg-violet-700 text-white',
+    borderClass: 'border-violet-200 hover:border-violet-400 dark:border-violet-800/80 dark:hover:border-violet-500',
+  },
   {
     id: 'letter_garden',
     title: 'Letter & Phonics Garden',
@@ -228,6 +280,16 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
     setKidGamesMuted(nextMuted);
+    if (!nextMuted) {
+      unlockKidGameAudio();
+    }
+  };
+
+  const handleOpenGame = (gameId: PlayroomGameId) => {
+    if (gameId !== 'hub') {
+      unlockKidGameAudio();
+    }
+    setSelectedGame(gameId);
   };
 
   const activeHeightFormatted = formatFeetInches(activeChildHeightCm);
@@ -235,6 +297,9 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
     ageFilter === 'all'
       ? PLAYROOM_GAMES
       : PLAYROOM_GAMES.filter((g) => g.ageGroup === ageFilter);
+
+  const countByAge = (group: Exclude<AgeGroupFilter, 'all'>) =>
+    PLAYROOM_GAMES.filter((g) => g.ageGroup === group).length;
 
   return (
     <section aria-label="Kids Playroom" className="space-y-6">
@@ -252,7 +317,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
                 <Gamepad2 className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden="true" />
                 <span>Kids Playroom</span>
                 <span aria-hidden="true">·</span>
-                <span>{PLAYROOM_GAMES.length} Interactive Games for Ages 2–6</span>
+                <span>{PLAYROOM_GAMES.length} Progressive Games for Ages 2–8</span>
                 <span aria-hidden="true">·</span>
                 <span className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
                   {activeChild.name}: {activeHeightFormatted}
@@ -262,7 +327,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
                 Hi {activeChild.name}! Pick a colorful game to play!
               </h1>
               <p className="text-sm text-slate-600 dark:text-slate-300 max-w-2xl">
-                Phonics spelling, shape rockets, dino snack math, rainbow xylophone songs, fruit counting, memory matching, and height games — big touch targets, cheerful sounds, and zero timers.
+                Stepping up from toddler bubbles and counting (2–5) to clocks &amp; phonics (3–6), sight-word bridges (4–7), and planet skip-counting &amp; multiplication arrays (5–8) — cheerful sounds and zero stress timers.
               </p>
             </div>
           </div>
@@ -371,7 +436,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
             type="button"
             role="tab"
             aria-selected={selectedGame === 'hub'}
-            onClick={() => setSelectedGame('hub')}
+            onClick={() => handleOpenGame('hub')}
             className={`min-h-[46px] inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-display font-extrabold transition-all cursor-pointer whitespace-nowrap ${
               selectedGame === 'hub'
                 ? 'bg-indigo-950 dark:bg-amber-400 text-white dark:text-slate-950 shadow-sm'
@@ -390,7 +455,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => setSelectedGame(game.id)}
+                onClick={() => handleOpenGame(game.id)}
                 className={`min-h-[46px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-display font-extrabold transition-all cursor-pointer whitespace-nowrap ${
                   isActive
                     ? `${game.ctaClass} shadow-sm`
@@ -404,14 +469,16 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
           })}
         </div>
 
-        {/* Age Filter Controls (shown on Hub view) */}
+        {/* Progressive Age Filter Controls (shown on Hub view) */}
         {selectedGame === 'hub' && (
           <div className="flex flex-wrap items-center gap-1.5 bg-white/90 dark:bg-slate-900/90 p-1 rounded-xl border border-amber-200 dark:border-slate-700">
             {[
               { id: 'all' as const, label: `All Ages (${PLAYROOM_GAMES.length})` },
-              { id: '3_6' as const, label: 'Ages 3–6 (3)' },
-              { id: '3_5' as const, label: 'Ages 3–5 (3)' },
-              { id: '2_4' as const, label: 'Ages 2–4 (3)' },
+              { id: '2_4' as const, label: `Ages 2–4 (${countByAge('2_4')})` },
+              { id: '3_5' as const, label: `Ages 3–5 (${countByAge('3_5')})` },
+              { id: '3_6' as const, label: `Ages 3–6 (${countByAge('3_6')})` },
+              { id: '4_7' as const, label: `Ages 4–7 (${countByAge('4_7')})` },
+              { id: '5_8' as const, label: `Ages 5–8 (${countByAge('5_8')})` },
             ].map((opt) => (
               <button
                 key={opt.id}
@@ -430,7 +497,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
         )}
       </div>
 
-      {/* Playroom Hub View: 3-Column Illustrated Game Cards (9 Total Games) */}
+      {/* Playroom Hub View: 3-Column Illustrated Game Cards (12 Total Games) */}
       {selectedGame === 'hub' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {visibleGames.map((game) => (
@@ -440,7 +507,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
             >
               {/* Illustrated 4:3 Storybook Thumbnail */}
               <div
-                onClick={() => setSelectedGame(game.id)}
+                onClick={() => handleOpenGame(game.id)}
                 className={`relative aspect-[4/3] w-full bg-gradient-to-br ${game.fallbackBgClass} overflow-hidden cursor-pointer`}
               >
                 {!brokenImages[game.id] ? (
@@ -478,7 +545,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setSelectedGame(game.id)}
+                  onClick={() => handleOpenGame(game.id)}
                   className={`w-full min-h-[54px] rounded-2xl ${game.ctaClass} font-display font-extrabold text-base shadow-xs active:scale-[0.98] transition-all inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap`}
                 >
                   <Play className="w-4 h-4 fill-current shrink-0" aria-hidden="true" />
@@ -491,6 +558,18 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
       )}
 
       {/* Active Mini-Game Stage */}
+      {selectedGame === 'clock_routine' && (
+        <ClockRoutineQuestGame childName={activeChild.name} />
+      )}
+
+      {selectedGame === 'word_bridge' && (
+        <WordBridgeQuestGame childName={activeChild.name} />
+      )}
+
+      {selectedGame === 'planet_math' && (
+        <PlanetMathMissionGame childName={activeChild.name} />
+      )}
+
       {selectedGame === 'letter_garden' && (
         <LetterPhonicsGardenGame childName={activeChild.name} />
       )}

@@ -481,161 +481,181 @@ async function startServer(): Promise<void> {
   });
 
   app.post('/api/generate-growth-music', async (req, res) => {
+    const {
+      childName,
+      ageLabel,
+      heightSummary,
+      gainedSummary,
+      latestNote,
+      stylePreset,
+      voiceMode,
+      customPrompt,
+    } = req.body as {
+      childName?: string;
+      ageLabel?: string;
+      heightSummary?: string;
+      gainedSummary?: string;
+      latestNote?: string;
+      stylePreset?: string;
+      voiceMode?: 'with-vocals' | 'instrumental';
+      customPrompt?: string;
+    };
+
+    const safeName = String(childName || 'our little sprout').trim().slice(0, 50);
+    const safeAge = String(ageLabel || 'growing strong').trim().slice(0, 40);
+    const safeHeight = String(heightSummary || '').trim().slice(0, 60);
+    const safeGained = String(gainedSummary || '').trim().slice(0, 80);
+    const safeNote = String(latestNote || '').trim().slice(0, 120);
+    const safeCustom = String(customPrompt || '').trim().slice(0, 200);
+    const wantVocals = voiceMode !== 'instrumental';
+
+    const styleVoiceDirection: Record<string, { voiceName: string; style: string }> = {
+      'sunny-folk': {
+        voiceName: 'Kore',
+        style: 'Warm, cheerful, upbeat children’s folk singer delivering a joyful rhyming milestone cheer',
+      },
+      'playful-ukulele': {
+        voiceName: 'Puck',
+        style: 'Playful, bouncy, bright storybook voice singing a short happy kids celebration rhyme',
+      },
+      'indie-pop': {
+        voiceName: 'Zephyr',
+        style: 'Energetic, bright, celebratory family anthem voice with joyful rhythm and smile',
+      },
+      'lullaby-piano': {
+        voiceName: 'Kore',
+        style: 'Gentle, tender, soothing keepsake lullaby voice filled with warmth and love',
+      },
+    };
+
+    const fallbackTitle = `Look How Tall ${safeName} Grows!`;
+    const fallbackLyrics = [
+      `Hooray for ${safeName}, standing ${safeHeight || 'so tall'} today!`,
+      `${safeAge} and shining bright in every happy way.`,
+      safeGained
+        ? `Sprouting up ${safeGained} since turning two,`
+        : 'Growing taller and stronger every season through,',
+      safeCustom
+        ? `Always loving ${safeCustom} — hooray for you!`
+        : safeNote
+          ? `${safeNote} — we are so proud of you!`
+          : 'Every mark upon the wall celebrates you!',
+    ].join('\n');
+
+    let songTitle = fallbackTitle;
+    let lyrics = fallbackLyrics;
+    let voiceAudioBase64: string | null = null;
+    let engineLabel = 'SproutScale Studio Synth';
+
     try {
-      const {
-        childName,
-        ageLabel,
-        heightSummary,
-        gainedSummary,
-        latestNote,
-        stylePreset,
-        durationMode,
-        customPrompt,
-        avatarDataUrl,
-      } = req.body as {
-        childName?: string;
-        ageLabel?: string;
-        heightSummary?: string;
-        gainedSummary?: string;
-        latestNote?: string;
-        stylePreset?: string;
-        durationMode?: 'clip' | 'full';
-        customPrompt?: string;
-        avatarDataUrl?: string | null;
-      };
-
       const ai = getGenAIClient();
-      const model =
-        durationMode === 'full' ? 'lyria-3-pro-preview' : 'lyria-3-clip-preview';
 
-      const safeName = String(childName || 'our little sprout').trim().slice(0, 50);
-      const safeAge = String(ageLabel || 'growing strong').trim().slice(0, 40);
-      const safeHeight = String(heightSummary || '').trim().slice(0, 60);
-      const safeGained = String(gainedSummary || '').trim().slice(0, 80);
-      const safeNote = String(latestNote || '').trim().slice(0, 120);
-      const safeCustom = String(customPrompt || '').trim().slice(0, 240);
+      // Step 1: Compose short, punchy 4-line rhyming milestone lyrics (~10-12s spoken/sung)
+      try {
+        const lyricPrompt = [
+          `Write a short, joyful 4-line rhyming milestone jingle (about 35–48 words total so it takes ~10 seconds to perform) celebrating ${safeName}.`,
+          `Details: ${safeAge}${safeHeight ? `, standing ${safeHeight}` : ''}${safeGained ? `, grew ${safeGained} since Age 2` : ''}.`,
+          safeNote ? `Special memory to include: "${safeNote}".` : '',
+          safeCustom ? `Extra family detail: "${safeCustom}".` : '',
+          `Musical vibe: ${stylePreset || 'sunny-folk'}. Keep it warm, family-friendly, rhythmic, and memorable.`,
+        ]
+          .filter(Boolean)
+          .join(' ');
 
-      const styleDescriptions: Record<string, string> = {
-        'sunny-folk':
-          'warm sunny acoustic folk song with cheerful strummed guitar, light handclaps, upright bass, and joyful family vocals',
-        'playful-ukulele':
-          'playful storybook children’s celebratory tune with bright ukulele, wooden marimba/xylophone, whistle melody, and upbeat singalong vocals',
-        'indie-pop':
-          'upbeat feel-good indie pop celebration anthem with crisp drums, bright piano chords, shimmering guitar, and uplifting vocals',
-        'lullaby-piano':
-          'gentle heartwarming keepsake piano and acoustic strings ballad with tender, soothing vocals',
-      };
+        const lyricResponse = await ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: lyricPrompt,
+          config: {
+            systemInstruction:
+              'You write short, joyful, rhythmic 4-line family milestone jingles for children. Return clean JSON matching the schema.',
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                songTitle: {
+                  type: Type.STRING,
+                  description: 'A cheerful short title for the child’s milestone song (3-7 words).',
+                },
+                lyrics: {
+                  type: Type.STRING,
+                  description: 'Exactly 4 short rhyming lines separated by newline characters, ~35-48 words total.',
+                },
+              },
+              required: ['songTitle', 'lyrics'],
+            },
+          },
+        });
 
-      const chosenStyle =
-        styleDescriptions[String(stylePreset || 'sunny-folk')] ||
-        styleDescriptions['sunny-folk'];
+        const parsed = JSON.parse((lyricResponse.text ?? '{}').trim()) as {
+          songTitle?: string;
+          lyrics?: string;
+        };
+        if (parsed.songTitle && parsed.songTitle.trim()) {
+          songTitle = parsed.songTitle.trim().slice(0, 80);
+        }
+        if (parsed.lyrics && parsed.lyrics.trim()) {
+          lyrics = parsed.lyrics.trim().slice(0, 420);
+        }
+        engineLabel = 'Gemini Lyrics + Studio Synth';
+      } catch {
+        // Keep personalized fallback lyrics cleanly
+      }
 
-      const durationPhrase =
-        durationMode === 'full'
-          ? 'Generate a full-length keepsake family milestone song'
-          : 'Generate a 30-second celebratory milestone music clip';
+      // Step 2: Generate short expressive WAV vocal track via Gemini 3.8 Flash Lite TTS
+      if (wantVocals) {
+        try {
+          const voiceSpec =
+            styleVoiceDirection[String(stylePreset || 'sunny-folk')] ||
+            styleVoiceDirection['sunny-folk'];
 
-      const promptLines = [
-        `${durationPhrase} in the style of a ${chosenStyle}.`,
-        `This song celebrates ${safeName} (${safeAge})${safeHeight ? ` standing ${safeHeight}` : ''}${safeGained ? `, having sprouted ${safeGained} since turning Age 2` : ''}.`,
-        safeNote ? `Weave in this special milestone memory: "${safeNote}".` : '',
-        safeCustom ? `Additional family request: ${safeCustom}` : '',
-        'Keep the mood bright, affectionate, and family-friendly with memorable lyrics celebrating how fast they are growing.',
-      ].filter(Boolean);
-
-      const textPrompt = promptLines.join(' ');
-
-      const parts: Array<
-        | { text: string }
-        | { inlineData: { data: string; mimeType: string } }
-      > = [{ text: textPrompt }];
-
-      if (
-        avatarDataUrl &&
-        typeof avatarDataUrl === 'string' &&
-        avatarDataUrl.startsWith('data:image/')
-      ) {
-        const imgMatch = avatarDataUrl.match(
-          /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/,
-        );
-        if (imgMatch) {
-          parts.push({
-            inlineData: {
-              mimeType: imgMatch[1],
-              data: imgMatch[2],
+          const ttsResponse = await ai.models.generateContent({
+            model: 'gemini-3.8-flash-lite-tts',
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: lyrics.replace(/\n+/g, ' '),
+                    speechMetadata: {
+                      style: voiceSpec.style,
+                    },
+                  },
+                ],
+              },
+            ],
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName: voiceSpec.voiceName,
+                  },
+                },
+              },
             },
           });
+
+          const base64Wav =
+            ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          if (base64Wav) {
+            voiceAudioBase64 = base64Wav;
+            engineLabel = 'Gemini Voice + Studio Synth Mix';
+          }
+        } catch {
+          // Non-fatal: client studio synthesizer still renders the full musical jingle cleanly
+          voiceAudioBase64 = null;
         }
       }
-
-      // Omit responseModalities so Lyria streams both MP3 audio (inlineData) and lyrics (text)
-      const streamResponse = await ai.models.generateContentStream({
-        model,
-        contents: parts.length === 1 ? textPrompt : { parts },
-      });
-
-      const audioChunks: Buffer[] = [];
-      let lyrics = '';
-      let mimeType = 'audio/mpeg';
-
-      for await (const chunk of streamResponse) {
-        const candidateParts = chunk.candidates?.[0]?.content?.parts;
-        if (!candidateParts) continue;
-        for (const part of candidateParts) {
-          if (part.inlineData?.data) {
-            if (audioChunks.length === 0 && part.inlineData.mimeType) {
-              mimeType = part.inlineData.mimeType;
-            }
-            audioChunks.push(Buffer.from(part.inlineData.data, 'base64'));
-          }
-          if (part.text) {
-            lyrics += part.text;
-          }
-        }
-      }
-
-      if (audioChunks.length === 0) {
-        res.status(502).json({
-          error:
-            'The music generator completed without returning audio data. Please try again with a slightly simpler prompt.',
-        });
-        return;
-      }
-
-      const audioBase64 = Buffer.concat(audioChunks).toString('base64');
-      const audioDataUrl = `data:${mimeType};base64,${audioBase64}`;
-
-      res.json({
-        audioDataUrl,
-        lyrics: lyrics.trim(),
-        mimeType,
-        modelUsed: model,
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (
-        msg.includes('MISSING_GEMINI_API_KEY') ||
-        msg.includes('API_KEY_INVALID') ||
-        msg.includes('PERMISSION_DENIED') ||
-        msg.includes('403')
-      ) {
-        res.status(403).json({
-          error:
-            'Lyria music generation requires a valid billing-enabled Gemini API key. Please check your selected API key in the Settings > Secrets panel.',
-        });
-        return;
-      }
-      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
-        res.status(429).json({
-          error:
-            'Music generation quota reached. Upgrading or selecting a billing-enabled API key in the Settings > Secrets panel increases quota for Lyria models.',
-        });
-        return;
-      }
-      res.status(500).json({
-        error: `Could not generate milestone song (${msg.slice(0, 160)}). Please try again.`,
-      });
+    } catch {
+      // Missing GEMINI_API_KEY or transient failure: still return personalized lyrics so studio synth works offline
     }
+
+    res.json({
+      songTitle,
+      lyrics,
+      voiceAudioBase64,
+      engineLabel,
+    });
   });
 
   // ============================================================================
