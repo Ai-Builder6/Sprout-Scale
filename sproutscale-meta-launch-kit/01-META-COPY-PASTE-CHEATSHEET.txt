@@ -1,0 +1,107 @@
+================================================================================
+SPROUTSCALE — META & DOMAIN COPY-PASTE CHEATSHEET
+Domain: https://sprout-scale.com/
+================================================================================
+
+1. OFFICIAL APP & DOWNLOADABLE MOBILE APP URLS
+--------------------------------------------------------------------------------
+Main Website URL:             https://sprout-scale.com/
+Mobile App Download URL:      https://sprout-scale.com/?install=1
+Storybook Time Direct URL:    https://sprout-scale.com/storybook
+Kids Playroom Direct URL:     https://sprout-scale.com/games
+OG Social Share Banner URL:   https://sprout-scale.com/og-share-1200x630.png
+
+2. REQUIRED META LEGAL & COMPLIANCE URLS (PASTE INTO META APP SETTINGS)
+--------------------------------------------------------------------------------
+App Display Name:             SproutScale
+App Domains:                  sprout-scale.com, www.sprout-scale.com
+Contact / Support Email:      cleaningserviceyeg@gmail.com
+Privacy Policy URL:           https://sprout-scale.com/privacy
+Terms of Service URL:         https://sprout-scale.com/terms
+Support / Help Center URL:    https://sprout-scale.com/support
+Contact Page URL:             https://sprout-scale.com/contact
+User Data Deletion Info URL:  https://sprout-scale.com/data-deletion
+Data Deletion Callback URL:   https://sprout-scale.com/api/meta/data-deletion
+Valid OAuth Redirect URI:     https://sprout-scale.com/auth/meta/callback
+
+3. TRACKING & CLOUD IDS
+--------------------------------------------------------------------------------
+Meta Pixel ID (Live in App):  1701764191622077
+Firebase Project ID:          bookmycleaning-tidyups-v001
+Firestore Database ID:        ai-studio-sproutscale-c0938bb3-56aa-410f-98c3-13ad34507fac
+Google OAuth Client ID:       509716171565-mfan543u4mv1lvee97hupkovlk201nh2.apps.googleusercontent.com
+
+4. FIREBASE & GOOGLE OAUTH AUTHORIZED DOMAINS TO ADD
+--------------------------------------------------------------------------------
+Firebase Auth Authorized Domains:
+  - sprout-scale.com
+  - www.sprout-scale.com
+
+Google Cloud OAuth Authorized JavaScript Origins:
+  - https://sprout-scale.com
+  - https://www.sprout-scale.com
+
+5. META-COMPLIANT FACEBOOK & INSTAGRAM AD COPY TEMPLATES (PARENT-TARGETED 22+)
+--------------------------------------------------------------------------------
+
+--- AD VARIATION A: GROWTH WALL + PHOTO RULER (FEED & REELS) ---
+Headline (40 chars max):
+  Watch How Tall They've Grown
+
+Primary Text:
+  Capture every inch from age 2 onward — right from your phone. SproutScale
+  turns your family's height & weight check-ins into a joyful visual growth
+  wall, complete with a Photo Height Ruler, sibling profiles, kids' mini-games,
+  and personalized Daytime & Bedtime Storybooks starring your child's day.
+
+  Install free on iPhone or Android straight from your browser — no app store
+  hassle.
+
+Description:
+  Family Growth Keepsake, Photo Ruler & Bedtime Storybooks
+
+Call to Action Button:
+  Learn More (or Install Now / Sign Up)
+
+Website Destination URL:
+  https://sprout-scale.com/?install=1&utm_source=meta&utm_medium=paid_social&utm_campaign=growth_wall
+
+--- AD VARIATION B: STORYBOOK TIME (DAYTIME & BEDTIME) ---
+Headline (40 chars max):
+  Bedtime Stories Starring Your Child
+
+Primary Text:
+  Turn today's photos and favorite moments into a cozy 5-page bedtime story
+  or sunny daytime adventure — tailored to each child by name, age, and
+  milestones. Read aloud together, save every book on each child's private
+  bookshelf, and track how tall they grow all year long.
+
+Description:
+  Personalized Daytime & Bedtime Storybooks + Growth Wall
+
+Call to Action Button:
+  Try Now (or Learn More)
+
+Website Destination URL:
+  https://sprout-scale.com/storybook?utm_source=meta&utm_medium=paid_social&utm_campaign=storybook_time
+
+--- AD VARIATION C: SHORT REELS / STORIES HOOK ---
+Headline:
+  Digital Growth Wall + Storybooks
+
+Primary Text:
+  Doorframe pencil marks fade — SproutScale keeps every inch, milestone photo,
+  and bedtime story together in one playful mobile app for families.
+
+Website Destination URL:
+  https://sprout-scale.com/?install=1&utm_source=meta&utm_medium=paid_social&utm_campaign=stories_launch
+
+6. QUICK META TOOLS BOOKMARKS
+--------------------------------------------------------------------------------
+Meta Business Settings:       https://business.facebook.com/settings
+Meta Events Manager:          https://business.facebook.com/events_manager2
+Meta for Developers:          https://developers.facebook.com/apps/
+Facebook Sharing Debugger:    https://developers.facebook.com/tools/debug/
+Firebase Auth Settings:       https://console.firebase.google.com/project/bookmycleaning-tidyups-v001/authentication/settings
+Google Cloud Run Console:     https://console.cloud.google.com/run?project=bookmycleaning-tidyups-v001
+Google Cloud Credentials:     https://console.cloud.google.com/apis/credentials?project=bookmycleaning-tidyups-v001

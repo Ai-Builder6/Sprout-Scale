@@ -3974,7 +3974,7 @@ function SproutScaleWorkspace() {
                 onClick={() => setIsLogoModalOpen(true)}
                 className="font-semibold text-sky-700 dark:text-sky-300 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap cursor-pointer"
               >
-                Download Logo (1024×1024)
+                Meta &amp; Domain Launch Kit (.ZIP)
               </button>
             </div>
             <span>Parent-controlled family growth keepsake</span>
@@ -4152,10 +4152,11 @@ function SproutScaleWorkspace() {
         }}
       />
 
-      {/* Downloadable SproutScale Brand Logo & 1024x1024 Meta App Icon Modal */}
+      {/* Downloadable SproutScale Meta & Domain Launch Kit (.ZIP) + Brand Icons Modal */}
       <LogoDownloadModal
         isOpen={isLogoModalOpen}
         onClose={() => setIsLogoModalOpen(false)}
+        accessToken={accessToken}
       />
     </div>
   );

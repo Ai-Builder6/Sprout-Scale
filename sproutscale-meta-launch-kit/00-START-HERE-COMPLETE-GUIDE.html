@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SproutScale — Complete Launch Guide for sprout-scale.com &amp; Meta Ads</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f9ff; color: #0f172a; margin: 0; padding: 24px 16px 64px; line-height: 1.6; }
+    .container { max-width: 880px; margin: 0 auto; background: #ffffff; border: 2px solid #bae6fd; border-radius: 20px; padding: 32px; box-shadow: 0 10px 30px rgba(2, 132, 199, 0.08); }
+    h1 { color: #1e1b4b; font-size: 28px; margin: 0 0 8px; }
+    h2 { color: #0369a1; font-size: 20px; margin-top: 32px; border-bottom: 2px solid #e0f2fe; padding-bottom: 6px; }
+    h3 { color: #1e293b; font-size: 16px; margin-top: 20px; }
+    .subtitle { color: #475569; margin: 0 0 24px; font-size: 15px; }
+    .callout { background: #fefce8; border: 1.5px solid #fde047; border-radius: 12px; padding: 14px 18px; margin: 16px 0; font-size: 14px; }
+    .callout-green { background: #ecfdf5; border: 1.5px solid #6ee7b7; border-radius: 12px; padding: 14px 18px; margin: 16px 0; font-size: 14px; }
+    code { background: #f1f5f9; color: #0f172a; padding: 2px 6px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    pre { background: #0f172a; color: #f8fafc; padding: 14px 16px; border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    th { background: #f8fafc; color: #1e1b4b; font-weight: 700; width: 34%; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 8px; }
+    .checklist label { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; cursor: pointer; }
+    .checklist input { margin-top: 4px; width: 16px; height: 16px; }
+    a { color: #0284c7; font-weight: 600; }
+    @media print { body { background: #fff; padding: 0; } .container { border: none; box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>SproutScale Launch Guide: <code>https://sprout-scale.com/</code> &amp; Meta Ads</h1>
+    <p class="subtitle">Everything you need from start to finish—domain mapping, Google/Firebase approval, Meta Domain Verification, Meta Pixel, Meta Developer App, and Ad Policy compliance.</p>
+
+    <div class="callout-green">
+      <strong>All Brand Assets Included in This Folder:</strong>
+      Open <code>icons/</code> for your exact <strong>1024×1024 Meta App Icon</strong>, 512×512 FB/IG profile logo, PWA icons, Apple Touch Icon, and SVG vector. Open <code>social-and-ads/</code> for your <strong>1200×630 OG Share Banner</strong>, 1640×924 Facebook Cover, 1080×1080 Feed Ad, and 1080×1920 Stories/Reels Ad. Open <code>qr-codes/</code> for your scannable <code>https://sprout-scale.com/?install=1</code> QR codes!
+    </div>
+
+    <h2>Quick Copy-Paste Values for Meta</h2>
+    <table>
+      <tr><th>Main Website URL</th><td><code>https://sprout-scale.com/</code></td></tr>
+      <tr><th>Downloadable Mobile App URL</th><td><code>https://sprout-scale.com/?install=1</code></td></tr>
+      <tr><th>App Domains</th><td><code>sprout-scale.com</code>, <code>www.sprout-scale.com</code></td></tr>
+      <tr><th>Privacy Policy URL</th><td><code>https://sprout-scale.com/privacy</code></td></tr>
+      <tr><th>Terms of Service URL</th><td><code>https://sprout-scale.com/terms</code></td></tr>
+      <tr><th>User Data Deletion Info URL</th><td><code>https://sprout-scale.com/data-deletion</code></td></tr>
+      <tr><th>Data Deletion Callback URL (POST)</th><td><code>https://sprout-scale.com/api/meta/data-deletion</code></td></tr>
+      <tr><th>Valid OAuth Redirect URI</th><td><code>https://sprout-scale.com/auth/meta/callback</code></td></tr>
+      <tr><th>Support &amp; Contact URLs</th><td><code>https://sprout-scale.com/support</code> &middot; <code>https://sprout-scale.com/contact</code></td></tr>
+      <tr><th>Contact Email</th><td><code>cleaningserviceyeg@gmail.com</code></td></tr>
+      <tr><th>Meta Pixel ID (Live in App)</th><td><code>1701764191622077</code></td></tr>
+      <tr><th>Meta App Icon File</th><td><code>icons/01-meta-app-icon-1024x1024.png</code> (Exact 1024×1024 PNG)</td></tr>
+      <tr><th>Firebase Project ID</th><td><code>bookmycleaning-tidyups-v001</code></td></tr>
+      <tr><th>Google OAuth Client ID</th><td><code>509716171565-mfan543u4mv1lvee97hupkovlk201nh2.apps.googleusercontent.com</code></td></tr>
+    </table>
+
+    <h2>Phase 1: Connect <code>sprout-scale.com</code> to Cloud Run (HTTPS)</h2>
+    <ol>
+      <li>Click <strong>Deploy / Share</strong> in AI Studio so the newest SproutScale build (with <code>https://sprout-scale.com/?install=1</code> and <code>/og-share-1200x630.png</code>) is deployed to Cloud Run.</li>
+      <li>Open <a href="https://console.cloud.google.com/run/domains?project=bookmycleaning-tidyups-v001" target="_blank" rel="noopener">Google Cloud Run → Domain Mappings</a> (project <code>bookmycleaning-tidyups-v001</code>).</li>
+      <li>Click <strong>Add Mapping</strong> → choose your SproutScale service → map <code>sprout-scale.com</code>. Repeat for <code>www.sprout-scale.com</code>.</li>
+      <li>In your domain registrar's DNS Zone for <code>sprout-scale.com</code>:
+        <ul>
+          <li><strong>Delete</strong> any old parking / "Coming Soon" A, AAAA, or CNAME records on <code>@</code> and <code>www</code>.</li>
+          <li>Add the exact <code>A</code> and <code>AAAA</code> records shown by Cloud Run for <code>@</code>.</li>
+          <li>Add the <code>CNAME</code> record for <code>www</code> pointing to <code>ghs.googlehosted.com.</code></li>
+        </ul>
+      </li>
+      <li>Wait 10–45 minutes for Cloud Run to show a green SSL checkmark, then confirm <code>https://sprout-scale.com/</code> loads SproutScale with a valid padlock.</li>
+    </ol>
+
+    <h2>Phase 2: Approve <code>sprout-scale.com</code> in Firebase &amp; Google OAuth</h2>
+    <ol>
+      <li>Open <a href="https://console.firebase.google.com/project/bookmycleaning-tidyups-v001/authentication/settings" target="_blank" rel="noopener">Firebase Authentication → Settings → Authorized domains</a>.</li>
+      <li>Add <code>sprout-scale.com</code> and <code>www.sprout-scale.com</code>.</li>
+      <li>Open <a href="https://console.cloud.google.com/apis/credentials?project=bookmycleaning-tidyups-v001" target="_blank" rel="noopener">Google Cloud Credentials</a> → open OAuth Client <code>509716171565-mfan543u4mv1lvee97hupkovlk201nh2.apps.googleusercontent.com</code>.</li>
+      <li>Under <strong>Authorized JavaScript origins</strong>, add <code>https://sprout-scale.com</code> and <code>https://www.sprout-scale.com</code>, then click <strong>Save</strong>.</li>
+    </ol>
+
+    <h2>Phase 3: Verify <code>sprout-scale.com</code> in Meta Business Suite</h2>
+    <div class="callout">
+      <strong>Do not skip this step!</strong> Domain verification is the #1 way to prevent Meta Ads rejections and link editing blocks.
+    </div>
+    <ol>
+      <li>Go to <a href="https://business.facebook.com/settings" target="_blank" rel="noopener">Meta Business Settings</a> → <strong>Brand Safety and Suitability → Domains</strong>.</li>
+      <li>Click <strong>Add → Create a new domain</strong> → enter <code>sprout-scale.com</code>.</li>
+      <li>Choose <strong>Update the DNS TXT record with your domain registrar</strong> and copy the <code>facebook-domain-verification=...</code> code.</li>
+      <li>In your domain registrar DNS settings, add a <code>TXT</code> record with Host <code>@</code> and paste the code.</li>
+      <li>Wait 5–15 minutes, then click <strong>Verify Domain</strong> in Meta until it turns green.</li>
+      <li>Click <strong>Connected Assets → Assign Assets</strong> and connect your SproutScale Facebook Page.</li>
+    </ol>
+
+    <h2>Phase 4: Verify Meta Pixel (<code>1701764191622077</code>) &amp; Traffic Permissions</h2>
+    <ol>
+      <li>Open <a href="https://business.facebook.com/events_manager2" target="_blank" rel="noopener">Meta Events Manager</a> and select Pixel <code>1701764191622077</code> (already installed live in SproutScale).</li>
+      <li>Go to <strong>Settings → Traffic Permissions → Create allow list</strong> and add <code>sprout-scale.com</code> and <code>www.sprout-scale.com</code>.</li>
+      <li>Open <strong>Test Events</strong>, enter <code>https://sprout-scale.com/</code>, click <strong>Open Website</strong>, and confirm a green <code>PageView</code> event fires.</li>
+      <li>In <strong>Meta Business Settings → Data Sources → Datasets &amp; Pixels</strong>, assign your <strong>Ad Account</strong> to Pixel <code>1701764191622077</code>.</li>
+    </ol>
+
+    <h2>Phase 5: Configure Meta App in Meta for Developers</h2>
+    <ol>
+      <li>Open <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a> → <strong>Create App</strong> → name it <code>SproutScale</code> and link your Business Portfolio.</li>
+      <li>Go to <strong>App Settings → Basic</strong> and enter the exact URLs from the table at the top of this page.</li>
+      <li>Upload <code>icons/01-meta-app-icon-1024x1024.png</code> as the <strong>App Icon</strong>.</li>
+      <li>Click <strong>+ Add Platform → Website</strong> and enter Site URL: <code>https://sprout-scale.com/</code>.</li>
+      <li>Under <strong>Facebook Login → Settings → Valid OAuth Redirect URIs</strong>, enter: <code>https://sprout-scale.com/auth/meta/callback</code>.</li>
+      <li>Save changes and toggle App Mode from <strong>Development</strong> to <strong>Live</strong>.</li>
+    </ol>
+
+    <h2>Phase 6: Pre-Ad Launch Checklist (Avoid Meta Ad Account Issues!)</h2>
+    <div class="checklist">
+      <label><input type="checkbox" /> <span>Scrape <code>https://sprout-scale.com/</code> in the <a href="https://developers.facebook.com/tools/debug/" target="_blank" rel="noopener">Facebook Sharing Debugger</a> so Meta caches your new 1200×630 share image and title cleanly.</span></label>
+      <label><input type="checkbox" /> <span>Confirm <code>/privacy</code>, <code>/terms</code>, <code>/contact</code>, <code>/support</code>, and <code>/data-deletion</code> all load on <code>https://sprout-scale.com</code>.</span></label>
+      <label><input type="checkbox" /> <span>Set Meta Ads targeting to <strong>Parents / Adults Ages 22–55+</strong> (never target minors under 18).</span></label>
+      <label><input type="checkbox" /> <span>Use positive, parent-focused ad copy from <code>01-META-COPY-PASTE-CHEATSHEET.txt</code> (no medical claims, no "Is your child too short?" personal-attribute phrasing).</span></label>
+      <label><input type="checkbox" /> <span>Upload your profile picture (<code>icons/02-facebook-instagram-profile-512x512.png</code>) and cover photo (<code>social-and-ads/02-facebook-page-cover-1640x924.png</code>) to your Facebook Page &amp; Instagram account, and post 2–3 organic posts before spending ad budget.</span></label>
+      <label><input type="checkbox" /> <span>Point your mobile install ads to <code>https://sprout-scale.com/?install=1</code>.</span></label>
+    </div>
+  </div>
+</body>
+</html>

@@ -607,3 +607,42 @@ export async function downloadDriveGrowthBackup(
   }
   return parsed as GrowthBackupPayload;
 }
+
+/**
+ * Uploads a binary ZIP file (e.g., SproutScale Meta & Domain Launch Kit) directly into Google Drive.
+ */
+export async function uploadZipBlobToDrive(
+  accessToken: string,
+  blob: Blob,
+  fileName: string,
+): Promise<DriveFileSummary> {
+  const metadata = {
+    name: fileName,
+    mimeType: 'application/zip',
+    appProperties: {
+      app: 'SproutScale',
+      kind: 'meta-launch-kit',
+    },
+  };
+
+  const form = new FormData();
+  form.append(
+    'metadata',
+    new Blob([JSON.stringify(metadata)], { type: 'application/json; charset=UTF-8' }),
+  );
+  form.append('file', blob, fileName);
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,modifiedTime,size,webViewLink',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: form,
+    },
+  );
+  await assertDriveOk(res, 'launch kit upload');
+  return (await res.json()) as DriveFileSummary;
+}
+

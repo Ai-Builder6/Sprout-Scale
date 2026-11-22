@@ -19,6 +19,7 @@ export default defineConfig(() => {
           'pwa-192x192.png',
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
+          'og-share-1200x630.png',
         ],
         manifest: {
           id: '/',
@@ -59,7 +60,7 @@ export default defineConfig(() => {
           cleanupOutdatedCaches: true,
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          navigateFallbackDenylist: [/^\/api\//, /^\/__\//],
+          navigateFallbackDenylist: [/^\/api\//, /^\/__\//, /\.zip$/i],
           runtimeCaching: [
             {
               urlPattern: /^\/api\/.*/i,

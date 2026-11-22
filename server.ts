@@ -1960,6 +1960,41 @@ async function startServer(): Promise<void> {
     }
   });
 
+  // Explicit binary routes for the Meta Launch Kit ZIP & OG Social Share Banner
+  // so they always return exact MIME types and never fall through to SPA HTML.
+  app.get('/SproutScale-Meta-Launch-Kit.zip', (_req, res) => {
+    const candidates = [
+      path.resolve(__dirname, 'public', 'SproutScale-Meta-Launch-Kit.zip'),
+      path.resolve(__dirname, 'dist', 'SproutScale-Meta-Launch-Kit.zip'),
+    ];
+    const found = candidates.find((p) => fs.existsSync(p));
+    if (!found) {
+      res.status(404).json({ error: 'Launch kit archive not found.' });
+      return;
+    }
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="SproutScale-Meta-Launch-Kit.zip"',
+    );
+    res.sendFile(found);
+  });
+
+  app.get('/og-share-1200x630.png', (_req, res) => {
+    const candidates = [
+      path.resolve(__dirname, 'public', 'og-share-1200x630.png'),
+      path.resolve(__dirname, 'dist', 'og-share-1200x630.png'),
+    ];
+    const found = candidates.find((p) => fs.existsSync(p));
+    if (!found) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(found);
+  });
+
   const httpServer = http.createServer(app);
 
   if (process.env.NODE_ENV !== 'production') {

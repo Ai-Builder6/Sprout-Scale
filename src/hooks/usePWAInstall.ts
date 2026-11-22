@@ -5,14 +5,10 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+export const OFFICIAL_APP_DOMAIN = 'https://sprout-scale.com';
+
 export function getShareableDownloadUrl(): string {
-  if (typeof window === 'undefined') {
-    return 'https://sprout-scale.com/?install=1';
-  }
-  const rawOrigin = window.location.origin;
-  // Convert private AI Studio dev preview origin (ais-dev-*) to public shared preview origin (ais-pre-*)
-  const publicOrigin = rawOrigin.replace(/^https:\/\/ais-dev-/, 'https://ais-pre-');
-  return `${publicOrigin}/?install=1`;
+  return `${OFFICIAL_APP_DOMAIN}/?install=1`;
 }
 
 export function usePWAInstall() {

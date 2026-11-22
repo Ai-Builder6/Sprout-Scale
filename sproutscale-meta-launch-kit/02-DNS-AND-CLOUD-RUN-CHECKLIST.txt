@@ -1,0 +1,44 @@
+================================================================================
+DNS & CLOUD RUN CHECKLIST FOR sprout-scale.com
+================================================================================
+
+STEP 1 — GOOGLE CLOUD RUN DOMAIN MAPPING
+--------------------------------------------------------------------------------
+1. Open https://console.cloud.google.com/run/domains?project=bookmycleaning-tidyups-v001
+2. Click "Add Mapping" -> choose your deployed SproutScale service.
+3. Map BOTH:
+   - sprout-scale.com
+   - www.sprout-scale.com
+4. Copy the exact DNS records Cloud Run displays.
+
+STEP 2 — YOUR DOMAIN REGISTRAR DNS ZONE (sprout-scale.com)
+--------------------------------------------------------------------------------
+REMOVE first (if present):
+  - Any "Parking", "Coming Soon", or old hosting A / AAAA / CNAME records on @ or www.
+
+ADD these Cloud Run records (verify exact values shown in your Cloud Run console):
+  Type: A      | Name: @   | Value: 216.239.32.21
+  Type: A      | Name: @   | Value: 216.239.34.21
+  Type: A      | Name: @   | Value: 216.239.36.21
+  Type: A      | Name: @   | Value: 216.239.38.21
+  Type: AAAA   | Name: @   | Value: 2001:4860:4802:32::15
+  Type: AAAA   | Name: @   | Value: 2001:4860:4802:34::15
+  Type: AAAA   | Name: @   | Value: 2001:4860:4802:36::15
+  Type: AAAA   | Name: @   | Value: 2001:4860:4802:38::15
+  Type: CNAME  | Name: www | Value: ghs.googlehosted.com.
+
+ADD this Meta Domain Verification record (from Meta Business Settings -> Domains):
+  Type: TXT    | Name: @   | Value: facebook-domain-verification=<YOUR_CODE_FROM_META>
+
+(Keep any Google Search Console TXT verification record if you added one!)
+
+STEP 3 — VERIFY LIVE SSL & ROUTES
+--------------------------------------------------------------------------------
+Wait 10-45 minutes after saving DNS, then verify every link loads with HTTPS:
+  [ ] https://sprout-scale.com/
+  [ ] https://www.sprout-scale.com/
+  [ ] https://sprout-scale.com/?install=1
+  [ ] https://sprout-scale.com/privacy
+  [ ] https://sprout-scale.com/terms
+  [ ] https://sprout-scale.com/data-deletion
+  [ ] https://sprout-scale.com/og-share-1200x630.png
