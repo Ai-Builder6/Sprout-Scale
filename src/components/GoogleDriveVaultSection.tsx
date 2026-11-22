@@ -249,6 +249,29 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
     }
   };
 
+  const existingChildSheet =
+    driveFiles.find(
+      (f) =>
+        f.mimeType === 'application/vnd.google-apps.spreadsheet' &&
+        f.name.toLowerCase().includes(childProfile.name.trim().toLowerCase()),
+    ) ??
+    driveFiles.find(
+      (f) => f.mimeType === 'application/vnd.google-apps.spreadsheet',
+    ) ??
+    null;
+
+  const handleOneTapSyncToSheets = () => {
+    if (!accessToken) {
+      onRequireReauth();
+      return;
+    }
+    if (existingChildSheet) {
+      setPendingConfirm({ kind: 'sync_sheet', file: existingChildSheet });
+      return;
+    }
+    void handleCreateColorCodedSheet();
+  };
+
   const handleSaveNewBackup = async () => {
     if (!accessToken) {
       onRequireReauth();
@@ -600,17 +623,44 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void handleCreateColorCodedSheet()}
-              disabled={activeAction !== null}
-              className="h-11 px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 shrink-0" aria-hidden="true" />
-              {activeAction === 'create-sheet'
-                ? 'Building Color Sheet...'
-                : 'Create Color-Coded Google Sheet'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleOneTapSyncToSheets}
+                disabled={activeAction !== null}
+                className="h-11 px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <FileSpreadsheet className="w-4 h-4 shrink-0" aria-hidden="true" />
+                {activeAction === 'create-sheet' ||
+                (activeAction && activeAction.startsWith('sync-sheet-'))
+                  ? 'Syncing to Sheets...'
+                  : 'Sync to Sheets'}
+              </button>
+
+              {existingChildSheet && (
+                <button
+                  type="button"
+                  onClick={() => void handleCreateColorCodedSheet()}
+                  disabled={activeAction !== null}
+                  className="h-11 px-4 py-2.5 text-xs font-bold text-emerald-900 dark:text-emerald-200 bg-white dark:bg-slate-900 border-2 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 disabled:opacity-60 rounded-xl transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  New Sheet
+                </button>
+              )}
+
+              {(latestSheet?.spreadsheetUrl || existingChildSheet?.webViewLink) && (
+                <a
+                  href={latestSheet?.spreadsheetUrl ?? existingChildSheet?.webViewLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-11 px-4 py-2.5 text-xs font-bold text-sky-900 dark:text-sky-200 bg-white dark:bg-slate-900 border-2 border-sky-200 dark:border-slate-700 hover:bg-sky-50 dark:hover:bg-slate-800 rounded-xl transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
+                >
+                  Open Sheet
+                  <ExternalLink className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                </a>
+              )}
+            </div>
           </div>
 
           {/* Secondary Bright Color-Coded Drive Action Toolbar */}
@@ -734,7 +784,7 @@ export const GoogleDriveVaultSection: React.FC<GoogleDriveVaultSectionProps> = (
                   No SproutScale sheets or exports saved in your Google Drive yet
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Click “Create Color-Coded Google Sheet” above to build your bright 4-tab
+                  Click “Sync to Sheets” above to build your bright 4-tab
                   growth workbook inside Google Drive!
                 </p>
               </div>

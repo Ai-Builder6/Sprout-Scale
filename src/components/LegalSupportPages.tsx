@@ -109,7 +109,7 @@ export const LegalSupportPages: React.FC<LegalSupportPagesProps> = ({
   onDeleteAllUserData,
 }) => {
   const origin =
-    typeof window !== 'undefined' ? window.location.origin : 'https://sproutscale.app';
+    typeof window !== 'undefined' ? window.location.origin : 'https://sprout-scale.com';
 
   // Copy helper state
   const [copiedKey, setCopiedKey] = useState<string | null>(null);

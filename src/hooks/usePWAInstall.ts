@@ -7,7 +7,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function getShareableDownloadUrl(): string {
   if (typeof window === 'undefined') {
-    return 'https://sproutscale.app/?install=1';
+    return 'https://sprout-scale.com/?install=1';
   }
   const rawOrigin = window.location.origin;
   // Convert private AI Studio dev preview origin (ais-dev-*) to public shared preview origin (ais-pre-*)
