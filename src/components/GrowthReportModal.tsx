@@ -181,7 +181,8 @@ export const GrowthReportModal: React.FC<GrowthReportModalProps> = ({
   onClose,
 }) => {
   const defaultAppAvatar = useDefaultAppAvatar();
-  const effectiveAvatarUrl = avatarPhotoUrl || defaultAppAvatar.portraitUrl;
+  void avatarPhotoUrl;
+  const effectiveAvatarUrl = defaultAppAvatar.portraitUrl;
   const [parentVisitNote, setParentVisitNote] = useState<string>('');
   const [downloadedFileName, setDownloadedFileName] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);

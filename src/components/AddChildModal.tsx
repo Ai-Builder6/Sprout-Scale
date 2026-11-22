@@ -25,7 +25,7 @@ import {
   splitCmToFeetAndInches,
   VALIDATION_BOUNDS,
 } from '../types';
-import { cropPortraitToDataUrl } from '../services/avatarPhotoService';
+import { useDefaultAppAvatar } from '../services/defaultAvatarService';
 
 export interface NewChildCreationPayload {
   name: string;
@@ -41,7 +41,6 @@ export interface NewChildCreationPayload {
   hairStyle: HairStyle;
   skinTone: string;
   hairColor: string;
-  initialAvatarDataUrl?: string | null;
   initialRawPhotoDataUrl?: string | null;
 }
 
@@ -109,7 +108,7 @@ export const AddChildModal: React.FC<AddChildModalProps> = ({
   const [skinTone, setSkinTone] = useState<string>(SKIN_TONE_PRESETS[1].hex);
   const [hairColor, setHairColor] = useState<string>(HAIR_COLOR_PRESETS[1].hex);
 
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const defaultAppAvatar = useDefaultAppAvatar();
   const [rawUploadedDataUrl, setRawUploadedDataUrl] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -137,7 +136,6 @@ export const AddChildModal: React.FC<AddChildModalProps> = ({
     setHairStyle(hairOrder[count % hairOrder.length]);
     setSkinTone(SKIN_TONE_PRESETS[1].hex);
     setHairColor(HAIR_COLOR_PRESETS[1].hex);
-    setAvatarPreviewUrl(null);
     setRawUploadedDataUrl(null);
     setValidationError(null);
 
@@ -179,24 +177,10 @@ export const AddChildModal: React.FC<AddChildModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async () => {
+    reader.onload = () => {
       const result = typeof reader.result === 'string' ? reader.result : null;
       if (!result) return;
       setRawUploadedDataUrl(result);
-      try {
-        const cropped = await cropPortraitToDataUrl(result, {
-          zoom: 1.2,
-          offsetX: 0,
-          offsetY: 0,
-        });
-        setAvatarPreviewUrl(cropped.croppedDataUrl);
-        if (VALIDATION_BOUNDS.HEX_COLOR_PATTERN.test(cropped.sampledSkinHex)) {
-          setSkinTone(cropped.sampledSkinHex);
-        }
-        setAccessoryId('none');
-      } catch {
-        setAvatarPreviewUrl(result);
-      }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -319,7 +303,6 @@ export const AddChildModal: React.FC<AddChildModalProps> = ({
       hairColor: VALIDATION_BOUNDS.HEX_COLOR_PATTERN.test(hairColor)
         ? hairColor
         : HAIR_COLOR_PRESETS[1].hex,
-      initialAvatarDataUrl: avatarPreviewUrl,
       initialRawPhotoDataUrl: rawUploadedDataUrl,
     });
   };
@@ -453,28 +436,24 @@ export const AddChildModal: React.FC<AddChildModalProps> = ({
             </div>
           </div>
 
-          {/* 2. Optional Photo Upload Right Inside Add Child */}
+          {/* 2. SproutScale Character + Optional First Photo Library Entry */}
           <div className="flex items-center justify-between gap-3 p-3.5 bg-sky-50/80 border border-sky-200 rounded-xl">
             <div className="flex items-center gap-3 min-w-0">
-              {avatarPreviewUrl ? (
-                <img
-                  src={avatarPreviewUrl}
-                  alt="New child portrait preview"
-                  className="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-amber-100 border-2 border-amber-300 flex items-center justify-center shrink-0">
-                  <Camera className="w-5 h-5 text-amber-800" aria-hidden="true" />
-                </div>
-              )}
+              <img
+                src={defaultAppAvatar.portraitUrl}
+                alt="SproutScale kid character"
+                className="w-12 h-12 rounded-full object-cover object-top border-2 border-amber-400 bg-sky-50 shrink-0"
+              />
               <div className="min-w-0">
                 <p className="text-xs font-bold text-indigo-950">
-                  {avatarPreviewUrl
-                    ? 'Child Photo Ready for Avatar & Album'
-                    : 'Optional: Upload or Take Child’s Photo'}
+                  {rawUploadedDataUrl
+                    ? 'First Photo Queued for Photo Library'
+                    : 'SproutScale Kid Character Active'}
                 </p>
                 <p className="text-[11px] text-slate-600">
-                  Frames onto {name.trim() || 'this child'}’s avatar and saves to their own album
+                  {rawUploadedDataUrl
+                    ? `Saves directly to ${name.trim() || 'this child'}’s Photo Library while keeping the SproutScale kid character`
+                    : `Optional: add a first photo to ${name.trim() || 'this child'}’s Photo Library`}
                 </p>
               </div>
             </div>
@@ -490,18 +469,16 @@ export const AddChildModal: React.FC<AddChildModalProps> = ({
               <button
                 type="button"
                 onClick={() => photoFileInputRef.current?.click()}
-                className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+                className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap cursor-pointer inline-flex items-center gap-1.5"
               >
-                {avatarPreviewUrl ? 'Change Photo' : 'Choose Photo'}
+                <Camera className="w-3.5 h-3.5" aria-hidden="true" />
+                {rawUploadedDataUrl ? 'Change Photo' : 'Add Library Photo'}
               </button>
-              {avatarPreviewUrl && (
+              {rawUploadedDataUrl && (
                 <button
                   type="button"
                   aria-label="Remove selected photo"
-                  onClick={() => {
-                    setAvatarPreviewUrl(null);
-                    setRawUploadedDataUrl(null);
-                  }}
+                  onClick={() => setRawUploadedDataUrl(null)}
                   className="p-1.5 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-rose-50 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" aria-hidden="true" />

@@ -63,7 +63,10 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
   const defaultAppAvatar = useAgeAwareAppAvatar(ageMonths);
   const palette = CHARACTER_PALETTES[paletteId] ?? CHARACTER_PALETTES.meadow;
   const isBaseline = mode === 'age-two-baseline';
-  const hasPhoto = Boolean(avatarPhotoUrl && avatarPhotoUrl.length > 0);
+  // Always render the illustrated SproutScale kid character (photo avatars disabled app-wide)
+  const _unusedAvatarPhoto = avatarPhotoUrl;
+  void _unusedAvatarPhoto;
+  const hasPhoto = false;
 
   const totalHeight = Math.max(82, floorY - crownY);
 
@@ -75,7 +78,7 @@ export const CharacterFigureGroup: React.FC<CharacterFigureGroupProps> = ({
   const bmi = weightKg / (heightMeters * heightMeters);
   const buildFactor = clampNumber(1 + (bmi - 16) * 0.022, 0.9, 1.16);
 
-  // Default App Avatar: Full-body illustrated SproutScale boy anchored crownY -> floorY
+  // Illustrated SproutScale Kid Character anchored crownY -> floorY
   if (!hasPhoto) {
     const gentleWidthFactor = clampNumber(
       1 + (bmi - 16) * 0.014 + (isBaseline ? 0.04 : -maturity * 0.03),

@@ -37,6 +37,7 @@ import {
 } from '../services/growthPdfReportService';
 import { GrowthReportModal } from './GrowthReportModal';
 import { GrowthMusicKeepsakeCard } from './GrowthMusicKeepsakeCard';
+import { useDefaultAppAvatar } from '../services/defaultAvatarService';
 
 export interface MeasurementEditPayload {
   ageMonths: number;
@@ -96,6 +97,8 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
   onEditAgeTwoBaseline,
   onOpenAgeOneSpurtEstimator,
 }) => {
+  void avatarPhotoUrl;
+  const defaultAppAvatar = useDefaultAppAvatar();
   const [chartMetric, setChartMetric] = useState<'height' | 'weight'>('height');
   const [velocityMetric, setVelocityMetric] = useState<'height' | 'weight'>('height');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -314,7 +317,7 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
     downloadPrintableGrowthPdfReport({
       childProfile,
       measurements,
-      avatarPhotoUrl,
+      avatarPhotoUrl: defaultAppAvatar.portraitUrl,
     });
     setQuickPdfSaved(true);
     window.setTimeout(() => {

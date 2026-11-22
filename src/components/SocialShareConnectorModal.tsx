@@ -72,7 +72,8 @@ export const SocialShareConnectorModal: React.FC<SocialShareConnectorModalProps>
   onClose,
 }) => {
   const defaultAppAvatar = useDefaultAppAvatar();
-  const effectiveAvatarUrl = avatarPhotoUrl || defaultAppAvatar.portraitUrl;
+  void avatarPhotoUrl;
+  const effectiveAvatarUrl = defaultAppAvatar.portraitUrl;
 
   // Share card configuration
   const [format, setFormat] = useState<ShareCardFormat>('story_9_16');

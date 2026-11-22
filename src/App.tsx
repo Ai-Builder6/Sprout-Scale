@@ -101,7 +101,6 @@ import {
 import { HowToMeasureSection } from './components/HowToMeasureSection';
 import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { GoogleDriveVaultSection } from './components/GoogleDriveVaultSection';
-import { ChildAvatarPhotoModal } from './components/ChildAvatarPhotoModal';
 import { WallPhotoHeightEstimatorModal } from './components/WallPhotoHeightEstimatorModal';
 import { AddChildModal, NewChildCreationPayload } from './components/AddChildModal';
 import {
@@ -127,21 +126,17 @@ import { useThemeMode } from './hooks/useThemeMode';
 import {
   clearAllLocalPhotoStorage,
   compressPhotoToStorageJpeg,
-  cropPortraitToDataUrl,
   deleteAllLocalPhotosForChild,
   deleteLocalPhoto,
-  getLocalAvatarDataUrl,
   listLocalPhotosForChild,
   removeLocalAvatarDataUrl,
   SavedLocalPhotoRecord,
-  saveLocalAvatarDataUrl,
   savePhotoToLocalAlbum,
   updateLocalPhotoRecord,
 } from './services/avatarPhotoService';
 import {
   downloadDriveImageAsDataUrl,
   GrowthBackupPayload,
-  uploadChildAvatarToDrive,
   uploadChildPhotoToDrive,
 } from './services/googleDriveService';
 import { useDefaultAppAvatar } from './services/defaultAvatarService';
@@ -382,10 +377,8 @@ function SproutScaleWorkspace() {
   const [isPlayingTimelapse, setIsPlayingTimelapse] = useState<boolean>(false);
   const timelapseTimerRef = useRef<number | null>(null);
 
-  // Realistic Child Photo Avatar cache & Studio / Wall Photo Guesstimator / Mobile App Download modal state
+  // Illustrated SproutScale kid character & modal state
   const defaultAppAvatar = useDefaultAppAvatar();
-  const [avatarPhotoMap, setAvatarPhotoMap] = useState<Record<string, string>>({});
-  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isWallEstimatorOpen, setIsWallEstimatorOpen] = useState<boolean>(false);
   const [ageTwoModalMode, setAgeTwoModalMode] = useState<BaselineModalMode | null>(null);
   const [isMobileAppModalOpen, setIsMobileAppModalOpen] = useState<boolean>(false);
@@ -451,8 +444,6 @@ function SproutScaleWorkspace() {
     const found = activeChildrenList.find((c) => c.id === selectedChildId);
     return found ?? activeChildrenList[0] ?? DEMO_CHILD;
   }, [activeChildrenList, selectedChildId]);
-
-  const activeAvatarPhotoUrl = avatarPhotoMap[activeChild.id] ?? null;
 
   const activeChildLiveAge = useMemo(
     () => (activeChild.birthDate ? calculateExactAgeFromDob(activeChild.birthDate) : null),
@@ -577,43 +568,12 @@ function SproutScaleWorkspace() {
     isPlayingTimelapse,
   ]);
 
-  // Load cached portrait photos from IndexedDB (and Google Drive when fileId is present)
+  // Proactively remove any legacy cached local photo avatars so the SproutScale kid character is always shown
   useEffect(() => {
-    let cancelled = false;
-
-    const syncPortraits = async () => {
-      for (const kid of activeChildrenList) {
-        if (avatarPhotoMap[kid.id]) continue;
-
-        const cachedLocal = await getLocalAvatarDataUrl(kid.id);
-        if (cancelled) return;
-
-        if (cachedLocal) {
-          setAvatarPhotoMap((prev) => (prev[kid.id] ? prev : { ...prev, [kid.id]: cachedLocal }));
-          continue;
-        }
-
-        if (kid.avatarDriveFileId && accessToken) {
-          try {
-            const downloaded = await downloadDriveImageAsDataUrl(
-              accessToken,
-              kid.avatarDriveFileId,
-            );
-            if (cancelled) return;
-            await saveLocalAvatarDataUrl(kid.id, downloaded);
-            setAvatarPhotoMap((prev) => ({ ...prev, [kid.id]: downloaded }));
-          } catch {
-            // Keep illustrated fallback if Drive photo is unavailable or requires re-auth
-          }
-        }
-      }
-    };
-
-    void syncPortraits();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeChildrenList, accessToken, avatarPhotoMap]);
+    for (const kid of activeChildrenList) {
+      void removeLocalAvatarDataUrl(kid.id);
+    }
+  }, [activeChildrenList]);
 
   // 1. Initialize Firebase Auth & In-Memory OAuth Token state
   useEffect(() => {
@@ -1293,7 +1253,6 @@ function SproutScaleWorkspace() {
     setDemoChildren([DEMO_CHILD]);
     setDemoMeasurementsMap({ [DEMO_CHILD.id]: DEMO_MEASUREMENTS });
     setDemoEventsMap({ [DEMO_CHILD.id]: DEMO_EVENTS });
-    setAvatarPhotoMap({});
     setLocalPhotosByChild({});
 
     // 5. Disconnect any active server-side Meta (Facebook/Instagram) OAuth session
@@ -1536,107 +1495,7 @@ function SproutScaleWorkspace() {
     }
   };
 
-  const handleApplyAvatarPhoto = async ({
-    croppedDataUrl,
-    sampledSkinHex,
-  }: {
-    croppedDataUrl: string;
-    sampledSkinHex: string;
-  }) => {
-    const safeSkinTone = sanitizeHexColor(
-      sampledSkinHex,
-      activeChild.skinTone || SKIN_TONE_PRESETS[1].hex,
-    );
-
-    setAvatarPhotoMap((prev) => ({
-      ...prev,
-      [activeChild.id]: croppedDataUrl,
-    }));
-    await saveLocalAvatarDataUrl(activeChild.id, croppedDataUrl);
-
-    if (user) {
-      let uploadedDriveFileId = activeChild.avatarDriveFileId || '';
-      if (accessToken) {
-        try {
-          const rawFileId = await uploadChildAvatarToDrive(
-            accessToken,
-            activeChild.id,
-            activeChild.name,
-            croppedDataUrl,
-          );
-          if (
-            rawFileId.length > 0 &&
-            rawFileId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
-            VALIDATION_BOUNDS.ID_PATTERN.test(rawFileId)
-          ) {
-            uploadedDriveFileId = rawFileId;
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : '';
-          if (msg.includes('AUTH_REQUIRED')) {
-            clearAccessToken();
-            setAccessToken(null);
-            setNeedsDriveAuth(true);
-          }
-        }
-      }
-
-      const path = `children/${activeChild.id}`;
-      try {
-        await updateDoc(doc(db, 'children', activeChild.id), {
-          skinTone: safeSkinTone,
-          accessoryId: 'none',
-          avatarDriveFileId: uploadedDriveFileId,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, path);
-      }
-    } else {
-      setDemoChildren((prev) =>
-        prev.map((c) =>
-          c.id === activeChild.id
-            ? { ...c, skinTone: safeSkinTone, accessoryId: 'none' }
-            : c,
-        ),
-      );
-    }
-
-    showTransientBanner(
-      'success',
-      `Framed ${activeChild.name}’s real photo onto their growing avatar!`,
-    );
-  };
-
-  const handleRemoveAvatarPhoto = async () => {
-    setAvatarPhotoMap((prev) => {
-      const next = { ...prev };
-      delete next[activeChild.id];
-      return next;
-    });
-    await removeLocalAvatarDataUrl(activeChild.id);
-
-    if (user) {
-      const path = `children/${activeChild.id}`;
-      try {
-        await updateDoc(doc(db, 'children', activeChild.id), {
-          avatarDriveFileId: '',
-          skinTone: sanitizeHexColor(activeChild.skinTone, SKIN_TONE_PRESETS[1].hex),
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, path);
-      }
-    } else {
-      setDemoChildren((prev) =>
-        prev.map((c) => (c.id === activeChild.id ? { ...c, avatarDriveFileId: '' } : c)),
-      );
-    }
-
-    showTransientBanner('success', `Switched ${activeChild.name} to illustrated face.`);
-  };
-
-  // Automatically save every camera shot / upload into the child's Saved Photos Album
+  // Automatically save every camera shot / upload into the child's Saved Photos Library
   const handleSaveCapturedPhoto = async ({
     dataUrl,
     kind,
@@ -1808,20 +1667,6 @@ function SproutScaleWorkspace() {
     }
 
     return photoId;
-  };
-
-  const handleUseAlbumPhotoAsAvatar = async (photo: ChildPhotoRecord) => {
-    if (!photo.localDataUrl) return;
-    try {
-      const processed = await cropPortraitToDataUrl(photo.localDataUrl, {
-        zoom: 1.25,
-        offsetX: 0,
-        offsetY: 0,
-      });
-      await handleApplyAvatarPhoto(processed);
-    } catch {
-      showTransientBanner('error', 'Could not apply this photo to the avatar.');
-    }
   };
 
   const handleBackupPhotoToDrive = async (photo: ChildPhotoRecord) => {
@@ -2887,35 +2732,6 @@ function SproutScaleWorkspace() {
         const childId = sanitizeId(`child_${Date.now()}`);
         const childPath = `children/${childId}`;
 
-        // Upload optional initial avatar photo to Google Drive if authorized
-        let uploadedAvatarDriveId = '';
-        if (newChild.initialAvatarDataUrl) {
-          await saveLocalAvatarDataUrl(childId, newChild.initialAvatarDataUrl);
-          setAvatarPhotoMap((prev) => ({
-            ...prev,
-            [childId]: newChild.initialAvatarDataUrl as string,
-          }));
-          if (accessToken) {
-            try {
-              const rawId = await uploadChildAvatarToDrive(
-                accessToken,
-                childId,
-                safeName,
-                newChild.initialAvatarDataUrl,
-              );
-              if (
-                rawId.length > 0 &&
-                rawId.length <= VALIDATION_BOUNDS.ID_MAX_LEN &&
-                VALIDATION_BOUNDS.ID_PATTERN.test(rawId)
-              ) {
-                uploadedAvatarDriveId = rawId;
-              }
-            } catch {
-              // Keep local avatar if Drive upload unavailable
-            }
-          }
-        }
-
         const optimisticChild: ChildProfile = {
           id: childId,
           ownerId: user.uid,
@@ -2929,7 +2745,7 @@ function SproutScaleWorkspace() {
           hairStyle: newChild.hairStyle,
           skinTone: safeSkinTone,
           hairColor: safeHairColor,
-          avatarDriveFileId: uploadedAvatarDriveId,
+          avatarDriveFileId: '',
           createdAtMs: Date.now(),
         };
 
@@ -2994,7 +2810,7 @@ function SproutScaleWorkspace() {
             hairStyle: newChild.hairStyle,
             skinTone: safeSkinTone,
             hairColor: safeHairColor,
-            avatarDriveFileId: uploadedAvatarDriveId,
+            avatarDriveFileId: '',
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -3027,22 +2843,22 @@ function SproutScaleWorkspace() {
             });
           }
 
-          // Also save initial uploaded photo to the new child's Saved Photos Album
-          const rawAlbumPhoto = newChild.initialRawPhotoDataUrl || newChild.initialAvatarDataUrl;
+          // Save optional first uploaded photo straight to the new child's Photo Library
+          const rawAlbumPhoto = newChild.initialRawPhotoDataUrl;
           if (rawAlbumPhoto) {
-            const photoId = sanitizeId(`photo_avatar_${Date.now()}`);
+            const photoId = sanitizeId(`photo_lib_${Date.now()}`);
             const compressed = await compressPhotoToStorageJpeg(rawAlbumPhoto, 1200, 0.85);
             const localPhotoRec: SavedLocalPhotoRecord = {
               id: photoId,
               childId,
-              kind: 'avatar',
+              kind: 'milestone',
               dataUrl: compressed,
               capturedDate: todayIso,
               ageMonths: safeCurrentAgeMonths,
               heightCm: safeCurrentHeightCm,
               weightKg: safeCurrentWeightKg,
-              caption: `${safeName} portrait photo`,
-              driveFileId: uploadedAvatarDriveId,
+              caption: `${safeName} first library photo`,
+              driveFileId: '',
               createdAtMs: Date.now(),
             };
             await savePhotoToLocalAlbum(localPhotoRec);
@@ -3053,13 +2869,13 @@ function SproutScaleWorkspace() {
             await setDoc(doc(db, 'children', childId, 'photos', photoId), {
               ownerId: user.uid,
               childId,
-              kind: 'avatar',
+              kind: 'milestone',
               capturedDate: todayIso,
               ageMonths: safeCurrentAgeMonths,
               heightCm: safeCurrentHeightCm,
               weightKg: safeCurrentWeightKg,
-              caption: `${safeName} portrait photo`.slice(0, VALIDATION_BOUNDS.CAPTION_MAX_LEN),
-              driveFileId: uploadedAvatarDriveId,
+              caption: `${safeName} first library photo`.slice(0, VALIDATION_BOUNDS.CAPTION_MAX_LEN),
+              driveFileId: '',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
             });
@@ -3070,28 +2886,20 @@ function SproutScaleWorkspace() {
         }
       } else {
         const childId = sanitizeId(`demo_child_${Date.now()}`);
-        if (newChild.initialAvatarDataUrl) {
-          await saveLocalAvatarDataUrl(childId, newChild.initialAvatarDataUrl);
-          setAvatarPhotoMap((prev) => ({
-            ...prev,
-            [childId]: newChild.initialAvatarDataUrl as string,
-          }));
-        }
-
-        const rawAlbumPhoto = newChild.initialRawPhotoDataUrl || newChild.initialAvatarDataUrl;
+        const rawAlbumPhoto = newChild.initialRawPhotoDataUrl;
         if (rawAlbumPhoto) {
-          const photoId = sanitizeId(`photo_avatar_${Date.now()}`);
+          const photoId = sanitizeId(`photo_lib_${Date.now()}`);
           const compressed = await compressPhotoToStorageJpeg(rawAlbumPhoto, 1200, 0.85);
           const localPhotoRec: SavedLocalPhotoRecord = {
             id: photoId,
             childId,
-            kind: 'avatar',
+            kind: 'milestone',
             dataUrl: compressed,
             capturedDate: todayIso,
             ageMonths: safeCurrentAgeMonths,
             heightCm: safeCurrentHeightCm,
             weightKg: safeCurrentWeightKg,
-            caption: `${safeName} portrait photo`,
+            caption: `${safeName} first library photo`,
             driveFileId: '',
             createdAtMs: Date.now(),
           };
@@ -3178,11 +2986,6 @@ function SproutScaleWorkspace() {
     try {
       await removeLocalAvatarDataUrl(childIdToDelete);
       await deleteAllLocalPhotosForChild(childIdToDelete);
-      setAvatarPhotoMap((prev) => {
-        const next = { ...prev };
-        delete next[childIdToDelete];
-        return next;
-      });
       setLocalPhotosByChild((prev) => {
         const next = { ...prev };
         delete next[childIdToDelete];
@@ -3644,15 +3447,6 @@ function SproutScaleWorkspace() {
                     Enter Date of Birth to auto-calculate age
                   </button>
                 )}
-                <span aria-hidden="true">·</span>
-                <button
-                  type="button"
-                  onClick={() => setIsPhotoModalOpen(true)}
-                  className="inline-flex items-center gap-1 font-bold text-sky-800 dark:text-sky-300 hover:text-indigo-950 dark:hover:text-white hover:underline cursor-pointer"
-                >
-                  <Camera className="w-3.5 h-3.5" aria-hidden="true" />
-                  {activeAvatarPhotoUrl ? 'Update Child Photo' : 'Take / Upload Child Photo'}
-                </button>
                 <span aria-hidden="true">·</span>
                 <button
                   type="button"
