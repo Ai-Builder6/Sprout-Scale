@@ -2,6 +2,14 @@
 
 let audioCtx: AudioContext | null = null;
 let globalMuted = false;
+const victoryListeners = new Set<() => void>();
+
+export function onKidGameVictory(listener: () => void): () => void {
+  victoryListeners.add(listener);
+  return () => {
+    victoryListeners.delete(listener);
+  };
+}
 
 function getOrCreateAudioContext(): AudioContext | null {
   if (globalMuted || typeof window === 'undefined') return null;
@@ -160,6 +168,13 @@ export function playHappyMatchSound(): void {
  * Joyful C-E-G-C celebratory xylophone arpeggio for finishing a game
  */
 export function playVictoryFanfare(): void {
+  victoryListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      // Never let a listener interrupt game audio
+    }
+  });
   withReadyAudioContext((ctx) => {
     const now = ctx.currentTime;
     const notes = [523.25, 659.25, 783.99, 1046.5];

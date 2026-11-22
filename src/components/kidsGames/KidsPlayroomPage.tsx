@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Gamepad2,
@@ -6,8 +6,10 @@ import {
   Moon,
   Play,
   Sun,
+  Trophy,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react';
 import {
   ChildProfile,
@@ -15,10 +17,22 @@ import {
 } from '../../types';
 import {
   isKidGamesMuted,
+  onKidGameVictory,
   setKidGamesMuted,
   unlockKidGameAudio,
 } from '../../services/kidGameAudioService';
+import {
+  ChildPlayroomProgress,
+  evaluatePlayroomBadges,
+  loadChildPlayroomProgress,
+  PlayableGameId,
+  PlayroomBadgeDefinition,
+  recordGameCompleted,
+  recordGamePlayed,
+  resetChildPlayroomProgress,
+} from '../../services/playroomBadgesService';
 import { useDefaultAppAvatar } from '../../services/defaultAvatarService';
+import { PlayroomBadgesGrid } from './PlayroomBadgesGrid';
 import { SunflowerSproutGame } from './SunflowerSproutGame';
 import { BubblePopAnimalGame } from './BubblePopAnimalGame';
 import { TallShortFriendsGame } from './TallShortFriendsGame';
@@ -45,20 +59,7 @@ import clockRoutineCardImg from '../../assets/images/game_clock_routine_quest_17
 import wordBridgeCardImg from '../../assets/images/game_word_bridge_quest_1795323640865.jpg';
 import planetMathCardImg from '../../assets/images/game_planet_math_mission_1795323639986.jpg';
 
-export type PlayroomGameId =
-  | 'hub'
-  | 'clock_routine'
-  | 'word_bridge'
-  | 'planet_math'
-  | 'letter_garden'
-  | 'shape_rocket'
-  | 'dino_math'
-  | 'rainbow_music'
-  | 'fruit_counting'
-  | 'animal_memory'
-  | 'sunflower'
-  | 'bubbles'
-  | 'tall_short';
+export type PlayroomGameId = 'hub' | 'badges' | PlayableGameId;
 
 type AgeGroupFilter = 'all' | '2_4' | '3_5' | '3_6' | '4_7' | '5_8';
 
@@ -74,7 +75,7 @@ interface KidsPlayroomPageProps {
 }
 
 interface GameCatalogItem {
-  id: Exclude<PlayroomGameId, 'hub'>;
+  id: PlayableGameId;
   title: string;
   shortLabel: string;
   ageGroup: '2_4' | '3_5' | '3_6' | '4_7' | '5_8';
@@ -275,6 +276,48 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
   const [ageFilter, setAgeFilter] = useState<AgeGroupFilter>('all');
   const [isMuted, setIsMuted] = useState<boolean>(() => isKidGamesMuted());
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
+  const [playroomProgress, setPlayroomProgress] = useState<ChildPlayroomProgress>(() =>
+    loadChildPlayroomProgress(activeChild.id),
+  );
+  const [recentUnlockedBadges, setRecentUnlockedBadges] = useState<
+    PlayroomBadgeDefinition[]
+  >([]);
+
+  const selectedGameRef = useRef<PlayroomGameId>(selectedGame);
+  selectedGameRef.current = selectedGame;
+  const activeChildIdRef = useRef<string>(activeChild.id);
+  activeChildIdRef.current = activeChild.id;
+
+  // Reload per-child playroom progress whenever switching children
+  useEffect(() => {
+    setPlayroomProgress(loadChildPlayroomProgress(activeChild.id));
+    setRecentUnlockedBadges([]);
+  }, [activeChild.id]);
+
+  // Listen for game completions across all 12 games to award stars & unlock victory badges
+  useEffect(() => {
+    return onKidGameVictory(() => {
+      const currentGame = selectedGameRef.current;
+      if (currentGame === 'hub' || currentGame === 'badges') return;
+      const { progress, newlyUnlocked } = recordGameCompleted(
+        activeChildIdRef.current,
+        currentGame,
+      );
+      setPlayroomProgress(progress);
+      if (newlyUnlocked.length > 0) {
+        setRecentUnlockedBadges(newlyUnlocked);
+      }
+    });
+  }, []);
+
+  const evaluatedBadges = useMemo(
+    () => evaluatePlayroomBadges(playroomProgress),
+    [playroomProgress],
+  );
+  const unlockedBadgeCount = useMemo(
+    () => evaluatedBadges.filter((b) => b.isUnlocked).length,
+    [evaluatedBadges],
+  );
 
   const handleToggleSound = () => {
     const nextMuted = !isMuted;
@@ -286,10 +329,21 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
   };
 
   const handleOpenGame = (gameId: PlayroomGameId) => {
-    if (gameId !== 'hub') {
+    if (gameId !== 'hub' && gameId !== 'badges') {
       unlockKidGameAudio();
+      const { progress, newlyUnlocked } = recordGamePlayed(activeChild.id, gameId);
+      setPlayroomProgress(progress);
+      if (newlyUnlocked.length > 0) {
+        setRecentUnlockedBadges(newlyUnlocked);
+      }
     }
     setSelectedGame(gameId);
+  };
+
+  const handleResetBadges = () => {
+    const empty = resetChildPlayroomProgress(activeChild.id);
+    setPlayroomProgress(empty);
+    setRecentUnlockedBadges([]);
   };
 
   const activeHeightFormatted = formatFeetInches(activeChildHeightCm);
@@ -303,6 +357,49 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
 
   return (
     <section aria-label="Kids Playroom" className="space-y-6">
+      {/* Live Badge Unlock Celebration Banner */}
+      {recentUnlockedBadges.length > 0 && (
+        <div
+          role="status"
+          className="bg-amber-50 dark:bg-amber-950/60 border-2 border-amber-300 dark:border-amber-600 rounded-2xl px-4 py-3.5 shadow-xs flex flex-wrap items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-xs">
+              <Trophy className="w-5 h-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-amber-900 dark:text-amber-300">
+                New {recentUnlockedBadges.length === 1 ? 'Badge' : 'Badges'} Unlocked for{' '}
+                {activeChild.name}!
+              </p>
+              <p className="text-sm font-display font-extrabold text-indigo-950 dark:text-white truncate">
+                {recentUnlockedBadges.map((b) => b.title).join(' · ')}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedGame('badges');
+                setRecentUnlockedBadges([]);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition-colors whitespace-nowrap cursor-pointer"
+            >
+              View Badges ({unlockedBadgeCount}/{evaluatedBadges.length})
+            </button>
+            <button
+              type="button"
+              aria-label="Dismiss badge notification"
+              onClick={() => setRecentUnlockedBadges([])}
+              className="p-2 rounded-lg text-amber-900 dark:text-amber-200 hover:bg-amber-200/70 dark:hover:bg-amber-900/60 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Playroom Top Workspace Header */}
       <div className="bg-white/95 dark:bg-slate-900/95 rounded-3xl border-2 border-amber-200 dark:border-slate-700 p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -322,12 +419,16 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
                 <span className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
                   {activeChild.name}: {activeHeightFormatted}
                 </span>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono tabular-nums text-indigo-900 dark:text-amber-300">
+                  {unlockedBadgeCount}/{evaluatedBadges.length} Badges
+                </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-display font-extrabold text-indigo-950 dark:text-white">
                 Hi {activeChild.name}! Pick a colorful game to play!
               </h1>
               <p className="text-sm text-slate-600 dark:text-slate-300 max-w-2xl">
-                Stepping up from toddler bubbles and counting (2–5) to clocks &amp; phonics (3–6), sight-word bridges (4–7), and planet skip-counting &amp; multiplication arrays (5–8) — cheerful sounds and zero stress timers.
+                Stepping up from toddler bubbles and counting (2–5) to clocks &amp; phonics (3–6), sight-word bridges (4–7), and planet skip-counting &amp; multiplication arrays (5–8) — earn Playroom Badges as you explore and finish rounds.
               </p>
             </div>
           </div>
@@ -447,6 +548,21 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
             All Games ({PLAYROOM_GAMES.length})
           </button>
 
+          <button
+            type="button"
+            role="tab"
+            aria-selected={selectedGame === 'badges'}
+            onClick={() => handleOpenGame('badges')}
+            className={`min-h-[46px] inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-display font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+              selectedGame === 'badges'
+                ? 'bg-amber-400 text-slate-950 shadow-sm'
+                : 'bg-white dark:bg-slate-900 border-2 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+            }`}
+          >
+            <Trophy className="w-4 h-4 shrink-0" aria-hidden="true" />
+            Badges ({unlockedBadgeCount}/{evaluatedBadges.length})
+          </button>
+
           {PLAYROOM_GAMES.map((game) => {
             const isActive = selectedGame === game.id;
             return (
@@ -497,64 +613,102 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
         )}
       </div>
 
-      {/* Playroom Hub View: 3-Column Illustrated Game Cards (12 Total Games) */}
+      {/* Playroom Hub View: 3-Column Illustrated Game Cards + CSS Grid Badges Trophy Case */}
       {selectedGame === 'hub' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {visibleGames.map((game) => (
-            <article
-              key={game.id}
-              className={`bg-white dark:bg-slate-900 rounded-3xl border-2 ${game.borderClass} shadow-xs hover:shadow-md transition-all overflow-hidden flex flex-col`}
-            >
-              {/* Illustrated 4:3 Storybook Thumbnail */}
-              <div
-                onClick={() => handleOpenGame(game.id)}
-                className={`relative aspect-[4/3] w-full bg-gradient-to-br ${game.fallbackBgClass} overflow-hidden cursor-pointer`}
-              >
-                {!brokenImages[game.id] ? (
-                  <img
-                    src={game.imageSrc}
-                    alt={game.imageAlt}
-                    referrerPolicy="no-referrer"
-                    onError={() =>
-                      setBrokenImages((prev) => ({ ...prev, [game.id]: true }))
-                    }
-                    className={`w-full h-full object-cover transition-transform duration-300 ${
-                      game.imageClassName ?? 'hover:scale-[1.03]'
-                    }`}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center p-6 text-center">
-                    <Gamepad2 className="w-12 h-12 text-amber-500" aria-hidden="true" />
-                  </div>
-                )}
-              </div>
-
-              {/* Card Body & Single Big Kid-Friendly Play CTA */}
-              <div className="p-5 flex-1 flex flex-col justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                    {game.metaLine}
-                  </p>
-                  <h2 className="mt-1 text-xl font-display font-extrabold text-slate-900 dark:text-white">
-                    {game.title}
-                  </h2>
-                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {game.description}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleOpenGame(game.id)}
-                  className={`w-full min-h-[54px] rounded-2xl ${game.ctaClass} font-display font-extrabold text-base shadow-xs active:scale-[0.98] transition-all inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap`}
+        <div className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {visibleGames.map((game) => {
+              const playsCount = playroomProgress.gamesOpened[game.id] ?? 0;
+              const winsCount = playroomProgress.gamesCompleted[game.id] ?? 0;
+              return (
+                <article
+                  key={game.id}
+                  className={`bg-white dark:bg-slate-900 rounded-3xl border-2 ${game.borderClass} shadow-xs hover:shadow-md transition-all overflow-hidden flex flex-col`}
                 >
-                  <Play className="w-4 h-4 fill-current shrink-0" aria-hidden="true" />
-                  Play Now
-                </button>
-              </div>
-            </article>
-          ))}
+                  {/* Illustrated 4:3 Storybook Thumbnail */}
+                  <div
+                    onClick={() => handleOpenGame(game.id)}
+                    className={`relative aspect-[4/3] w-full bg-gradient-to-br ${game.fallbackBgClass} overflow-hidden cursor-pointer`}
+                  >
+                    {!brokenImages[game.id] ? (
+                      <img
+                        src={game.imageSrc}
+                        alt={game.imageAlt}
+                        referrerPolicy="no-referrer"
+                        onError={() =>
+                          setBrokenImages((prev) => ({ ...prev, [game.id]: true }))
+                        }
+                        className={`w-full h-full object-cover transition-transform duration-300 ${
+                          game.imageClassName ?? 'hover:scale-[1.03]'
+                        }`}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center p-6 text-center">
+                        <Gamepad2 className="w-12 h-12 text-amber-500" aria-hidden="true" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card Body & Single Big Kid-Friendly Play CTA */}
+                  <div className="p-5 flex-1 flex flex-col justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                        <span>{game.metaLine}</span>
+                        {playsCount > 0 && (
+                          <>
+                            <span className="mx-1.5" aria-hidden="true">
+                              ·
+                            </span>
+                            <span className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
+                              {winsCount > 0
+                                ? `${winsCount} ${winsCount === 1 ? 'Star' : 'Stars'}`
+                                : `Played ${playsCount}×`}
+                            </span>
+                          </>
+                        )}
+                      </p>
+                      <h2 className="mt-1 text-xl font-display font-extrabold text-slate-900 dark:text-white">
+                        {game.title}
+                      </h2>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                        {game.description}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenGame(game.id)}
+                      className={`w-full min-h-[54px] rounded-2xl ${game.ctaClass} font-display font-extrabold text-base shadow-xs active:scale-[0.98] transition-all inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap`}
+                    >
+                      <Play className="w-4 h-4 fill-current shrink-0" aria-hidden="true" />
+                      Play Now
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          {/* Playroom Achievements & Badges CSS Grid Showcase */}
+          <PlayroomBadgesGrid
+            childName={activeChild.name}
+            badges={evaluatedBadges}
+            progress={playroomProgress}
+            onPlaySuggestedGame={(gameId) => handleOpenGame(gameId)}
+            onResetBadges={handleResetBadges}
+          />
         </div>
+      )}
+
+      {/* Dedicated Badges Tab View */}
+      {selectedGame === 'badges' && (
+        <PlayroomBadgesGrid
+          childName={activeChild.name}
+          badges={evaluatedBadges}
+          progress={playroomProgress}
+          onPlaySuggestedGame={(gameId) => handleOpenGame(gameId)}
+          onResetBadges={handleResetBadges}
+        />
       )}
 
       {/* Active Mini-Game Stage */}
