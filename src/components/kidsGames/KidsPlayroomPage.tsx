@@ -481,8 +481,8 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
             <img
-              src={avatarPhotoMap[activeChild.id] || defaultAppAvatar.portraitUrl}
-              alt={`${activeChild.name} avatar`}
+              src={defaultAppAvatar.portraitUrl}
+              alt={`${activeChild.name} character`}
               className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover object-top border-2 border-amber-300 dark:border-amber-500 bg-sky-50 dark:bg-slate-800 shadow-xs shrink-0"
             />
             <div className="space-y-1.5">
@@ -591,7 +591,6 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
             </span>
             {childrenList.map((kid) => {
               const isSelected = kid.id === activeChild.id;
-              const thumb = avatarPhotoMap[kid.id] ?? null;
               return (
                 <button
                   key={kid.id}
@@ -604,7 +603,7 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
                   }`}
                 >
                   <img
-                    src={thumb || defaultAppAvatar.portraitUrl}
+                    src={defaultAppAvatar.portraitUrl}
                     alt=""
                     aria-hidden="true"
                     className="w-5 h-5 rounded-full object-cover object-top border border-white dark:border-slate-700 bg-sky-50 shrink-0"

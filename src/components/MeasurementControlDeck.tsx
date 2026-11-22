@@ -74,9 +74,9 @@ interface MeasurementControlDeckProps {
   onChangeDraftNote: (note: string) => void;
   onResetDraft: () => void;
   onSubmitMeasurement: (e: React.FormEvent) => void;
-  onOpenPhotoStudio: () => void;
+  onOpenPhotoStudio?: () => void;
   onOpenWallHeightEstimator: () => void;
-  onRemoveAvatarPhoto: () => Promise<void>;
+  onRemoveAvatarPhoto?: () => Promise<void>;
   onSaveCharacterProfile: (updates: {
     name: string;
     birthDate: string;
@@ -1118,45 +1118,22 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             </button>
           </div>
 
-          {/* Realistic Child Photo Avatar Strip */}
-          <div className="flex items-center justify-between gap-3 p-3 bg-sky-50/90 dark:bg-slate-800/90 border border-sky-200 dark:border-slate-700 rounded-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <img
-                src={avatarPhotoUrl || defaultAppAvatar.portraitUrl}
-                alt={`${childProfile.name} avatar portrait`}
-                referrerPolicy="no-referrer"
-                className="w-12 h-12 rounded-full object-cover object-top border-2 border-amber-400 bg-sky-50 shrink-0"
-              />
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-indigo-950 dark:text-white truncate">
-                  {avatarPhotoUrl ? 'Real Photo Avatar Active' : 'SproutScale Avatar Active'}
-                </p>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                  {avatarPhotoUrl
-                    ? 'Remove to restore default app avatar'
-                    : 'Or take a camera pic / upload a photo'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={onOpenPhotoStudio}
-                className="px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
-              >
-                {avatarPhotoUrl ? 'Edit Pic' : 'Take / Upload'}
-              </button>
-              {avatarPhotoUrl && (
-                <button
-                  type="button"
-                  aria-label="Remove photo from avatar"
-                  onClick={() => void onRemoveAvatarPhoto()}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4" aria-hidden="true" />
-                </button>
-              )}
+          {/* Illustrated SproutScale Character Strip (Photos live in the Photo Library) */}
+          <div className="flex items-center gap-3 p-3 bg-sky-50/90 dark:bg-slate-800/90 border border-sky-200 dark:border-slate-700 rounded-xl">
+            <img
+              src={defaultAppAvatar.portraitUrl}
+              alt={`${childProfile.name} illustrated SproutScale character`}
+              referrerPolicy="no-referrer"
+              className="w-12 h-12 rounded-full object-cover object-top border-2 border-amber-400 bg-sky-50 shrink-0"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-indigo-950 dark:text-white truncate">
+                SproutScale Character Active
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
+                Your illustrated character grows on the wall; uploaded pictures stay organized in
+                your Photo Library below.
+              </p>
             </div>
           </div>
 

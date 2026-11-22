@@ -87,6 +87,7 @@ import {
 import {
   ChildPhotoAlbumSection,
   PhotoDetailsPatch,
+  QuickLibraryPhotoItem,
 } from './components/ChildPhotoAlbumSection';
 import {
   AddPortfolioMemoryModal,
@@ -2813,6 +2814,29 @@ function SproutScaleWorkspace() {
     }
   };
 
+  const handleQuickImportLibraryPhotos = async (items: QuickLibraryPhotoItem[]) => {
+    if (items.length === 0) return;
+    setIsSaving(true);
+    try {
+      for (let i = 0; i < items.length; i += 1) {
+        const item = items[i];
+        await handleSaveCapturedPhoto({
+          dataUrl: item.dataUrl,
+          kind: 'milestone',
+          caption: item.caption,
+          ageMonthsOverride: item.ageMonths,
+          capturedDateOverride: item.capturedDate,
+        });
+      }
+      showTransientBanner(
+        'success',
+        `Added ${items.length} ${items.length === 1 ? 'photo' : 'photos'} to ${activeChild.name}’s Photo Library!`,
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleCreateNewChild = async (newChild: NewChildCreationPayload) => {
     setIsSaving(true);
     const safeName =
@@ -3522,7 +3546,7 @@ function SproutScaleWorkspace() {
           <KidsPlayroomPage
             activeChild={activeChild}
             childrenList={activeChildrenList}
-            avatarPhotoMap={avatarPhotoMap}
+            avatarPhotoMap={{}}
             activeChildHeightCm={draftHeightCm}
             onSelectChild={(kidId) => {
               pendingChildIdRef.current = null;
@@ -3706,7 +3730,6 @@ function SproutScaleWorkspace() {
                 >
                   {activeChildrenList.map((kid) => {
                     const isSelected = kid.id === activeChild.id;
-                    const kidThumb = avatarPhotoMap[kid.id] ?? null;
                     const kidAgeShort = kid.birthDate
                       ? calculateExactAgeFromDob(kid.birthDate)?.formattedShortAge
                       : null;
@@ -3733,7 +3756,7 @@ function SproutScaleWorkspace() {
                         }`}
                       >
                         <img
-                          src={kidThumb || defaultAppAvatar.portraitUrl}
+                          src={defaultAppAvatar.portraitUrl}
                           alt=""
                           aria-hidden="true"
                           className="w-5 h-5 rounded-full object-cover object-top border border-white/80 bg-sky-50 shrink-0"
@@ -3816,7 +3839,7 @@ function SproutScaleWorkspace() {
               <div className="lg:col-span-8 flex flex-col">
                 <GrowthWallStage
                   childProfile={activeChild}
-                  avatarPhotoUrl={activeAvatarPhotoUrl}
+                  avatarPhotoUrl={null}
                   measurements={activeMeasurements}
                   activeHeightCm={draftHeightCm}
                   activeWeightKg={draftWeightKg}
@@ -3825,7 +3848,6 @@ function SproutScaleWorkspace() {
                   onSelectMilestoneOnWall={handleInspectMilestone}
                   isPlayingTimelapse={isPlayingTimelapse}
                   onToggleTimelapse={handleToggleTimelapse}
-                  onOpenPhotoStudio={() => setIsPhotoModalOpen(true)}
                   onOpenWallHeightEstimator={() => setIsWallEstimatorOpen(true)}
                   onEditAgeTwoBaseline={() => setAgeTwoModalMode('age2')}
                 />
@@ -3836,7 +3858,7 @@ function SproutScaleWorkspace() {
                   activeTab={activeDeckTab}
                   onTabChange={setActiveDeckTab}
                   childProfile={activeChild}
-                  avatarPhotoUrl={activeAvatarPhotoUrl}
+                  avatarPhotoUrl={null}
                   draftHeightCm={draftHeightCm}
                   draftWeightKg={draftWeightKg}
                   draftAgeMonths={draftAgeMonths}
@@ -3865,9 +3887,7 @@ function SproutScaleWorkspace() {
                     setDraftAgeMonths(latestMilestone.ageMonths);
                   }}
                   onSubmitMeasurement={handleMarkMeasurement}
-                  onOpenPhotoStudio={() => setIsPhotoModalOpen(true)}
                   onOpenWallHeightEstimator={() => setIsWallEstimatorOpen(true)}
-                  onRemoveAvatarPhoto={handleRemoveAvatarPhoto}
                   onSaveCharacterProfile={handleSaveCharacterProfile}
                   onOpenAddChildModal={() => setIsAddChildModalOpen(true)}
                   totalChildrenCount={activeChildrenList.length}
@@ -3892,7 +3912,7 @@ function SproutScaleWorkspace() {
           measurements={activeMeasurements}
           photos={activePhotos}
           events={activeEvents}
-          avatarPhotoUrl={activeAvatarPhotoUrl}
+          avatarPhotoUrl={null}
           onInspectMilestone={handleInspectMilestone}
           onUpdateMeasurement={handleUpdateMeasurement}
           onDeleteMeasurement={handleDeleteMeasurement}
@@ -3910,7 +3930,7 @@ function SproutScaleWorkspace() {
           }
         />
 
-        {/* Section 3: Child Growth Portfolio, Photo Gallery & Milestone Events (Firestore + Drive Synced) */}
+        {/* Section 3: Child Photo Library & Milestone Storybook (Firestore + Drive Synced) */}
         <ChildPhotoAlbumSection
           childProfile={activeChild}
           photos={activePhotos}
@@ -3920,9 +3940,8 @@ function SproutScaleWorkspace() {
           isSignedIn={Boolean(user)}
           isSyncingBatch={isSyncingBatchPhotos}
           onOpenAddMemoryModal={openAddMemoryModal}
-          onOpenAvatarStudio={() => setIsPhotoModalOpen(true)}
+          onQuickImportPhotos={handleQuickImportLibraryPhotos}
           onOpenWallEstimator={() => setIsWallEstimatorOpen(true)}
-          onUseAsAvatar={handleUseAlbumPhotoAsAvatar}
           onToggleFavoritePhoto={handleToggleFavoritePhoto}
           onUpdatePhotoDetails={handleUpdatePhotoDetails}
           onBackupToDrive={handleBackupPhotoToDrive}
@@ -4178,22 +4197,6 @@ function SproutScaleWorkspace() {
       {/* Non-intrusive Offline Connectivity Indicator */}
       <OfflineIndicator />
 
-      {/* Realistic Child Photo Studio Modal (Camera + Device Upload + Google Drive Picker) */}
-      <ChildAvatarPhotoModal
-        isOpen={isPhotoModalOpen}
-        childName={activeChild.name}
-        currentAvatarUrl={activeAvatarPhotoUrl}
-        paletteId={activeChild.paletteId}
-        accessoryId={activeChild.accessoryId}
-        hairStyle={activeChild.hairStyle}
-        skinTone={activeChild.skinTone || SKIN_TONE_PRESETS[1].hex}
-        hairColor={activeChild.hairColor || HAIR_COLOR_PRESETS[1].hex}
-        accessToken={accessToken}
-        onClose={() => setIsPhotoModalOpen(false)}
-        onApplyPhoto={(res) => void handleApplyAvatarPhoto(res)}
-        onSaveCapturedPhoto={handleSaveCapturedPhoto}
-      />
-
       {/* Wall Photo Height Guesstimator Modal (AI Vision + Reference Object Inches Ruler) */}
       <WallPhotoHeightEstimatorModal
         isOpen={isWallEstimatorOpen}
@@ -4271,7 +4274,7 @@ function SproutScaleWorkspace() {
       <SocialShareConnectorModal
         isOpen={isSocialShareOpen}
         childProfile={activeChild}
-        avatarPhotoUrl={activeAvatarPhotoUrl}
+        avatarPhotoUrl={null}
         photos={activePhotos}
         events={activeEvents}
         measurements={activeMeasurements}

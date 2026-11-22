@@ -37,7 +37,7 @@ interface GrowthWallStageProps {
   onSelectMilestoneOnWall: (measurement: GrowthMeasurement) => void;
   isPlayingTimelapse: boolean;
   onToggleTimelapse: () => void;
-  onOpenPhotoStudio: () => void;
+  onOpenPhotoStudio?: () => void;
   onOpenWallHeightEstimator: () => void;
   onEditAgeTwoBaseline?: () => void;
 }
@@ -212,15 +212,6 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
           >
             <Ruler className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
             Wall Photo Guesstimate
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenPhotoStudio}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-sky-950 dark:text-sky-200 bg-sky-100 dark:bg-sky-950/70 hover:bg-sky-200 dark:hover:bg-sky-900/70 border border-transparent dark:border-sky-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Camera className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" aria-hidden="true" />
-            {avatarPhotoUrl ? 'Change Photo' : 'Photo Avatar'}
           </button>
 
           <button
@@ -566,7 +557,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
               hairStyle={childProfile.hairStyle}
               skinTone={childProfile.skinTone}
               hairColor={childProfile.hairColor}
-              avatarPhotoUrl={avatarPhotoUrl}
+              avatarPhotoUrl={null}
               mode="age-two-baseline"
             />
 
@@ -776,7 +767,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             hairStyle={childProfile.hairStyle}
             skinTone={childProfile.skinTone}
             hairColor={childProfile.hairColor}
-            avatarPhotoUrl={avatarPhotoUrl}
+            avatarPhotoUrl={null}
             mode="current"
             isWaveActive={isPlayingTimelapse || isPreviewDirty || isSpeakingAvatar}
           />

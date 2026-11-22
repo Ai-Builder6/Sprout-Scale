@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownUp,
   ArrowUpRight,
@@ -6,17 +6,21 @@ import {
   CalendarPlus,
   Camera,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CloudUpload,
   Download,
   Edit3,
   Grid,
   Image as ImageIcon,
+  Loader2,
   Plus,
   Ruler,
+  Search,
   Share2,
   Star,
   Trash2,
-  UserCheck,
+  Upload,
   X,
 } from 'lucide-react';
 import {
@@ -42,13 +46,20 @@ import { InitialMemoryModalContext } from './AddPortfolioMemoryModal';
 import { SocialShareInitialContext } from './SocialShareConnectorModal';
 
 type PortfolioViewMode = 'timeline' | 'grid';
-type GalleryFilter = 'all' | 'favorites' | 'wall' | 'milestones' | 'avatar';
+type GalleryFilter = 'all' | 'favorites' | 'wall' | 'milestones';
 
 export interface PhotoDetailsPatch {
   eventTitle: string;
   caption: string;
   capturedDate: string;
   kind: ChildPhotoKind;
+}
+
+export interface QuickLibraryPhotoItem {
+  dataUrl: string;
+  capturedDate: string;
+  ageMonths: number;
+  caption: string;
 }
 
 interface ChildPhotoAlbumSectionProps {
@@ -60,9 +71,8 @@ interface ChildPhotoAlbumSectionProps {
   isSignedIn: boolean;
   isSyncingBatch?: boolean;
   onOpenAddMemoryModal: (initialContext?: InitialMemoryModalContext) => void;
-  onOpenAvatarStudio: () => void;
+  onQuickImportPhotos?: (items: QuickLibraryPhotoItem[]) => Promise<void>;
   onOpenWallEstimator: () => void;
-  onUseAsAvatar: (photo: ChildPhotoRecord) => Promise<void>;
   onToggleFavoritePhoto: (photo: ChildPhotoRecord) => Promise<void>;
   onUpdatePhotoDetails: (
     photo: ChildPhotoRecord,
@@ -97,9 +107,8 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
   isSignedIn,
   isSyncingBatch = false,
   onOpenAddMemoryModal,
-  onOpenAvatarStudio,
+  onQuickImportPhotos,
   onOpenWallEstimator,
-  onUseAsAvatar,
   onToggleFavoritePhoto,
   onUpdatePhotoDetails,
   onBackupToDrive,
@@ -110,9 +119,13 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
   onOpenSocialShare,
   onSignInForDrive,
 }) => {
-  const [viewMode, setViewMode] = useState<PortfolioViewMode>('timeline');
+  const [viewMode, setViewMode] = useState<PortfolioViewMode>('grid');
   const [sortAscending, setSortAscending] = useState<boolean>(false);
   const [filter, setFilter] = useState<GalleryFilter>('all');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [batchUploadProgress, setBatchUploadProgress] = useState<string | null>(null);
+  const batchFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [lightboxPhotoId, setLightboxPhotoId] = useState<string | null>(null);
   const [isEditingLightbox, setIsEditingLightbox] = useState<boolean>(false);
@@ -130,7 +143,7 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
     [photos, lightboxPhotoId],
   );
 
-  // Counts for Gallery filters & Cloud Sync status
+  // Counts for Library filters & Cloud Sync status
   const favoriteCount = useMemo(
     () => photos.filter((p) => Boolean(p.isFavorite)).length,
     [photos],
@@ -146,14 +159,21 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
           p.kind === 'milestone' ||
           p.kind === 'event' ||
           p.kind === 'school' ||
-          p.kind === 'family',
+          p.kind === 'family' ||
+          p.kind === 'avatar',
       ).length,
     [photos],
   );
-  const avatarCount = useMemo(
-    () => photos.filter((p) => p.kind === 'avatar').length,
-    [photos],
-  );
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    for (const p of photos) {
+      if (p.capturedDate && /^\d{4}-/.test(p.capturedDate)) {
+        years.add(p.capturedDate.slice(0, 4));
+      }
+    }
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [photos]);
+
   const unsyncedLocalPhotos = useMemo(
     () => photos.filter((p) => Boolean(p.localDataUrl) && !p.driveFileId),
     [photos],
@@ -176,16 +196,36 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
               p.kind === 'milestone' ||
               p.kind === 'event' ||
               p.kind === 'school' ||
-              p.kind === 'family',
+              p.kind === 'family' ||
+              p.kind === 'avatar',
           );
-        case 'avatar':
-          return photos.filter((p) => p.kind === 'avatar');
         default:
           return photos;
       }
     })();
 
-    const copy = [...base];
+    const yearFiltered =
+      selectedYear === 'all'
+        ? base
+        : base.filter((p) => p.capturedDate?.startsWith(`${selectedYear}-`));
+
+    const trimmedQuery = searchQuery.trim().toLowerCase();
+    const searched = trimmedQuery
+      ? yearFiltered.filter((p) => {
+          const hay = [
+            p.eventTitle || '',
+            p.caption || '',
+            p.capturedDate || '',
+            PHOTO_KIND_LABELS[p.kind] || '',
+            formatAgeLabel(p.ageMonths),
+          ]
+            .join(' ')
+            .toLowerCase();
+          return hay.includes(trimmedQuery);
+        })
+      : yearFiltered;
+
+    const copy = [...searched];
     copy.sort((a, b) => {
       const dateCmp = a.capturedDate.localeCompare(b.capturedDate);
       if (dateCmp !== 0) {
@@ -196,7 +236,7 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
         : (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0);
     });
     return copy;
-  }, [photos, filter, sortAscending]);
+  }, [photos, filter, selectedYear, searchQuery, sortAscending]);
 
   // Chronological Storybook Chapters combining Photos + Milestone Events + Growth Measurements by Date
   const timelineChapters = useMemo<SyncedTimelineChapter[]>(() => {
@@ -267,6 +307,15 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
     return list;
   }, [photos, events, measurements, sortAscending]);
 
+  const lightboxNavPhotos = useMemo(
+    () => filteredPhotos.filter((p) => Boolean(p.localDataUrl)),
+    [filteredPhotos],
+  );
+  const currentLightboxIndex = useMemo(
+    () => lightboxNavPhotos.findIndex((p) => p.id === lightboxPhotoId),
+    [lightboxNavPhotos, lightboxPhotoId],
+  );
+
   const openLightbox = (photo: ChildPhotoRecord, startEditing = false) => {
     setLightboxPhotoId(photo.id);
     setEditTitle(photo.eventTitle || '');
@@ -281,6 +330,85 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
     setIsEditingLightbox(false);
   };
 
+  const stepLightbox = (delta: -1 | 1) => {
+    if (lightboxNavPhotos.length <= 1 || currentLightboxIndex < 0) return;
+    const nextIdx =
+      (currentLightboxIndex + delta + lightboxNavPhotos.length) % lightboxNavPhotos.length;
+    openLightbox(lightboxNavPhotos[nextIdx], false);
+  };
+
+  useEffect(() => {
+    if (!lightboxPhotoId || isEditingLightbox) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeLightbox();
+      } else if (e.key === 'ArrowLeft') {
+        stepLightbox(-1);
+      } else if (e.key === 'ArrowRight') {
+        stepLightbox(1);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [lightboxPhotoId, isEditingLightbox, currentLightboxIndex, lightboxNavPhotos]);
+
+  const handleBatchLibraryFilesSelected = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(e.target.files ?? []).filter((f) =>
+      f.type.startsWith('image/'),
+    );
+    e.target.value = '';
+    if (files.length === 0 || !onQuickImportPhotos) return;
+
+    const latestMeasurementAge =
+      measurements.length > 0
+        ? measurements[measurements.length - 1].ageMonths
+        : 24;
+
+    const readFileAsDataUrl = (file: File) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () =>
+          typeof reader.result === 'string'
+            ? resolve(reader.result)
+            : reject(new Error('Could not read file'));
+        reader.onerror = () => reject(new Error('Could not read file'));
+        reader.readAsDataURL(file);
+      });
+
+    setBatchUploadProgress(`Preparing ${files.length} photo${files.length === 1 ? '' : 's'}...`);
+    try {
+      const prepared: QuickLibraryPhotoItem[] = [];
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        setBatchUploadProgress(`Adding ${i + 1} of ${files.length}...`);
+        const dataUrl = await readFileAsDataUrl(file);
+        const fileDate = file.lastModified ? new Date(file.lastModified) : new Date();
+        const isoDate = `${fileDate.getFullYear()}-${String(fileDate.getMonth() + 1).padStart(2, '0')}-${String(fileDate.getDate()).padStart(2, '0')}`;
+        const exactAge = childProfile.birthDate
+          ? calculateExactAgeFromDob(childProfile.birthDate, isoDate)
+          : null;
+        const ageMonths = exactAge ? exactAge.totalMonths : latestMeasurementAge;
+        const cleanTitle = file.name
+          .replace(/\.[^.]+$/, '')
+          .replace(/[_-]+/g, ' ')
+          .trim()
+          .slice(0, 80);
+        prepared.push({
+          dataUrl,
+          capturedDate: isoDate,
+          ageMonths,
+          caption: cleanTitle ? `${childProfile.name} · ${cleanTitle}` : `${childProfile.name} library photo`,
+        });
+      }
+      await onQuickImportPhotos(prepared);
+      setViewMode('grid');
+    } finally {
+      setBatchUploadProgress(null);
+    }
+  };
+
   const handleDownloadPhoto = (photo: ChildPhotoRecord) => {
     if (!photo.localDataUrl) return;
     const safeChild = childProfile.name.replace(/[^a-zA-Z0-9_-]/g, '_') || 'Child';
@@ -290,15 +418,6 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const handleSetAvatar = async (photo: ChildPhotoRecord) => {
-    setBusyItemId(photo.id);
-    try {
-      await onUseAsAvatar(photo);
-    } finally {
-      setBusyItemId(null);
-    }
   };
 
   const handleDriveBackup = async (photo: ChildPhotoRecord) => {
@@ -365,20 +484,20 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
               id="photo-album-heading"
               className="text-xl sm:text-2xl font-bold tracking-tight text-indigo-950 dark:text-white"
             >
-              {childProfile.name}’s Growth Portfolio, Gallery &amp; Events
+              {childProfile.name}’s Photo Library &amp; Milestone Storybook
             </h2>
           </div>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            A chronological keepsake portfolio of{' '}
+            Build a chronological photo library of{' '}
             <strong className="text-indigo-950 dark:text-white">{childProfile.name}</strong> growing up —
-            gallery pictures, birthdays, school firsts, and wall check-ins synced with exact
-            dates, ages, and measurements in Firestore.
+            upload multiple pictures at once, organize by year and milestones, and back up to
+            Firestore &amp; Google Drive while your SproutScale character grows on the wall.
           </p>
 
           {/* Unboxed Summary Metrics Strip (Zero Static Pills) */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-xs text-slate-600 dark:text-slate-400 font-mono tabular-nums">
             <span className="font-semibold text-indigo-950 dark:text-white">
-              {photos.length} {photos.length === 1 ? 'Photo' : 'Photos'}
+              {photos.length} {photos.length === 1 ? 'Library Photo' : 'Library Photos'}
             </span>
             <span aria-hidden="true">·</span>
             <span className="font-semibold text-sky-900 dark:text-sky-300">
@@ -399,13 +518,43 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
 
         {/* Action Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={batchFileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => void handleBatchLibraryFilesSelected(e)}
+            className="hidden"
+          />
+
+          {onQuickImportPhotos && (
+            <button
+              type="button"
+              disabled={Boolean(batchUploadProgress)}
+              onClick={() => batchFileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 disabled:opacity-60 rounded-lg shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              {batchUploadProgress ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  {batchUploadProgress}
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" aria-hidden="true" />
+                  Upload Photos to Library
+                </>
+              )}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => onOpenAddMemoryModal()}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-sky-950 dark:text-sky-200 bg-sky-100 dark:bg-sky-950/70 hover:bg-sky-200 dark:hover:bg-sky-900/70 border border-sky-200 dark:border-sky-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
-            Add Photos / Event
+            Add Milestone Event
           </button>
 
           <button
@@ -414,16 +563,7 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
             className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-emerald-950 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-950/70 hover:bg-emerald-200 dark:hover:bg-emerald-900/70 border border-emerald-300 dark:border-emerald-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Ruler className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
-            Fridge / Wall Photo
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenAvatarStudio}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-sky-950 dark:text-sky-200 bg-sky-100 dark:bg-sky-950/70 hover:bg-sky-200 dark:hover:bg-sky-900/70 border border-sky-200 dark:border-sky-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Camera className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" aria-hidden="true" />
-            Portrait
+            Wall Height Photo
           </button>
 
           {onOpenSocialShare && (
@@ -461,122 +601,167 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
         </div>
       </div>
 
-      {/* View Mode Switcher & Sort Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Primary Segmented View Toggle */}
-          <div
-            role="tablist"
-            aria-label="Portfolio display mode"
-            className="inline-flex items-center gap-1 p-1 bg-sky-100 dark:bg-slate-800 rounded-lg"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === 'timeline'}
-              onClick={() => setViewMode('timeline')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                viewMode === 'timeline'
-                  ? 'bg-amber-400 text-slate-950 shadow-xs'
-                  : 'text-sky-950 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" aria-hidden="true" />
-              Storybook Timeline ({timelineChapters.length})
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === 'grid'}
-              onClick={() => setViewMode('grid')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                viewMode === 'grid'
-                  ? 'bg-amber-400 text-slate-950 shadow-xs'
-                  : 'text-sky-950 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
-              }`}
-            >
-              <Grid className="w-3.5 h-3.5" aria-hidden="true" />
-              Photo Gallery ({photos.length})
-            </button>
-          </div>
-
-          {/* Secondary Category Filter when in Photo Gallery Grid mode */}
-          {viewMode === 'grid' && (
+      {/* View Mode Switcher, Library Search, Year Filter & Sort Controls */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Primary Segmented View Toggle */}
             <div
-              role="group"
-              aria-label="Filter gallery photos"
-              className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg"
+              role="tablist"
+              aria-label="Photo Library display mode"
+              className="inline-flex items-center gap-1 p-1 bg-sky-100 dark:bg-slate-800 rounded-lg"
             >
               <button
                 type="button"
-                onClick={() => setFilter('all')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filter === 'all'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
+                role="tab"
+                aria-selected={viewMode === 'grid'}
+                onClick={() => setViewMode('grid')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-amber-400 text-slate-950 shadow-xs'
+                    : 'text-sky-950 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
                 }`}
               >
-                All ({photos.length})
+                <Grid className="w-3.5 h-3.5" aria-hidden="true" />
+                Photo Library ({photos.length})
               </button>
               <button
                 type="button"
-                onClick={() => setFilter('favorites')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filter === 'favorites'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
+                role="tab"
+                aria-selected={viewMode === 'timeline'}
+                onClick={() => setViewMode('timeline')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  viewMode === 'timeline'
+                    ? 'bg-amber-400 text-slate-950 shadow-xs'
+                    : 'text-sky-950 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
                 }`}
               >
-                Favorites ({favoriteCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter('milestones')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filter === 'milestones'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
-                }`}
-              >
-                Events &amp; Firsts ({milestonePhotosCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter('wall')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filter === 'wall'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
-                }`}
-              >
-                Wall / Fridge ({wallCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilter('avatar')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filter === 'avatar'
-                    ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
-                }`}
-              >
-                Portraits ({avatarCount})
+                <BookOpen className="w-3.5 h-3.5" aria-hidden="true" />
+                Storybook Timeline ({timelineChapters.length})
               </button>
             </div>
-          )}
+
+            {/* Secondary Category Filter when in Photo Library Grid mode */}
+            {viewMode === 'grid' && (
+              <div
+                role="group"
+                aria-label="Filter library photos"
+                className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg"
+              >
+                <button
+                  type="button"
+                  onClick={() => setFilter('all')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    filter === 'all'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
+                  }`}
+                >
+                  All ({photos.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilter('favorites')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    filter === 'favorites'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
+                  }`}
+                >
+                  Favorites ({favoriteCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilter('milestones')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    filter === 'milestones'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
+                  }`}
+                >
+                  Memories &amp; Firsts ({milestonePhotosCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilter('wall')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    filter === 'wall'
+                      ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white'
+                  }`}
+                >
+                  Wall Check-Ins ({wallCount})
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Chronological Order Toggle */}
+          <button
+            type="button"
+            onClick={() => setSortAscending((prev) => !prev)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-sky-900 dark:text-sky-200 bg-slate-50 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <ArrowDownUp className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" aria-hidden="true" />
+            {sortAscending
+              ? `Order: Oldest → Newest (Watch ${childProfile.name} Grow)`
+              : 'Order: Newest Moments First'}
+          </button>
         </div>
 
-        {/* Chronological Order Toggle */}
-        <button
-          type="button"
-          onClick={() => setSortAscending((prev) => !prev)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-sky-900 dark:text-sky-200 bg-slate-50 dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-        >
-          <ArrowDownUp className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" aria-hidden="true" />
-          {sortAscending
-            ? `Order: Age 2 → Now (Watch ${childProfile.name} Grow)`
-            : 'Order: Newest Moments First'}
-        </button>
+        {/* Library Search & Year Filter Row (shown when in Photo Library Grid with photos) */}
+        {viewMode === 'grid' && photos.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search
+                className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={`Search ${childProfile.name}’s photo library...`}
+                aria-label="Search photo library"
+                className="w-full h-9 pl-8 pr-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-indigo-950 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+
+            {availableYears.length > 1 && (
+              <div
+                role="group"
+                aria-label="Filter library by year"
+                className="flex flex-wrap items-center gap-1"
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedYear('all')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                    selectedYear === 'all'
+                      ? 'bg-indigo-950 dark:bg-amber-400 text-white dark:text-slate-950'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
+                  }`}
+                >
+                  All Years
+                </button>
+                {availableYears.map((yr) => (
+                  <button
+                    key={yr}
+                    type="button"
+                    onClick={() => setSelectedYear(yr)}
+                    className={`px-2.5 py-1 text-xs font-mono font-semibold rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                      selectedYear === yr
+                        ? 'bg-indigo-950 dark:bg-amber-400 text-white dark:text-slate-950'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
+                    }`}
+                  >
+                    {yr}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ===================================================================== */}
@@ -594,8 +779,8 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
                   Start {childProfile.name}’s Growth Portfolio
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Upload photos from birthdays, school firsts, and fridge height check-ins —
-                  every memory is automatically organized by date, age, and height/weight.
+                  Upload photos from birthdays, school firsts, and growth check-ins — every memory
+                  is automatically organized by date, age, and height/weight.
                 </p>
               </div>
               <button
@@ -946,22 +1131,35 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
               <div className="space-y-1 max-w-md mx-auto">
                 <h3 className="text-sm font-bold text-indigo-950 dark:text-slate-100">
                   {photos.length === 0
-                    ? `No gallery pictures saved for ${childProfile.name} yet`
-                    : 'No photos match this gallery filter yet'}
+                    ? `Start ${childProfile.name}’s Photo Library`
+                    : 'No library photos match your current filter'}
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Upload multiple photos, snap a live camera shot, or capture a fridge height
-                  check-in to build {childProfile.name}’s visual portfolio.
+                  Select one or multiple photos from your phone or computer to build{' '}
+                  {childProfile.name}’s chronological photo library — organized by date, age, and
+                  milestones.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => onOpenAddMemoryModal()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-                Add Photos to Gallery
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {onQuickImportPhotos && (
+                  <button
+                    type="button"
+                    onClick={() => batchFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+                    Upload Photos to Library
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onOpenAddMemoryModal()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-sky-950 dark:text-sky-200 bg-sky-100 dark:bg-sky-950/70 hover:bg-sky-200 dark:hover:bg-sky-900/70 rounded-lg cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                  Add Photo with Milestone Note
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -1168,17 +1366,6 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
                                 JPG
                               </button>
                             )}
-                            {photo.localDataUrl && (
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => void handleSetAvatar(photo)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-slate-950 bg-amber-300 hover:bg-amber-400 disabled:opacity-50 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                              >
-                                <UserCheck className="w-3.5 h-3.5" aria-hidden="true" />
-                                Avatar
-                              </button>
-                            )}
                             {photo.localDataUrl && !photo.driveFileId && accessToken && (
                               <button
                                 type="button"
@@ -1262,13 +1449,33 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
               </div>
             </div>
 
-            <div className="bg-slate-950 flex items-center justify-center max-h-[58vh] overflow-hidden">
+            <div className="relative bg-slate-950 flex items-center justify-center max-h-[58vh] overflow-hidden">
+              {lightboxNavPhotos.length > 1 && (
+                <button
+                  type="button"
+                  aria-label="Previous library photo"
+                  onClick={() => stepLightbox(-1)}
+                  className="absolute left-3 z-10 w-10 h-10 rounded-full bg-slate-950/70 hover:bg-slate-900 text-white border border-white/20 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+                </button>
+              )}
               <img
                 src={lightboxPhoto.localDataUrl}
                 alt={lightboxPhoto.eventTitle || `${childProfile.name} full-size photo`}
                 referrerPolicy="no-referrer"
                 className="max-h-[58vh] w-auto object-contain"
               />
+              {lightboxNavPhotos.length > 1 && (
+                <button
+                  type="button"
+                  aria-label="Next library photo"
+                  onClick={() => stepLightbox(1)}
+                  className="absolute right-3 z-10 w-10 h-10 rounded-full bg-slate-950/70 hover:bg-slate-900 text-white border border-white/20 flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <ChevronRight className="w-5 h-5" aria-hidden="true" />
+                </button>
+              )}
             </div>
 
             {isEditingLightbox ? (
@@ -1413,21 +1620,10 @@ export const ChildPhotoAlbumSection: React.FC<ChildPhotoAlbumSectionProps> = ({
                   <button
                     type="button"
                     onClick={() => handleDownloadPhoto(lightboxPhoto)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-sky-900 dark:text-sky-200 bg-sky-100 dark:bg-sky-950/60 hover:bg-sky-200 dark:hover:bg-sky-900/70 rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" aria-hidden="true" />
                     Download JPG
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleSetAvatar(lightboxPhoto);
-                      closeLightbox();
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" aria-hidden="true" />
-                    Use as Avatar
                   </button>
                 </div>
               </div>
