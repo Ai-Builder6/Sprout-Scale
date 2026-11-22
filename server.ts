@@ -946,18 +946,78 @@ async function startServer(): Promise<void> {
 
   app.post('/api/storybook/read-aloud', async (req, res) => {
     try {
-      const { text, mode } = (req.body ?? {}) as {
+      const { text, mode, voiceId } = (req.body ?? {}) as {
         text?: string;
         mode?: 'daytime' | 'bedtime';
+        voiceId?: string;
       };
 
-      const cleanText = String(text || '').trim().slice(0, 1200);
+      const cleanText = String(text || '').trim().slice(0, 1400);
       if (!cleanText) {
         res.status(400).json({ error: 'Story text is required for read-aloud narration.' });
         return;
       }
 
       const isBedtime = mode === 'bedtime';
+
+      // 1. Prefer ElevenLabs storyteller/announcer voice whenever ELEVENLABS_API_KEY is configured
+      const elevenLabsKey = (process.env.ELEVENLABS_API_KEY || '').trim();
+      if (elevenLabsKey) {
+        const rawVoiceId = String(voiceId || process.env.ELEVENLABS_VOICE_ID || '').trim();
+        const safeVoiceId = /^[a-zA-Z0-9_-]{8,64}$/.test(rawVoiceId)
+          ? rawVoiceId
+          : 'EXAVITQu4vr4xnSDxMaL';
+
+        try {
+          const upstream = await fetch(
+            `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(safeVoiceId)}`,
+            {
+              method: 'POST',
+              headers: {
+                'xi-api-key': elevenLabsKey,
+                'Content-Type': 'application/json',
+                Accept: 'audio/mpeg',
+              },
+              body: JSON.stringify({
+                text: cleanText,
+                model_id: 'eleven_multilingual_v2',
+                voice_settings: isBedtime
+                  ? {
+                      stability: 0.72,
+                      similarity_boost: 0.82,
+                      style: 0.16,
+                      speed: 0.88,
+                      use_speaker_boost: true,
+                    }
+                  : {
+                      stability: 0.48,
+                      similarity_boost: 0.82,
+                      style: 0.42,
+                      speed: 1.0,
+                      use_speaker_boost: true,
+                    },
+              }),
+            },
+          );
+
+          if (upstream.ok) {
+            const audioBuffer = Buffer.from(await upstream.arrayBuffer());
+            if (audioBuffer.length > 0) {
+              res.json({
+                audioBase64: audioBuffer.toString('base64'),
+                mimeType: 'audio/mpeg',
+                engine: 'elevenlabs',
+                voiceId: safeVoiceId,
+              });
+              return;
+            }
+          }
+        } catch {
+          // Fall through cleanly to Gemini TTS below if ElevenLabs has a transient outage
+        }
+      }
+
+      // 2. Fallback to Gemini TTS if ElevenLabs is unavailable
       const ai = getGenAIClient();
       const ttsResponse = await ai.models.generateContent({
         model: 'gemini-3.8-flash-lite-tts',
@@ -998,6 +1058,7 @@ async function startServer(): Promise<void> {
       res.json({
         audioBase64: base64Wav,
         mimeType: 'audio/wav',
+        engine: 'gemini',
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1007,13 +1068,13 @@ async function startServer(): Promise<void> {
         msg.includes('PERMISSION_DENIED')
       ) {
         res.status(403).json({
-          error: 'Gemini API key is missing or invalid in Settings > Secrets.',
+          error: 'Narration API key is missing or invalid in Settings > Secrets.',
         });
         return;
       }
       if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
         res.status(429).json({
-          error: 'Gemini narration quota reached right now.',
+          error: 'Narration quota reached right now.',
         });
         return;
       }

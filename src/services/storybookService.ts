@@ -210,11 +210,16 @@ export async function generatePersonalizedStorybook(
 export async function fetchStorybookReadAloudAudio(
   text: string,
   mode: StorybookMode,
-): Promise<{ audioDataUrl: string } | null> {
+  voiceId?: string,
+): Promise<{ audioDataUrl: string; engine?: string } | null> {
   const response = await fetch('/api/storybook/read-aloud', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, mode }),
+    body: JSON.stringify({
+      text,
+      mode,
+      voiceId: voiceId?.trim() || undefined,
+    }),
   });
 
   if (!response.ok) {
@@ -224,9 +229,11 @@ export async function fetchStorybookReadAloudAudio(
   const data = (await response.json().catch(() => ({}))) as {
     audioBase64?: string;
     mimeType?: string;
+    engine?: string;
   };
   if (!data.audioBase64) return null;
   return {
-    audioDataUrl: `data:${data.mimeType || 'audio/wav'};base64,${data.audioBase64}`,
+    audioDataUrl: `data:${data.mimeType || 'audio/mpeg'};base64,${data.audioBase64}`,
+    engine: data.engine,
   };
 }

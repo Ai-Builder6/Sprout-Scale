@@ -38,6 +38,12 @@ import {
   SavedStorybook,
   StorybookMode,
 } from '../services/storybookService';
+import {
+  ElevenLabsVoiceOption,
+  fetchElevenLabsVoices,
+  getSavedElevenLabsVoiceId,
+  saveElevenLabsVoiceId,
+} from '../services/elevenLabsVoiceService';
 import daytimeMeadowImg from '../assets/images/storybook_daytime_meadow_1795383306501.jpg';
 import bedtimeStarlightImg from '../assets/images/storybook_bedtime_starlight_1795383305955.jpg';
 
@@ -95,6 +101,25 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
     const hour = new Date().getHours();
     return hour >= 18 || hour < 6 ? 'bedtime' : 'daytime';
   });
+
+  // ElevenLabs Storybook Announcer voice selection (synced with app-wide ElevenLabs announcer)
+  const [narratorVoices, setNarratorVoices] = useState<ElevenLabsVoiceOption[]>([]);
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(() => getSavedElevenLabsVoiceId());
+
+  useEffect(() => {
+    let active = true;
+    void fetchElevenLabsVoices().then((res) => {
+      if (!active || !res.configured) return;
+      setNarratorVoices(res.voices);
+      const saved = getSavedElevenLabsVoiceId();
+      if (!saved && res.defaultVoiceId) {
+        setSelectedVoiceId(res.defaultVoiceId);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Collect distinct dates that have photos or events for THIS active child, always including Today
   const availableStoryDates = useMemo(() => {
@@ -305,7 +330,7 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
     }
   };
 
-  // Speak one page using Gemini 3.8 Flash Lite TTS with seamless browser Web Speech fallback
+  // Speak one page using ElevenLabs announcer (with Gemini TTS & Web Speech fallback)
   const speakPage = useCallback(
     async (book: SavedStorybook, pageIndex: number, continueAfter: boolean) => {
       const page = book.pages[pageIndex];
@@ -319,7 +344,8 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
         ? `${page.heading}. ${page.text} ${book.closingLine}`
         : `${page.heading}. ${page.text}`;
 
-      const cacheKey = `${book.id}_${pageIndex}_${book.mode}`;
+      const voiceKey = selectedVoiceId || 'default';
+      const cacheKey = `${book.id}_${pageIndex}_${book.mode}_${voiceKey}`;
       setIsLoadingAudio(true);
 
       const handleFinished = () => {
@@ -359,7 +385,11 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
       try {
         let dataUrl = audioCacheRef.current.get(cacheKey);
         if (!dataUrl) {
-          const fetched = await fetchStorybookReadAloudAudio(narrationText, book.mode);
+          const fetched = await fetchStorybookReadAloudAudio(
+            narrationText,
+            book.mode,
+            selectedVoiceId || undefined,
+          );
           if (fetched?.audioDataUrl) {
             dataUrl = fetched.audioDataUrl;
             audioCacheRef.current.set(cacheKey, dataUrl);
@@ -387,7 +417,7 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
         fallbackBrowserSpeech();
       }
     },
-    [stopReadAloud],
+    [stopReadAloud, selectedVoiceId],
   );
 
   const handleToggleReadCurrentPage = () => {
@@ -652,6 +682,33 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {narratorVoices.length > 0 && (
+                <label className="inline-flex items-center gap-1.5">
+                  <span className="sr-only">Story Announcer Voice</span>
+                  <select
+                    aria-label="Story Announcer Voice"
+                    value={selectedVoiceId}
+                    onChange={(e) => {
+                      stopReadAloud();
+                      const nextId = e.target.value;
+                      setSelectedVoiceId(nextId);
+                      saveElevenLabsVoiceId(nextId);
+                    }}
+                    className={`min-h-[44px] max-w-[180px] px-3 py-2 text-xs font-bold rounded-xl border transition-colors cursor-pointer ${
+                      isBedtimeTheme
+                        ? 'border-indigo-700 bg-indigo-900/80 text-indigo-100'
+                        : 'border-sky-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-indigo-950 dark:text-slate-100'
+                    }`}
+                  >
+                    {narratorVoices.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}{v.accent ? ` (${v.accent})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               <button
                 type="button"
                 onClick={handleToggleReadCurrentPage}
