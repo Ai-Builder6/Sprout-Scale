@@ -107,7 +107,7 @@ export interface MilestoneEventRecord {
 }
 
 export const PHOTO_KIND_LABELS: Record<ChildPhotoKind, string> = {
-  wall: 'Wall / Fridge Check-In',
+  wall: 'Wall Height Check-In',
   milestone: 'Growth Milestone',
   event: 'Birthday & Special Event',
   school: 'School & Activities',

@@ -102,8 +102,8 @@ const QUICK_EVENT_IDEAS: {
     photoKind: 'milestone',
   },
   {
-    label: 'Fridge / Wall Check',
-    title: 'Fridge Height Check-In',
+    label: 'Wall Height Check',
+    title: 'Wall Height Check-In',
     category: 'celebration',
     photoKind: 'wall',
   },

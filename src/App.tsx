@@ -2508,17 +2508,21 @@ function SproutScaleWorkspace() {
     inches,
     heightCm,
     sourceLabel,
+    savedToAlbum,
   }: {
     inches: number;
     heightCm: number;
     sourceLabel: string;
+    savedToAlbum?: boolean;
   }) => {
     setIsPlayingTimelapse(false);
     setDraftHeightCm(heightCm);
     setActiveDeckTab('measure');
     showTransientBanner(
       'success',
-      `Applied ${formatFeetInches(heightCm)} (${inches.toFixed(1)} in · ${formatMetricHeight(heightCm)}) from ${sourceLabel} — photo saved to ${activeChild.name}’s album!`,
+      savedToAlbum
+        ? `Applied ${formatFeetInches(heightCm)} (${inches.toFixed(1)} in · ${formatMetricHeight(heightCm)}) from ${sourceLabel} and saved photo to ${activeChild.name}’s album!`
+        : `Applied ${formatFeetInches(heightCm)} (${inches.toFixed(1)} in · ${formatMetricHeight(heightCm)}) from ${sourceLabel}!`,
     );
   };
 
@@ -3480,7 +3484,7 @@ function SproutScaleWorkspace() {
                   className="inline-flex items-center gap-1 font-bold text-emerald-800 dark:text-emerald-400 hover:text-indigo-950 dark:hover:text-white hover:underline cursor-pointer"
                 >
                   <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
-                  Measure by Fridge / Wall Photo (69&quot; Calibrated)
+                  Photo Height Ruler
                 </button>
                 <span aria-hidden="true">·</span>
                 <a
