@@ -123,14 +123,30 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
   return result;
 }
 
-function getCanonicalAppUrl(): string {
+const ALLOWED_CUSTOM_HOSTS = new Set([
+  'sproutscale.xyz',
+  'www.sproutscale.xyz',
+  'sprout-scale.com',
+  'www.sprout-scale.com',
+]);
+
+function getCanonicalAppUrl(req?: express.Request): string {
+  if (req) {
+    const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    if (ALLOWED_CUSTOM_HOSTS.has(rawHost)) {
+      return `https://${rawHost}`;
+    }
+  }
   const envUrl = (process.env.APP_URL || '').trim().replace(/\/+$/, '');
   if (envUrl) return envUrl;
   return `http://localhost:${PORT}`;
 }
 
-function getMetaCallbackUrl(): string {
-  return `${getCanonicalAppUrl()}/auth/meta/callback`;
+function getMetaCallbackUrl(req?: express.Request): string {
+  return `${getCanonicalAppUrl(req)}/auth/meta/callback`;
 }
 
 function isMetaOAuthConfigured(): boolean {
@@ -664,7 +680,7 @@ async function startServer(): Promise<void> {
 
   app.get('/api/meta/status', (req, res) => {
     const configured = isMetaOAuthConfigured();
-    const callbackUrl = getMetaCallbackUrl();
+    const callbackUrl = getMetaCallbackUrl(req);
     const cookies = parseCookies(req.headers.cookie);
     const sid = cookies[META_SESSION_COOKIE];
     const session = sid ? metaSessions.get(sid) : undefined;
@@ -696,8 +712,8 @@ async function startServer(): Promise<void> {
     });
   });
 
-  app.get('/api/meta/auth-url', (_req, res) => {
-    const callbackUrl = getMetaCallbackUrl();
+  app.get('/api/meta/auth-url', (req, res) => {
+    const callbackUrl = getMetaCallbackUrl(req);
     if (!isMetaOAuthConfigured()) {
       res.status(503).json({
         error:
@@ -795,7 +811,7 @@ async function startServer(): Promise<void> {
         return;
       }
 
-      const callbackUrl = getMetaCallbackUrl();
+      const callbackUrl = getMetaCallbackUrl(req);
       const tokenParams = new URLSearchParams({
         client_id: process.env.META_APP_ID!.trim(),
         client_secret: process.env.META_APP_SECRET!.trim(),
@@ -1027,7 +1043,7 @@ async function startServer(): Promise<void> {
         buffer: imgBuffer,
         expiresAtMs: Date.now() + 1000 * 60 * 10,
       });
-      const publicImageUrl = `${getCanonicalAppUrl()}/api/meta/media/${mediaId}.jpg`;
+      const publicImageUrl = `${getCanonicalAppUrl(req)}/api/meta/media/${mediaId}.jpg`;
 
       const createParams = new URLSearchParams({
         image_url: publicImageUrl,
@@ -1136,7 +1152,7 @@ async function startServer(): Promise<void> {
     }
 
     const confirmationCode = `META-DEL-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
-    const statusUrl = `${getCanonicalAppUrl()}/data-deletion?code=${encodeURIComponent(confirmationCode)}`;
+    const statusUrl = `${getCanonicalAppUrl(req)}/data-deletion?code=${encodeURIComponent(confirmationCode)}`;
 
     dataDeletionRecords.set(confirmationCode, {
       confirmationCode,
@@ -1221,7 +1237,7 @@ async function startServer(): Promise<void> {
     res.json({
       ok: true,
       record,
-      statusUrl: `${getCanonicalAppUrl()}/data-deletion?code=${encodeURIComponent(confirmationCode)}`,
+      statusUrl: `${getCanonicalAppUrl(req)}/data-deletion?code=${encodeURIComponent(confirmationCode)}`,
     });
   });
 
