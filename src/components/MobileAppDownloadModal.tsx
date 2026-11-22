@@ -145,31 +145,31 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
       aria-labelledby="mobile-app-download-title"
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto"
     >
-      <div className="bg-white border-t-2 sm:border-2 border-amber-300 rounded-t-3xl sm:rounded-2xl max-w-3xl w-full p-5 sm:p-6 shadow-xl space-y-5 max-h-[92vh] overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border-t-2 sm:border-2 border-amber-300 dark:border-slate-700 rounded-t-3xl sm:rounded-2xl max-w-3xl w-full p-5 sm:p-6 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-6 shadow-xl space-y-5 max-h-[92vh] overflow-y-auto">
         {/* Mobile Sheet Grab Handle */}
-        <div className="w-10 h-1.5 bg-slate-200 rounded-full mx-auto sm:hidden" aria-hidden="true" />
+        <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto sm:hidden" aria-hidden="true" />
 
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-sky-100 pb-4">
+        <div className="flex items-start justify-between gap-4 border-b border-sky-100 dark:border-slate-800 pb-4">
           <div className="flex items-start gap-3.5">
             <img
               src="/pwa-192x192.png"
               alt="SproutScale mobile app icon"
               referrerPolicy="no-referrer"
-              className="w-12 h-12 rounded-2xl shrink-0 border border-sky-200"
+              className="w-12 h-12 rounded-2xl shrink-0 border border-sky-200 dark:border-slate-700"
             />
             <div className="space-y-1">
               <h3
                 id="mobile-app-download-title"
-                className="text-lg sm:text-xl font-bold text-indigo-950"
+                className="text-lg sm:text-xl font-bold text-indigo-950 dark:text-white"
               >
                 {isInstalled
                   ? 'Share SproutScale Mobile App'
-                  : 'Download & Share SproutScale Mobile App'}
+                  : 'Install SproutScale Mobile App'}
               </h3>
-              <p className="text-xs sm:text-sm text-slate-600">
-                Install SproutScale directly onto any iPhone, iPad, or Android home screen — or
-                share the download link &amp; QR code with family!
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                Install SproutScale directly onto any iPhone, iPad, or Android home screen for
+                full-screen Photo Ruler, Kids Games, and Daytime &amp; Bedtime Storybooks!
               </p>
             </div>
           </div>
@@ -178,7 +178,7 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
             type="button"
             aria-label="Close mobile app download dialog"
             onClick={onClose}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-slate-500 hover:bg-sky-50 hover:text-indigo-950 transition-colors shrink-0 cursor-pointer"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-slate-500 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-indigo-950 dark:hover:text-white transition-colors shrink-0 cursor-pointer"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -186,12 +186,12 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
           {/* Left Column: Shareable Download Link & Scannable QR Code */}
-          <div className="md:col-span-6 bg-sky-50/80 border border-sky-200 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="md:col-span-6 bg-sky-50/80 dark:bg-slate-800/70 border border-sky-200 dark:border-slate-700 rounded-2xl p-4 sm:p-5 space-y-4">
             <div className="space-y-1">
-              <h4 className="text-sm font-bold text-indigo-950">
+              <h4 className="text-sm font-bold text-indigo-950 dark:text-white">
                 Shareable App Download Link
               </h4>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
                 Send this link by text, WhatsApp, or email — or scan the QR code with any phone
                 camera to open the app installer.
               </p>
@@ -334,19 +334,19 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
             ) : null}
 
             {/* Platform Segmented Guide: iPhone / iPad vs Android / Chrome */}
-            <div className="border border-slate-200 rounded-2xl p-4 space-y-3.5">
+            <div className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 rounded-2xl p-4 space-y-3.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-indigo-950">
+                <span className="text-xs font-bold text-indigo-950 dark:text-white">
                   How Anyone Can Install on Their Phone
                 </span>
-                <div className="flex items-center gap-1 p-1 bg-sky-100 rounded-lg">
+                <div className="flex items-center gap-1 p-1 bg-sky-100 dark:bg-slate-900 rounded-lg">
                   <button
                     type="button"
                     onClick={() => setSelectedPlatformTab('ios')}
                     className={`px-2.5 py-1 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       selectedPlatformTab === 'ios'
-                        ? 'bg-white text-indigo-950 shadow-xs'
-                        : 'text-sky-900 hover:text-indigo-950'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
+                        : 'text-sky-900 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
                     }`}
                   >
                     iPhone / iPad
@@ -356,8 +356,8 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
                     onClick={() => setSelectedPlatformTab('android')}
                     className={`px-2.5 py-1 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       selectedPlatformTab === 'android'
-                        ? 'bg-white text-indigo-950 shadow-xs'
-                        : 'text-sky-900 hover:text-indigo-950'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-950 dark:text-white shadow-xs'
+                        : 'text-sky-900 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
                     }`}
                   >
                     {isAndroid ? 'Android (This Device)' : 'Android / Chrome'}
@@ -366,23 +366,23 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
               </div>
 
               {selectedPlatformTab === 'ios' ? (
-                <ol className="space-y-2.5 text-xs text-slate-700">
+                <ol className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
                   <li className="flex items-start gap-2.5">
-                    <span className="font-mono font-bold text-sky-700 shrink-0">01.</span>
+                    <span className="font-mono font-bold text-sky-700 dark:text-sky-400 shrink-0">01.</span>
                     <span>
                       Open the shared link in <strong>Safari</strong> on iPhone or iPad (or scan
                       the QR code with the Camera app).
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <span className="font-mono font-bold text-sky-700 shrink-0">02.</span>
+                    <span className="font-mono font-bold text-sky-700 dark:text-sky-400 shrink-0">02.</span>
                     <span>
                       Tap the <strong>Share</strong> button (square with upward arrow) in the
                       Safari toolbar.
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <span className="font-mono font-bold text-sky-700 shrink-0">03.</span>
+                    <span className="font-mono font-bold text-sky-700 dark:text-sky-400 shrink-0">03.</span>
                     <span>
                       Scroll down and tap <strong>Add to Home Screen</strong>, then tap{' '}
                       <strong>Add</strong> — SproutScale appears right beside your native apps!
@@ -390,23 +390,23 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
                   </li>
                 </ol>
               ) : (
-                <ol className="space-y-2.5 text-xs text-slate-700">
+                <ol className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
                   <li className="flex items-start gap-2.5">
-                    <span className="font-mono font-bold text-emerald-700 shrink-0">01.</span>
+                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 shrink-0">01.</span>
                     <span>
                       Open the shared link in <strong>Chrome</strong> (or Samsung Internet / Edge)
                       on Android or desktop.
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <span className="font-mono font-bold text-emerald-700 shrink-0">02.</span>
+                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 shrink-0">02.</span>
                     <span>
                       Tap <strong>Install SproutScale App</strong> right on the page — or tap the{' '}
                       <strong>⋮ browser menu</strong> in the top corner.
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <span className="font-mono font-bold text-emerald-700 shrink-0">03.</span>
+                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 shrink-0">03.</span>
                     <span>
                       Choose <strong>Install app</strong> / <strong>Add to Home screen</strong> to
                       launch SproutScale full-screen anytime.
@@ -415,12 +415,12 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
                 </ol>
               )}
 
-              <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400">
                 <span>Works on iOS &amp; Android</span>
                 <span className="mx-1.5" aria-hidden="true">·</span>
                 <span>No App Store fee</span>
                 <span className="mx-1.5" aria-hidden="true">·</span>
-                <span>Public access when app is shared/deployed</span>
+                <span>Full-screen mobile experience</span>
               </div>
             </div>
           </div>

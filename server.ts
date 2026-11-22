@@ -676,6 +676,354 @@ async function startServer(): Promise<void> {
   });
 
   // ============================================================================
+  // Personalized Storybook Time (Daytime Adventure & Bedtime Story + Read-Aloud)
+  // ============================================================================
+
+  app.post('/api/storybook/generate', async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as {
+        childName?: string;
+        ageMonths?: number;
+        sex?: string;
+        mode?: 'daytime' | 'bedtime';
+        storyDate?: string;
+        heightSummary?: string;
+        gainedSummary?: string;
+        todayPrompt?: string;
+        dayEvents?: string[];
+        photoCaptions?: string[];
+        photoDataUrls?: string[];
+      };
+
+      const safeName = String(body.childName || 'Little Sprout').trim().slice(0, 50) || 'Little Sprout';
+      const safeAgeMonths = clamp(Number(body.ageMonths ?? 36), 6, 216);
+      const ageYears = Math.floor(safeAgeMonths / 12);
+      const remMonths = safeAgeMonths % 12;
+      const ageDescription =
+        ageYears === 0
+          ? `${remMonths} months old`
+          : remMonths > 0
+            ? `${ageYears} years and ${remMonths} months old`
+            : `${ageYears} years old`;
+
+      const mode: 'daytime' | 'bedtime' = body.mode === 'bedtime' ? 'bedtime' : 'daytime';
+      const storyDate = String(body.storyDate || '').trim().slice(0, 20);
+      const heightSummary = String(body.heightSummary || '').trim().slice(0, 80);
+      const gainedSummary = String(body.gainedSummary || '').trim().slice(0, 100);
+      const todayPrompt = String(body.todayPrompt || '').trim().slice(0, 260);
+      const safeSex =
+        body.sex === 'boy' || body.sex === 'girl' ? body.sex : 'unspecified';
+
+      const dayEvents = Array.isArray(body.dayEvents)
+        ? body.dayEvents
+            .map((e) => String(e || '').trim().slice(0, 140))
+            .filter(Boolean)
+            .slice(0, 5)
+        : [];
+
+      const photoCaptions = Array.isArray(body.photoCaptions)
+        ? body.photoCaptions
+            .map((c) => String(c || '').trim().slice(0, 140))
+            .filter(Boolean)
+            .slice(0, 4)
+        : [];
+
+      const rawPhotos = Array.isArray(body.photoDataUrls) ? body.photoDataUrls.slice(0, 2) : [];
+      const imageParts: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+      for (const dataUrl of rawPhotos) {
+        if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) continue;
+        const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+        if (match && match[2].length <= 6 * 1024 * 1024) {
+          imageParts.push({
+            inlineData: {
+              mimeType: match[1],
+              data: match[2],
+            },
+          });
+        }
+      }
+
+      const ageReadingGuidance =
+        ageYears <= 3
+          ? 'Write for a toddler (ages 1–3): very short, musical, joyful sentences, playful sound words (swish, hop, giggle), warm repetition, 2–3 short sentences per page.'
+          : ageYears <= 6
+            ? 'Write for a preschooler / kindergartener (ages 4–6): vivid sensory imagery, gentle humor, simple wonder-filled storytelling, 3–4 sentences per page.'
+            : 'Write for a big kid (ages 7+): imaginative, expressive picture-book chapter feel, clever details celebrating their curiosity and growing confidence, 3–4 rich sentences per page.';
+
+      const modeDirection =
+        mode === 'bedtime'
+          ? `BEDTIME STORY MODE: Write a deeply calming, cozy, rhythmic goodnight story starring ${safeName}. Gently recall the happy moments of ${safeName}'s day, notice how tall and brave ${safeName} is growing, soften the pacing toward sleepy stars, warm blankets, and sweet dreams, and end Page 5 with a gentle goodnight tuck-in.`
+          : `DAYTIME ADVENTURE MODE: Write a bright, joyful, sun-drenched daytime adventure story starring ${safeName}. Celebrate curiosity, laughter, big-kid energy, and what ${safeName} explored or noticed today, and end Page 5 with an upbeat, proud cheer for ${safeName}.`;
+
+      const promptLines = [
+        `Create a personalized 5-page illustrated children's storybook strictly starring ${safeName} (${ageDescription}${safeSex !== 'unspecified' ? `, ${safeSex}` : ''}).`,
+        `CRITICAL: Every page must stay focused on ${safeName} by name (do NOT invent a different main child's name).`,
+        modeDirection,
+        ageReadingGuidance,
+        storyDate ? `Story date: ${storyDate}.` : '',
+        heightSummary ? `${safeName}'s current size: ${heightSummary}.` : '',
+        gainedSummary ? `Growth milestone: ${gainedSummary}.` : '',
+        todayPrompt ? `Parent's note about what happened today: "${todayPrompt}".` : '',
+        dayEvents.length > 0 ? `Memories/events from this day: ${dayEvents.join(' | ')}.` : '',
+        photoCaptions.length > 0 ? `Photo captions from this day: ${photoCaptions.join(' | ')}.` : '',
+        imageParts.length > 0
+          ? `ATTACHED PHOTOS (${imageParts.length}): Look closely at the attached real photo(s) from ${safeName}'s day (clothing colors, toys, setting, expressions, outdoor/indoor scenery) and naturally weave those warm, concrete real-life details into the story so ${safeName} recognizes their own day! Set \`usePhotoIndex\` to 0 (first photo) or 1 (second photo) on the 1–2 pages that best highlight those photos, and -1 on the other pages.`
+          : 'No photo images were attached; set `usePhotoIndex` to -1 on all pages.',
+        'Keep every word wholesome, safe, affectionate, and delightful for parents to read aloud.',
+      ].filter(Boolean);
+
+      const ai = getGenAIClient();
+      const requestParts: Array<
+        { inlineData: { mimeType: string; data: string } } | { text: string }
+      > = [...imageParts, { text: promptLines.join('\n') }];
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: { parts: requestParts },
+        config: {
+          systemInstruction:
+            'You are a beloved children’s picture book author writing custom Daytime Adventures and calming Bedtime Stories starring a real child by name, inspired by their day’s photos and growth milestones. Return strictly valid JSON matching the schema.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: {
+                type: Type.STRING,
+                description: 'Warm, charming children’s book title featuring the child’s name.',
+              },
+              subtitle: {
+                type: Type.STRING,
+                description: 'Short 4–10 word subtitle (e.g. "A Sunny Park Adventure for Tommy" or "A Starlight Goodnight Tale for Sandra").',
+              },
+              dedication: {
+                type: Type.STRING,
+                description: 'One short affectionate dedication line celebrating the child and today’s memories.',
+              },
+              pages: {
+                type: Type.ARRAY,
+                description: 'Exactly 5 story pages in order.',
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    pageNumber: { type: Type.INTEGER },
+                    heading: {
+                      type: Type.STRING,
+                      description: 'Short cozy chapter/page title (2–6 words).',
+                    },
+                    text: {
+                      type: Type.STRING,
+                      description: 'The read-aloud story text for this page (2–4 sentences tailored to the child’s age).',
+                    },
+                    sceneMood: {
+                      type: Type.STRING,
+                      description: 'One of: sunny, playful, wonder, cozy, sleepy.',
+                    },
+                    usePhotoIndex: {
+                      type: Type.INTEGER,
+                      description: '0 or 1 to spotlight an attached photo on this page, or -1 to show the storybook character illustration.',
+                    },
+                  },
+                  required: ['pageNumber', 'heading', 'text', 'sceneMood', 'usePhotoIndex'],
+                },
+              },
+              conversationPrompt: {
+                type: Type.STRING,
+                description: 'One sweet question a parent can ask the child at the end of the story.',
+              },
+              closingLine: {
+                type: Type.STRING,
+                description: 'Warm final goodnight line (for bedtime) or joyful adventure cheer (for daytime).',
+              },
+            },
+            required: [
+              'title',
+              'subtitle',
+              'dedication',
+              'pages',
+              'conversationPrompt',
+              'closingLine',
+            ],
+          },
+        },
+      });
+
+      const rawText = (response.text ?? '').trim();
+      if (!rawText) {
+        res.status(502).json({
+          error: 'The storybook writer returned an empty response. Please try generating again.',
+        });
+        return;
+      }
+
+      const parsed = JSON.parse(rawText) as {
+        title?: string;
+        subtitle?: string;
+        dedication?: string;
+        pages?: Array<{
+          pageNumber?: number;
+          heading?: string;
+          text?: string;
+          sceneMood?: string;
+          usePhotoIndex?: number;
+        }>;
+        conversationPrompt?: string;
+        closingLine?: string;
+      };
+
+      const validMoods = new Set(['sunny', 'playful', 'wonder', 'cozy', 'sleepy']);
+      const normalizedPages = (Array.isArray(parsed.pages) ? parsed.pages : [])
+        .slice(0, 5)
+        .map((p, idx) => {
+          const rawPhotoIdx = typeof p.usePhotoIndex === 'number' ? Math.round(p.usePhotoIndex) : -1;
+          const safePhotoIdx =
+            rawPhotoIdx >= 0 && rawPhotoIdx < imageParts.length ? rawPhotoIdx : -1;
+          const rawMood = String(p.sceneMood || '').toLowerCase();
+          return {
+            pageNumber: idx + 1,
+            heading: String(p.heading || `Page ${idx + 1}`).trim().slice(0, 80),
+            text: String(p.text || '').trim().slice(0, 700),
+            sceneMood: validMoods.has(rawMood)
+              ? (rawMood as 'sunny' | 'playful' | 'wonder' | 'cozy' | 'sleepy')
+              : mode === 'bedtime'
+                ? 'cozy'
+                : 'sunny',
+            usePhotoIndex: safePhotoIdx,
+          };
+        })
+        .filter((p) => p.text.length > 0);
+
+      if (normalizedPages.length === 0) {
+        res.status(502).json({
+          error: 'Could not format the storybook pages. Please try again.',
+        });
+        return;
+      }
+
+      res.json({
+        title: String(parsed.title || `${safeName}'s ${mode === 'bedtime' ? 'Bedtime' : 'Daytime'} Story`).trim().slice(0, 110),
+        subtitle: String(parsed.subtitle || `Made specially for ${safeName}`).trim().slice(0, 140),
+        dedication: String(parsed.dedication || `For ${safeName}, growing brighter every day.`).trim().slice(0, 200),
+        pages: normalizedPages,
+        conversationPrompt: String(
+          parsed.conversationPrompt || `What was your favorite part of today, ${safeName}?`,
+        )
+          .trim()
+          .slice(0, 200),
+        closingLine: String(
+          parsed.closingLine ||
+            (mode === 'bedtime'
+              ? `Sweet dreams, ${safeName}. See you in the morning!`
+              : `Hooray for ${safeName}'s big day!`),
+        )
+          .trim()
+          .slice(0, 180),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.includes('MISSING_GEMINI_API_KEY') ||
+        msg.includes('API_KEY_INVALID') ||
+        msg.includes('PERMISSION_DENIED')
+      ) {
+        res.status(403).json({
+          error:
+            'Gemini API key is missing or invalid. Please check GEMINI_API_KEY in Settings > Secrets.',
+        });
+        return;
+      }
+      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+        res.status(429).json({
+          error:
+            'Gemini API quota reached right now. Please try again shortly or use a billing-enabled API key in Settings > Secrets.',
+        });
+        return;
+      }
+      res.status(500).json({
+        error: `Could not create storybook right now (${msg.slice(0, 140)}). Please try again.`,
+      });
+    }
+  });
+
+  app.post('/api/storybook/read-aloud', async (req, res) => {
+    try {
+      const { text, mode } = (req.body ?? {}) as {
+        text?: string;
+        mode?: 'daytime' | 'bedtime';
+      };
+
+      const cleanText = String(text || '').trim().slice(0, 1200);
+      if (!cleanText) {
+        res.status(400).json({ error: 'Story text is required for read-aloud narration.' });
+        return;
+      }
+
+      const isBedtime = mode === 'bedtime';
+      const ai = getGenAIClient();
+      const ttsResponse = await ai.models.generateContent({
+        model: 'gemini-3.8-flash-lite-tts',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: cleanText,
+                speechMetadata: {
+                  style: isBedtime
+                    ? 'Very soft, slow, warm, soothing bedtime storyteller tucking a young child in to sleep'
+                    : 'Cheerful, warm, playful, expressive children’s picture book narrator reading a daytime adventure',
+                },
+              },
+            ],
+          },
+        ],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: isBedtime ? 'Kore' : 'Puck',
+              },
+            },
+          },
+        },
+      });
+
+      const base64Wav =
+        ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (!base64Wav) {
+        res.status(502).json({ error: 'Narration audio was empty. Please try again.' });
+        return;
+      }
+
+      res.json({
+        audioBase64: base64Wav,
+        mimeType: 'audio/wav',
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.includes('MISSING_GEMINI_API_KEY') ||
+        msg.includes('API_KEY_INVALID') ||
+        msg.includes('PERMISSION_DENIED')
+      ) {
+        res.status(403).json({
+          error: 'Gemini API key is missing or invalid in Settings > Secrets.',
+        });
+        return;
+      }
+      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+        res.status(429).json({
+          error: 'Gemini narration quota reached right now.',
+        });
+        return;
+      }
+      res.status(500).json({
+        error: `Read-aloud narration failed (${msg.slice(0, 120)}).`,
+      });
+    }
+  });
+
+  // ============================================================================
   // Meta (Facebook & Instagram) Third-Party OAuth & Graph API Publishing Routes
   // ============================================================================
 

@@ -18,9 +18,9 @@ import {
   where,
 } from 'firebase/firestore';
 import {
+  BookOpen,
   Cake,
   Camera,
-  ChartLine,
   Check,
   Gamepad2,
   Image as ImageIcon,
@@ -115,6 +115,7 @@ import {
   PWAInstallActionStrip,
 } from './components/MobileAppDownloadModal';
 import { KidsPlayroomPage } from './components/kidsGames/KidsPlayroomPage';
+import { StorybookTimePage } from './components/StorybookTimePage';
 import {
   DeletionExecutionResult,
   LegalPageId,
@@ -200,7 +201,7 @@ function loadStoredSelectedChildId(): string {
   return DEMO_CHILD.id;
 }
 
-type AppPageView = 'growth_wall' | 'playroom' | LegalPageId;
+type AppPageView = 'growth_wall' | 'playroom' | 'storybook' | LegalPageId;
 
 function resolveAppViewFromPath(pathname: string): AppPageView {
   const normalized = pathname.replace(/\/+$/, '').toLowerCase();
@@ -210,6 +211,7 @@ function resolveAppViewFromPath(pathname: string): AppPageView {
   if (normalized === '/contact' || normalized === '/contacts') return 'contact';
   if (normalized === '/data-deletion' || normalized === '/delete-data') return 'data-deletion';
   if (normalized === '/games' || normalized === '/playroom') return 'playroom';
+  if (normalized === '/storybook' || normalized === '/stories') return 'storybook';
   return 'growth_wall';
 }
 
@@ -227,6 +229,8 @@ function getPathForAppView(view: AppPageView): string {
       return '/data-deletion';
     case 'playroom':
       return '/games';
+    case 'storybook':
+      return '/storybook';
     default:
       return '/';
   }
@@ -384,7 +388,7 @@ function SproutScaleWorkspace() {
   const [isMobileAppModalOpen, setIsMobileAppModalOpen] = useState<boolean>(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
   const [mobileNavActive, setMobileNavActive] = useState<
-    'wall' | 'games' | 'ruler' | 'history' | 'app'
+    'wall' | 'storybook' | 'games' | 'ruler' | 'app'
   >('wall');
 
   useEffect(() => {
@@ -405,7 +409,7 @@ function SproutScaleWorkspace() {
   const navigateToGrowthWall = (sectionId?: string) => {
     setAppView('growth_wall');
     pushAppPath('growth_wall');
-    setMobileNavActive(sectionId === 'timeline' ? 'history' : 'wall');
+    setMobileNavActive('wall');
     if (sectionId) {
       window.setTimeout(() => {
         document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
@@ -419,6 +423,13 @@ function SproutScaleWorkspace() {
     setAppView('playroom');
     pushAppPath('playroom');
     setMobileNavActive('games');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateToStorybook = () => {
+    setAppView('storybook');
+    pushAppPath('storybook');
+    setMobileNavActive('storybook');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -2682,6 +2693,34 @@ function SproutScaleWorkspace() {
     }
   };
 
+  const handleQuickUploadStorybookDayPhotos = async (files: FileList) => {
+    const fileArray = Array.from(files).slice(0, 4);
+    if (fileArray.length === 0) return;
+    const todayIso = getTodayIsoDate();
+    const prepared: QuickLibraryPhotoItem[] = [];
+    for (const file of fileArray) {
+      if (!file.type.startsWith('image/')) continue;
+      const rawDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () =>
+          resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.onerror = () => reject(new Error('Could not read photo file.'));
+        reader.readAsDataURL(file);
+      });
+      if (!rawDataUrl) continue;
+      const dataUrl = await compressPhotoToStorageJpeg(rawDataUrl);
+      prepared.push({
+        dataUrl,
+        caption: `${activeChild.name}’s day (${formatHumanDate(todayIso)})`,
+        capturedDate: todayIso,
+        ageMonths: draftAgeMonths,
+      });
+    }
+    if (prepared.length > 0) {
+      await handleQuickImportLibraryPhotos(prepared);
+    }
+  };
+
   const handleCreateNewChild = async (newChild: NewChildCreationPayload) => {
     setIsSaving(true);
     const safeName =
@@ -3272,6 +3311,18 @@ function SproutScaleWorkspace() {
             </button>
             <button
               type="button"
+              onClick={navigateToStorybook}
+              className={`inline-flex items-center gap-1.5 hover:text-amber-700 dark:hover:text-amber-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                appView === 'storybook'
+                  ? 'text-amber-700 dark:text-amber-300 font-bold underline'
+                  : ''
+              }`}
+            >
+              <BookOpen className="w-4 h-4 shrink-0" aria-hidden="true" />
+              Storybook
+            </button>
+            <button
+              type="button"
               onClick={navigateToPlayroom}
               className={`inline-flex items-center gap-1.5 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline decoration-2 decoration-emerald-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 appView === 'playroom'
@@ -3288,13 +3339,6 @@ function SproutScaleWorkspace() {
               className="hover:text-sky-700 dark:hover:text-sky-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Photo Ruler
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateToGrowthWall('timeline')}
-              className="hover:text-sky-700 dark:hover:text-sky-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Milestones
             </button>
             <button
               type="button"
@@ -3330,8 +3374,8 @@ function SproutScaleWorkspace() {
         </div>
       </header>
 
-      {/* Main Content Container (1440px Desktop Presence via max-w-7xl) */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-12">
+      {/* Main Content Container (1440px Desktop Presence via max-w-7xl, extra mobile bottom padding for thumb nav) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6 pb-24 md:py-8 space-y-12">
         {appView === 'privacy' ||
         appView === 'terms' ||
         appView === 'support' ||
@@ -3359,6 +3403,25 @@ function SproutScaleWorkspace() {
             isDark={isDark}
             onToggleTheme={toggleTheme}
           />
+        ) : appView === 'storybook' ? (
+          <StorybookTimePage
+            activeChild={activeChild}
+            childrenList={activeChildrenList}
+            activePhotos={activePhotos}
+            activeEvents={activeEvents}
+            activeMeasurements={activeMeasurements}
+            currentHeightCm={draftHeightCm}
+            currentWeightKg={draftWeightKg}
+            currentAgeMonths={draftAgeMonths}
+            onSelectChild={(kidId) => {
+              pendingChildIdRef.current = null;
+              selectChildProfile(kidId);
+            }}
+            onBackToGrowthWall={() => navigateToGrowthWall('measure')}
+            onQuickUploadDayPhoto={handleQuickUploadStorybookDayPhotos}
+            isDark={isDark}
+            onToggleTheme={toggleTheme}
+          />
         ) : (
           <>
         {/* Hero Intro & Sibling Switcher Workspace Bar */}
@@ -3369,8 +3432,9 @@ function SproutScaleWorkspace() {
                 Watch how tall they’ve grown since turning two.
               </h1>
               <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
-                Enter your child’s date of birth, frame their real photo or camera picture onto
-                their lifelike avatar, and mark height and weight beside their 2-year-old self.
+                Enter your child’s date of birth, track height and weight beside their 2-year-old
+                SproutScale character, build their Photo Library, and read personalized Daytime
+                &amp; Bedtime Storybooks.
               </p>
 
               {/* Unboxed Child Info, Inline Quick Rename & Calculated Age Summary Line */}
@@ -3491,6 +3555,15 @@ function SproutScaleWorkspace() {
                 >
                   <Gamepad2 className="w-3.5 h-3.5" aria-hidden="true" />
                   Kids Playroom (Ages 2–8)
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={navigateToStorybook}
+                  className="inline-flex items-center gap-1 font-bold text-amber-800 dark:text-amber-300 hover:text-indigo-950 dark:hover:text-white hover:underline whitespace-nowrap cursor-pointer"
+                >
+                  <BookOpen className="w-3.5 h-3.5" aria-hidden="true" />
+                  Storybook Time (Day &amp; Bedtime)
                 </button>
               </div>
             </div>
@@ -3909,10 +3982,10 @@ function SproutScaleWorkspace() {
         </div>
       </footer>
 
-      {/* Mobile Thumb-Zone Bottom Tab Bar (<768px only, 56px height <= 15% sticky cap) */}
+      {/* Mobile Thumb-Zone Bottom Tab Bar (<768px only, safe-area aware, 56px core height <= 15% sticky cap) */}
       <nav
         aria-label="Mobile app bottom navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-14 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-amber-200 dark:border-slate-800 grid grid-cols-5 items-center px-1"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 min-h-[58px] pb-[env(safe-area-inset-bottom)] bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-amber-200 dark:border-slate-800 grid grid-cols-5 items-center px-1"
       >
         <button
           type="button"
@@ -3925,6 +3998,19 @@ function SproutScaleWorkspace() {
         >
           <Smartphone className="w-4 h-4" aria-hidden="true" />
           <span className="text-[10px] leading-none whitespace-nowrap">Wall</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={navigateToStorybook}
+          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
+            appView === 'storybook'
+              ? 'text-amber-700 dark:text-amber-300 font-bold'
+              : 'text-slate-600 dark:text-slate-400'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" aria-hidden="true" />
+          <span className="text-[10px] leading-none whitespace-nowrap">Storybook</span>
         </button>
 
         <button
@@ -3954,19 +4040,6 @@ function SproutScaleWorkspace() {
         >
           <Ruler className="w-4 h-4" aria-hidden="true" />
           <span className="text-[10px] leading-none whitespace-nowrap">Photo Ruler</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => navigateToGrowthWall('timeline')}
-          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
-            appView === 'growth_wall' && mobileNavActive === 'history'
-              ? 'text-sky-700 dark:text-sky-300 font-bold'
-              : 'text-slate-600 dark:text-slate-400'
-          }`}
-        >
-          <ChartLine className="w-4 h-4" aria-hidden="true" />
-          <span className="text-[10px] leading-none whitespace-nowrap">History</span>
         </button>
 
         <button
