@@ -21,13 +21,18 @@ import {
   Cake,
   Camera,
   ChartLine,
+  Check,
   Gamepad2,
   Image as ImageIcon,
   LogOut,
+  Moon,
+  Pencil,
   Plus,
   Ruler,
   Share2,
   Smartphone,
+  Sun,
+  X,
 } from 'lucide-react';
 import {
   clearAccessToken,
@@ -75,7 +80,10 @@ import {
   ControlDeckTab,
   MeasurementControlDeck,
 } from './components/MeasurementControlDeck';
-import { GrowthTimelineSection } from './components/GrowthTimelineSection';
+import {
+  GrowthTimelineSection,
+  MeasurementEditPayload,
+} from './components/GrowthTimelineSection';
 import {
   ChildPhotoAlbumSection,
   PhotoDetailsPatch,
@@ -108,6 +116,7 @@ import {
 } from './components/LegalSupportPages';
 import { LogoDownloadModal } from './components/LogoDownloadCard';
 import { usePWAInstall } from './hooks/usePWAInstall';
+import { useThemeMode } from './hooks/useThemeMode';
 import {
   clearAllLocalPhotoStorage,
   compressPhotoToStorageJpeg,
@@ -278,6 +287,12 @@ function SproutScaleWorkspace() {
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  // Light / Dark Mode & Quick Inline Child Rename state
+  const { isDark, toggleTheme } = useThemeMode();
+  const [isRenamingChild, setIsRenamingChild] = useState<boolean>(false);
+  const [quickRenameValue, setQuickRenameValue] = useState<string>('');
+  const [isSavingRename, setIsSavingRename] = useState<boolean>(false);
 
   // Refs that prevent Firestore onSnapshot from ever snapping back to the first child
   const selectedChildIdRef = useRef<string>(selectedChildId);
@@ -3071,6 +3086,132 @@ function SproutScaleWorkspace() {
     }
   };
 
+  const handleUpdateMeasurement = async (
+    measurementId: string,
+    updates: MeasurementEditPayload,
+  ) => {
+    if (measurementId === 'synthetic_age_2') return;
+    const safeAgeMonths = Math.round(
+      clampNumber(
+        updates.ageMonths,
+        VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+        VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+      ),
+    );
+    const safeHeightCm = Number(
+      clampNumber(
+        updates.heightCm,
+        VALIDATION_BOUNDS.HEIGHT_CM_MIN,
+        VALIDATION_BOUNDS.HEIGHT_CM_MAX,
+      ).toFixed(1),
+    );
+    const safeWeightKg = Number(
+      clampNumber(
+        updates.weightKg,
+        VALIDATION_BOUNDS.WEIGHT_KG_MIN,
+        VALIDATION_BOUNDS.WEIGHT_KG_MAX,
+      ).toFixed(1),
+    );
+    const safeDate = VALIDATION_BOUNDS.DATE_PATTERN.test(updates.recordedDate)
+      ? updates.recordedDate
+      : getTodayIsoDate();
+    const safeNote = updates.note.trim().slice(0, VALIDATION_BOUNDS.NOTE_MAX_LEN);
+
+    const targetChildId = activeChild.id;
+
+    if (user) {
+      setCloudMeasurementsByChild((prev) => ({
+        ...prev,
+        [targetChildId]: (prev[targetChildId] ?? [])
+          .map((m) =>
+            m.id === measurementId
+              ? {
+                  ...m,
+                  ageMonths: safeAgeMonths,
+                  heightCm: safeHeightCm,
+                  weightKg: safeWeightKg,
+                  recordedDate: safeDate,
+                  note: safeNote,
+                }
+              : m,
+          )
+          .sort((a, b) => a.ageMonths - b.ageMonths),
+      }));
+
+      const path = `children/${targetChildId}/measurements/${measurementId}`;
+      try {
+        await updateDoc(doc(db, 'children', targetChildId, 'measurements', measurementId), {
+          ageMonths: safeAgeMonths,
+          heightCm: safeHeightCm,
+          weightKg: safeWeightKg,
+          recordedDate: safeDate,
+          note: safeNote,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, path);
+      }
+      showTransientBanner(
+        'success',
+        `Updated ${activeChild.name}’s milestone to ${formatFeetInches(safeHeightCm)} & ${formatPounds(safeWeightKg)}.`,
+      );
+    } else {
+      setDemoMeasurementsMap((prev) => ({
+        ...prev,
+        [targetChildId]: (prev[targetChildId] ?? [])
+          .map((m) =>
+            m.id === measurementId
+              ? {
+                  ...m,
+                  ageMonths: safeAgeMonths,
+                  heightCm: safeHeightCm,
+                  weightKg: safeWeightKg,
+                  recordedDate: safeDate,
+                  note: safeNote,
+                }
+              : m,
+          )
+          .sort((a, b) => a.ageMonths - b.ageMonths),
+      }));
+      showTransientBanner(
+        'success',
+        `Updated ${activeChild.name}’s milestone to ${formatFeetInches(safeHeightCm)} & ${formatPounds(safeWeightKg)}.`,
+      );
+    }
+  };
+
+  const handleQuickRenameChild = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = quickRenameValue.trim().slice(0, VALIDATION_BOUNDS.NAME_MAX_LEN);
+    if (!trimmed) return;
+    const targetChildId = activeChild.id;
+    setIsSavingRename(true);
+    try {
+      if (user) {
+        setCloudChildren((prev) =>
+          prev.map((c) => (c.id === targetChildId ? { ...c, name: trimmed } : c)),
+        );
+        const path = `children/${targetChildId}`;
+        try {
+          await updateDoc(doc(db, 'children', targetChildId), {
+            name: trimmed,
+            updatedAt: serverTimestamp(),
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.UPDATE, path);
+        }
+      } else {
+        setDemoChildren((prev) =>
+          prev.map((c) => (c.id === targetChildId ? { ...c, name: trimmed } : c)),
+        );
+      }
+      setIsRenamingChild(false);
+      showTransientBanner('success', `Renamed child profile to ${trimmed}!`);
+    } finally {
+      setIsSavingRename(false);
+    }
+  };
+
   const handleDeleteMeasurement = async (measurementId: string) => {
     if (measurementId === 'synthetic_age_2') return;
     if (user) {
@@ -3116,15 +3257,15 @@ function SproutScaleWorkspace() {
     draftAgeMonths !== latestMilestone.ageMonths;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-100 via-amber-50/80 to-emerald-50/80 text-slate-900 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-sky-100 via-amber-50/80 to-emerald-50/80 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-200">
       {/* Strict 3-Zone Top Bar Contract (md:sticky keeps mobile sticky budget strictly on bottom tab bar <= 15%) */}
-      <header className="md:sticky md:top-0 z-30 bg-white/95 backdrop-blur-xs border-b-2 border-amber-300">
+      <header className="md:sticky md:top-0 z-30 bg-white/95 dark:bg-slate-950/90 backdrop-blur-xs border-b-2 border-amber-300 dark:border-slate-800">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-8 px-4 sm:px-6 py-3">
           {/* Zone 1: Single Wordmark Element */}
           <button
             type="button"
             onClick={() => navigateToGrowthWall('measure')}
-            className="text-xl font-bold tracking-tight text-indigo-950 font-display whitespace-nowrap shrink-0 cursor-pointer"
+            className="text-xl font-bold tracking-tight text-indigo-950 dark:text-white font-display whitespace-nowrap shrink-0 cursor-pointer"
           >
             SproutScale
           </button>
@@ -3132,7 +3273,7 @@ function SproutScaleWorkspace() {
           {/* Zone 2: 5 Concise Single-Line Navigation Links */}
           <nav
             aria-label="Primary navigation"
-            className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-700"
+            className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-700 dark:text-slate-300"
           >
             <button
               type="button"
@@ -3140,8 +3281,8 @@ function SproutScaleWorkspace() {
                 setActiveDeckTab('measure');
                 navigateToGrowthWall('measure');
               }}
-              className={`hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                appView === 'growth_wall' ? 'text-indigo-950 underline' : ''
+              className={`hover:text-sky-700 dark:hover:text-sky-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                appView === 'growth_wall' ? 'text-indigo-950 dark:text-white underline' : ''
               }`}
             >
               Growth Wall
@@ -3149,8 +3290,10 @@ function SproutScaleWorkspace() {
             <button
               type="button"
               onClick={navigateToPlayroom}
-              className={`inline-flex items-center gap-1.5 hover:text-emerald-700 hover:underline decoration-2 decoration-emerald-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                appView === 'playroom' ? 'text-emerald-700 font-bold underline' : ''
+              className={`inline-flex items-center gap-1.5 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline decoration-2 decoration-emerald-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                appView === 'playroom'
+                  ? 'text-emerald-700 dark:text-emerald-400 font-bold underline'
+                  : ''
               }`}
             >
               <Gamepad2 className="w-4 h-4 shrink-0" aria-hidden="true" />
@@ -3159,21 +3302,21 @@ function SproutScaleWorkspace() {
             <button
               type="button"
               onClick={() => setIsWallEstimatorOpen(true)}
-              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="hover:text-sky-700 dark:hover:text-sky-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Photo Ruler
             </button>
             <button
               type="button"
               onClick={() => navigateToGrowthWall('timeline')}
-              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="hover:text-sky-700 dark:hover:text-sky-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Milestones
             </button>
             <button
               type="button"
               onClick={() => setIsMobileAppModalOpen(true)}
-              className="hover:text-sky-700 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="hover:text-sky-700 dark:hover:text-sky-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               {isInstalled ? 'Share App' : 'Download App'}
             </button>
@@ -3230,6 +3373,8 @@ function SproutScaleWorkspace() {
               selectChildProfile(kidId);
             }}
             onBackToGrowthWall={() => navigateToGrowthWall('measure')}
+            isDark={isDark}
+            onToggleTheme={toggleTheme}
           />
         ) : (
           <>
@@ -3237,26 +3382,76 @@ function SproutScaleWorkspace() {
         <section id="measure" className="space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
             <div className="space-y-2 max-w-2xl">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-indigo-950 [text-wrap:balance]">
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-indigo-950 dark:text-white [text-wrap:balance]">
                 Watch how tall they’ve grown since turning two.
               </h1>
-              <p className="text-sm sm:text-base text-slate-700 leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 leading-relaxed">
                 Enter your child’s date of birth, frame their real photo or camera picture onto
                 their lifelike avatar, and mark height and weight beside their 2-year-old self.
               </p>
 
-              {/* Unboxed Child Info & Calculated Age Summary Line */}
-              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pt-0.5 text-xs text-slate-700">
-                <span className="font-bold text-indigo-950">{activeChild.name}</span>
+              {/* Unboxed Child Info, Inline Quick Rename & Calculated Age Summary Line */}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 pt-0.5 text-xs text-slate-700 dark:text-slate-300">
+                {isRenamingChild ? (
+                  <form
+                    onSubmit={handleQuickRenameChild}
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <input
+                      type="text"
+                      value={quickRenameValue}
+                      onChange={(e) => setQuickRenameValue(e.target.value)}
+                      maxLength={VALIDATION_BOUNDS.NAME_MAX_LEN}
+                      aria-label="Child name"
+                      autoFocus
+                      className="w-36 px-2 py-0.5 text-xs font-bold rounded-md border border-sky-400 dark:border-sky-500 bg-white dark:bg-slate-800 text-indigo-950 dark:text-white"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSavingRename || !quickRenameValue.trim()}
+                      aria-label="Save new name"
+                      className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      <Check className="w-3 h-3" aria-hidden="true" />
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsRenamingChild(false)}
+                      aria-label="Cancel rename"
+                      className="p-0.5 rounded-md text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </form>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="font-bold text-indigo-950 dark:text-white">
+                      {activeChild.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickRenameValue(activeChild.name);
+                        setIsRenamingChild(true);
+                      }}
+                      title="Rename child"
+                      className="inline-flex items-center gap-0.5 text-[11px] font-bold text-amber-800 dark:text-amber-300 hover:underline cursor-pointer"
+                    >
+                      <Pencil className="w-3 h-3" aria-hidden="true" />
+                      Rename
+                    </button>
+                  </span>
+                )}
                 <span aria-hidden="true">·</span>
                 {activeChildLiveAge ? (
                   <>
-                    <span className="inline-flex items-center gap-1 font-semibold text-sky-900">
+                    <span className="inline-flex items-center gap-1 font-semibold text-sky-900 dark:text-sky-300">
                       <Cake className="w-3.5 h-3.5 text-rose-500 shrink-0" aria-hidden="true" />
                       Age {activeChildLiveAge.formattedExactAge}
                     </span>
                     <span aria-hidden="true">·</span>
-                    <span className="font-mono tabular-nums text-slate-600">
+                    <span className="font-mono tabular-nums text-slate-600 dark:text-slate-400">
                       Born {formatHumanDate(activeChild.birthDate)}
                     </span>
                   </>
@@ -3264,7 +3459,7 @@ function SproutScaleWorkspace() {
                   <button
                     type="button"
                     onClick={() => setActiveDeckTab('character')}
-                    className="font-bold text-sky-800 hover:underline cursor-pointer"
+                    className="font-bold text-sky-800 dark:text-sky-300 hover:underline cursor-pointer"
                   >
                     Enter Date of Birth to auto-calculate age
                   </button>
@@ -3273,7 +3468,7 @@ function SproutScaleWorkspace() {
                 <button
                   type="button"
                   onClick={() => setIsPhotoModalOpen(true)}
-                  className="inline-flex items-center gap-1 font-bold text-sky-800 hover:text-indigo-950 hover:underline cursor-pointer"
+                  className="inline-flex items-center gap-1 font-bold text-sky-800 dark:text-sky-300 hover:text-indigo-950 dark:hover:text-white hover:underline cursor-pointer"
                 >
                   <Camera className="w-3.5 h-3.5" aria-hidden="true" />
                   {activeAvatarPhotoUrl ? 'Update Child Photo' : 'Take / Upload Child Photo'}
@@ -3282,7 +3477,7 @@ function SproutScaleWorkspace() {
                 <button
                   type="button"
                   onClick={() => setIsWallEstimatorOpen(true)}
-                  className="inline-flex items-center gap-1 font-bold text-emerald-800 hover:text-indigo-950 hover:underline cursor-pointer"
+                  className="inline-flex items-center gap-1 font-bold text-emerald-800 dark:text-emerald-400 hover:text-indigo-950 dark:hover:text-white hover:underline cursor-pointer"
                 >
                   <Ruler className="w-3.5 h-3.5" aria-hidden="true" />
                   Measure by Fridge / Wall Photo (69&quot; Calibrated)
@@ -3290,7 +3485,7 @@ function SproutScaleWorkspace() {
                 <span aria-hidden="true">·</span>
                 <a
                   href="#photo-album"
-                  className="inline-flex items-center gap-1 font-bold text-indigo-800 hover:text-sky-800 hover:underline whitespace-nowrap"
+                  className="inline-flex items-center gap-1 font-bold text-indigo-800 dark:text-indigo-300 hover:text-sky-800 dark:hover:text-white hover:underline whitespace-nowrap"
                 >
                   <ImageIcon className="w-3.5 h-3.5" aria-hidden="true" />
                   Portfolio &amp; Gallery ({activePhotos.length} photos · {activeEvents.length}{' '}
@@ -3300,7 +3495,7 @@ function SproutScaleWorkspace() {
                 <button
                   type="button"
                   onClick={() => openAddMemoryModal()}
-                  className="inline-flex items-center gap-1 font-bold text-amber-800 hover:text-indigo-950 hover:underline whitespace-nowrap cursor-pointer"
+                  className="inline-flex items-center gap-1 font-bold text-amber-800 dark:text-amber-300 hover:text-indigo-950 dark:hover:text-white hover:underline whitespace-nowrap cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" aria-hidden="true" />
                   Add Photos / Event
@@ -3309,7 +3504,7 @@ function SproutScaleWorkspace() {
                 <button
                   type="button"
                   onClick={() => openSocialShareModal()}
-                  className="inline-flex items-center gap-1 font-bold text-rose-700 hover:text-indigo-950 hover:underline whitespace-nowrap cursor-pointer"
+                  className="inline-flex items-center gap-1 font-bold text-rose-700 dark:text-rose-400 hover:text-indigo-950 dark:hover:text-white hover:underline whitespace-nowrap cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5" aria-hidden="true" />
                   Share to FB / IG
@@ -3318,21 +3513,40 @@ function SproutScaleWorkspace() {
                 <button
                   type="button"
                   onClick={navigateToPlayroom}
-                  className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:text-indigo-950 hover:underline whitespace-nowrap cursor-pointer"
+                  className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400 hover:text-indigo-950 dark:hover:text-white hover:underline whitespace-nowrap cursor-pointer"
                 >
                   <Gamepad2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  Kids Playroom (Ages 2–5)
+                  Kids Playroom (Ages 2–6)
                 </button>
               </div>
             </div>
 
-            {/* Child Switcher, Mobile App Install/Share & Account Sync Controls */}
+            {/* Child Switcher, Light/Dark Toggle, Mobile App Install/Share & Account Sync Controls */}
             <div className="flex flex-col sm:items-end gap-2.5">
               <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-sky-300/80 dark:border-slate-700 bg-white/90 dark:bg-slate-900 text-indigo-950 dark:text-amber-300 hover:bg-sky-50 dark:hover:bg-slate-800 shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  {isDark ? (
+                    <>
+                      <Sun className="w-3.5 h-3.5" aria-hidden="true" />
+                      Light Mode
+                    </>
+                  ) : (
+                    <>
+                      <Moon className="w-3.5 h-3.5" aria-hidden="true" />
+                      Dark Mode
+                    </>
+                  )}
+                </button>
+
                 <div
                   role="group"
                   aria-label="Select child profile"
-                  className="flex flex-wrap items-center gap-1.5 p-1 bg-sky-200/80 rounded-lg border border-sky-300/70"
+                  className="flex flex-wrap items-center gap-1.5 p-1 bg-sky-200/80 dark:bg-slate-800/90 rounded-lg border border-sky-300/70 dark:border-slate-700"
                 >
                   {activeChildrenList.map((kid) => {
                     const isSelected = kid.id === activeChild.id;
@@ -3340,8 +3554,6 @@ function SproutScaleWorkspace() {
                     const kidAgeShort = kid.birthDate
                       ? calculateExactAgeFromDob(kid.birthDate)?.formattedShortAge
                       : null;
-                    const accentHex =
-                      CHARACTER_PALETTES[kid.paletteId]?.accentHex ?? '#0284c7';
 
                     return (
                       <button
@@ -3354,13 +3566,14 @@ function SproutScaleWorkspace() {
                             setIsPlayingTimelapse(false);
                           }
                           pendingChildIdRef.current = null;
+                          setIsRenamingChild(false);
                           setDraftNote('');
                           selectChildProfile(kid.id);
                         }}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                           isSelected
                             ? 'bg-amber-400 text-slate-950 shadow-xs'
-                            : 'text-indigo-950/85 hover:text-indigo-950 hover:bg-white/70'
+                            : 'text-indigo-950/85 dark:text-slate-200 hover:text-indigo-950 dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-700'
                         }`}
                       >
                         <img
@@ -3398,26 +3611,26 @@ function SproutScaleWorkspace() {
               </div>
 
               {user ? (
-                <div className="flex items-center gap-2 text-xs text-slate-700">
+                <div className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
                   <span>Saved to {user.displayName?.split(' ')[0] ?? 'Family'}</span>
                   <span aria-hidden="true">·</span>
                   <button
                     type="button"
                     onClick={handleSignOut}
-                    className="inline-flex items-center gap-1 font-bold text-indigo-950 hover:text-sky-700 whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1 font-bold text-indigo-950 dark:text-white hover:text-sky-700 dark:hover:text-sky-300 whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
                     Sign out
                   </button>
                 </div>
               ) : (
-                <div className="text-xs text-slate-700">
+                <div className="text-xs text-slate-700 dark:text-slate-300">
                   <span>Interactive Playground</span>
                   <span className="mx-1.5" aria-hidden="true">·</span>
                   <button
                     type="button"
                     onClick={handleGoogleSignIn}
-                    className="font-bold text-sky-800 hover:text-indigo-950 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                    className="font-bold text-sky-800 dark:text-sky-300 hover:text-indigo-950 dark:hover:text-white hover:underline whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     Sign in with Google to keep records
                   </button>
@@ -3429,15 +3642,15 @@ function SproutScaleWorkspace() {
           {authError && (
             <div
               role="alert"
-              className="px-4 py-3 text-xs font-medium text-red-800 bg-red-50 border border-red-200 rounded-xl"
+              className="px-4 py-3 text-xs font-medium text-red-800 dark:text-red-200 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-xl"
             >
               {authError}
             </div>
           )}
 
           {isLoadingCloud ? (
-            <div className="bg-white border-2 border-sky-200 rounded-2xl p-12 text-center shadow-xs">
-              <p className="text-sm font-semibold text-indigo-950">
+            <div className="bg-white dark:bg-slate-900 border-2 border-sky-200 dark:border-slate-700 rounded-2xl p-12 text-center shadow-xs">
+              <p className="text-sm font-semibold text-indigo-950 dark:text-white">
                 Loading your family’s growth wall...
               </p>
             </div>
@@ -3508,7 +3721,7 @@ function SproutScaleWorkspace() {
           )}
         </section>
 
-        {/* Section 2: Growth Trajectory Curve & Wall Marks Table */}
+        {/* Section 2: Growth Trajectory Curve, Velocity Chart & Wall Marks Table */}
         <GrowthTimelineSection
           childProfile={activeChild}
           measurements={activeMeasurements}
@@ -3516,6 +3729,7 @@ function SproutScaleWorkspace() {
           events={activeEvents}
           avatarPhotoUrl={activeAvatarPhotoUrl}
           onInspectMilestone={handleInspectMilestone}
+          onUpdateMeasurement={handleUpdateMeasurement}
           onDeleteMeasurement={handleDeleteMeasurement}
           onAddPhotoForMilestone={(m) =>
             openAddMemoryModal({
@@ -3578,59 +3792,76 @@ function SproutScaleWorkspace() {
       </main>
 
       {/* Clean Quiet Footer (extra bottom padding on mobile for thumb-zone tab bar) */}
-      <footer className="border-t-2 border-amber-200 bg-white/95 pb-20 md:pb-0">
-        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-4 text-xs text-slate-600">
+      <footer className="border-t-2 border-amber-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 pb-20 md:pb-0">
+        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-4 text-xs text-slate-600 dark:text-slate-400">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="font-medium text-indigo-950">
+            <p className="font-medium text-indigo-950 dark:text-white">
               SproutScale — Family Height &amp; Weight Growth Wall
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4">
               <button
                 type="button"
+                onClick={toggleTheme}
+                className="inline-flex items-center gap-1 font-semibold text-indigo-950 dark:text-amber-300 hover:underline whitespace-nowrap cursor-pointer"
+              >
+                {isDark ? (
+                  <>
+                    <Sun className="w-3.5 h-3.5" aria-hidden="true" />
+                    Light Mode
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-3.5 h-3.5" aria-hidden="true" />
+                    Dark Mode
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={() => navigateToGrowthWall('measure')}
-                className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+                className="hover:text-sky-700 dark:hover:text-sky-300 transition-colors whitespace-nowrap cursor-pointer"
               >
                 Growth Wall
               </button>
               <button
                 type="button"
                 onClick={navigateToPlayroom}
-                className="font-semibold text-emerald-700 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
+                className="font-semibold text-emerald-700 dark:text-emerald-400 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap cursor-pointer"
               >
-                Kids Games (Ages 2–5)
+                Kids Games (Ages 2–6)
               </button>
               <button
                 type="button"
                 onClick={() => navigateToGrowthWall('timeline')}
-                className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+                className="hover:text-sky-700 dark:hover:text-sky-300 transition-colors whitespace-nowrap cursor-pointer"
               >
                 Milestones
               </button>
               <button
                 type="button"
                 onClick={() => navigateToGrowthWall('photo-album')}
-                className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+                className="hover:text-sky-700 dark:hover:text-sky-300 transition-colors whitespace-nowrap cursor-pointer"
               >
                 Saved Photos
               </button>
               <button
                 type="button"
                 onClick={() => navigateToGrowthWall('drive-vault')}
-                className="hover:text-sky-700 transition-colors whitespace-nowrap cursor-pointer"
+                className="hover:text-sky-700 dark:hover:text-sky-300 transition-colors whitespace-nowrap cursor-pointer"
               >
                 Google Drive
               </button>
               <button
                 type="button"
                 onClick={() => setIsMobileAppModalOpen(true)}
-                className="font-semibold text-sky-800 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
+                className="font-semibold text-sky-800 dark:text-sky-300 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap cursor-pointer"
               >
                 {isInstalled ? 'Share App Link' : 'Download Mobile App'}
               </button>
             </div>
           </div>
 
-          <div className="pt-3 border-t border-amber-100 flex flex-wrap items-center justify-center sm:justify-between gap-x-5 gap-y-2 text-[11px] text-slate-500">
+          <div className="pt-3 border-t border-amber-100 dark:border-slate-800 flex flex-wrap items-center justify-center sm:justify-between gap-x-5 gap-y-2 text-[11px] text-slate-500 dark:text-slate-400">
             <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
               <a
                 href="/privacy"
@@ -3638,7 +3869,7 @@ function SproutScaleWorkspace() {
                   e.preventDefault();
                   navigateToLegalPage('privacy');
                 }}
-                className="font-semibold text-slate-600 hover:text-indigo-950 transition-colors whitespace-nowrap"
+                className="font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap"
               >
                 Privacy Policy
               </a>
@@ -3648,7 +3879,7 @@ function SproutScaleWorkspace() {
                   e.preventDefault();
                   navigateToLegalPage('terms');
                 }}
-                className="font-semibold text-slate-600 hover:text-indigo-950 transition-colors whitespace-nowrap"
+                className="font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap"
               >
                 Terms of Service
               </a>
@@ -3658,7 +3889,7 @@ function SproutScaleWorkspace() {
                   e.preventDefault();
                   navigateToLegalPage('support');
                 }}
-                className="font-semibold text-slate-600 hover:text-indigo-950 transition-colors whitespace-nowrap"
+                className="font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap"
               >
                 Support
               </a>
@@ -3668,7 +3899,7 @@ function SproutScaleWorkspace() {
                   e.preventDefault();
                   navigateToLegalPage('contact');
                 }}
-                className="font-semibold text-slate-600 hover:text-indigo-950 transition-colors whitespace-nowrap"
+                className="font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap"
               >
                 Contact
               </a>
@@ -3678,14 +3909,14 @@ function SproutScaleWorkspace() {
                   e.preventDefault();
                   navigateToLegalPage('data-deletion');
                 }}
-                className="font-semibold text-rose-700 hover:text-rose-900 transition-colors whitespace-nowrap"
+                className="font-semibold text-rose-700 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 transition-colors whitespace-nowrap"
               >
                 Data Deletion
               </a>
               <button
                 type="button"
                 onClick={() => setIsLogoModalOpen(true)}
-                className="font-semibold text-sky-700 hover:text-indigo-950 transition-colors whitespace-nowrap cursor-pointer"
+                className="font-semibold text-sky-700 dark:text-sky-300 hover:text-indigo-950 dark:hover:text-white transition-colors whitespace-nowrap cursor-pointer"
               >
                 Download Logo (1024×1024)
               </button>
@@ -3698,15 +3929,15 @@ function SproutScaleWorkspace() {
       {/* Mobile Thumb-Zone Bottom Tab Bar (<768px only, 56px height <= 15% sticky cap) */}
       <nav
         aria-label="Mobile app bottom navigation"
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-14 bg-white/95 backdrop-blur-md border-t border-amber-200 grid grid-cols-5 items-center px-1"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-14 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-amber-200 dark:border-slate-800 grid grid-cols-5 items-center px-1"
       >
         <button
           type="button"
           onClick={() => navigateToGrowthWall('measure')}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
             appView === 'growth_wall' && mobileNavActive === 'wall'
-              ? 'text-sky-700 font-bold'
-              : 'text-slate-600'
+              ? 'text-sky-700 dark:text-sky-300 font-bold'
+              : 'text-slate-600 dark:text-slate-400'
           }`}
         >
           <Smartphone className="w-4 h-4" aria-hidden="true" />
@@ -3717,7 +3948,9 @@ function SproutScaleWorkspace() {
           type="button"
           onClick={navigateToPlayroom}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
-            appView === 'playroom' ? 'text-emerald-700 font-bold' : 'text-slate-600'
+            appView === 'playroom'
+              ? 'text-emerald-700 dark:text-emerald-400 font-bold'
+              : 'text-slate-600 dark:text-slate-400'
           }`}
         >
           <Gamepad2 className="w-4 h-4" aria-hidden="true" />
@@ -3731,7 +3964,9 @@ function SproutScaleWorkspace() {
             setIsWallEstimatorOpen(true);
           }}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
-            mobileNavActive === 'ruler' ? 'text-emerald-700 font-bold' : 'text-slate-600'
+            mobileNavActive === 'ruler'
+              ? 'text-emerald-700 dark:text-emerald-400 font-bold'
+              : 'text-slate-600 dark:text-slate-400'
           }`}
         >
           <Ruler className="w-4 h-4" aria-hidden="true" />
@@ -3743,8 +3978,8 @@ function SproutScaleWorkspace() {
           onClick={() => navigateToGrowthWall('timeline')}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
             appView === 'growth_wall' && mobileNavActive === 'history'
-              ? 'text-sky-700 font-bold'
-              : 'text-slate-600'
+              ? 'text-sky-700 dark:text-sky-300 font-bold'
+              : 'text-slate-600 dark:text-slate-400'
           }`}
         >
           <ChartLine className="w-4 h-4" aria-hidden="true" />
@@ -3758,7 +3993,9 @@ function SproutScaleWorkspace() {
             setIsMobileAppModalOpen(true);
           }}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
-            mobileNavActive === 'app' ? 'text-amber-700 font-bold' : 'text-slate-600'
+            mobileNavActive === 'app'
+              ? 'text-amber-700 dark:text-amber-300 font-bold'
+              : 'text-slate-600 dark:text-slate-400'
           }`}
         >
           <Share2 className="w-4 h-4" aria-hidden="true" />

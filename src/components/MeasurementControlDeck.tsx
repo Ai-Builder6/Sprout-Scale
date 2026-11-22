@@ -614,13 +614,13 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
   };
 
   return (
-    <div className="bg-white border-2 border-amber-200 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5 shadow-xs">
+    <div className="bg-white dark:bg-slate-900 border-2 border-amber-200 dark:border-slate-700 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5 shadow-xs">
       {/* Segmented Control Deck Tabs */}
       <div className="space-y-4">
         <div
           role="tablist"
           aria-label="Measurement and child info controls"
-          className="grid grid-cols-2 gap-1 p-1 bg-sky-100 rounded-lg"
+          className="grid grid-cols-2 gap-1 p-1 bg-sky-100 dark:bg-slate-800 rounded-lg"
         >
           <button
             type="button"
@@ -630,7 +630,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             className={`px-3 py-2 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'measure'
                 ? 'bg-amber-400 text-slate-950 shadow-xs'
-                : 'text-sky-900 hover:text-indigo-950'
+                : 'text-sky-900 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
             }`}
           >
             Mark Height &amp; Weight
@@ -643,7 +643,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             className={`px-3 py-2 text-xs font-bold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'character'
                 ? 'bg-amber-400 text-slate-950 shadow-xs'
-                : 'text-sky-900 hover:text-indigo-950'
+                : 'text-sky-900 dark:text-slate-300 hover:text-indigo-950 dark:hover:text-white'
             }`}
           >
             Child Info &amp; Avatar
@@ -655,12 +655,12 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             role="status"
             className={`px-3.5 py-2.5 rounded-lg text-xs font-medium flex items-center gap-2 border ${
               statusBanner.type === 'success'
-                ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                : 'bg-red-50 text-red-900 border-red-200'
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'
+                : 'bg-red-50 dark:bg-red-950/60 text-red-900 dark:text-red-200 border-red-200 dark:border-red-800'
             }`}
           >
             {statusBanner.type === 'success' && (
-              <Check className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
+              <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
             )}
             <span>{statusBanner.message}</span>
           </div>
@@ -669,14 +669,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
       {activeTab === 'measure' ? (
         <form noValidate onSubmit={onSubmitMeasurement} className="space-y-5">
-          <div className="flex items-center justify-between gap-2 pb-2 border-b border-sky-100">
-            <span className="text-xs font-bold text-indigo-950">
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-sky-100 dark:border-slate-800">
+            <span className="text-xs font-bold text-indigo-950 dark:text-white">
               Measuring: {childProfile.name}
             </span>
             <button
               type="button"
               onClick={onOpenAddChildModal}
-              className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 hover:text-emerald-950 hover:underline cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-400 hover:text-emerald-950 dark:hover:text-emerald-300 hover:underline cursor-pointer"
             >
               <UserPlus className="w-3.5 h-3.5" aria-hidden="true" />
               + Add Another Child
@@ -684,9 +684,9 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           </div>
 
           {/* Hands-Free "Speak It" Voice Measurement Bar */}
-          <div className="p-3 bg-sky-50/90 border border-sky-200 rounded-xl space-y-2">
+          <div className="p-3 bg-sky-50/90 dark:bg-slate-800/90 border border-sky-200 dark:border-slate-700 rounded-xl space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-indigo-950">
+              <span className="text-xs font-bold text-indigo-950 dark:text-white">
                 Hands-Free Voice Entry
               </span>
               <button
@@ -712,27 +712,28 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 )}
               </button>
             </div>
-            <p className="text-[11px] font-medium text-sky-900 leading-snug">
+            <p className="text-[11px] font-medium text-sky-900 dark:text-sky-300 leading-snug">
               {spokenMeasurementStatus}
             </p>
           </div>
+
           {/* Height Slider + Feet & Inches Controls (Imperial Primary, cm Secondary) */}
           <div className="space-y-2.5">
             <div className="flex items-baseline justify-between gap-2">
               <label
                 htmlFor="height-slider"
-                className="text-sm font-bold text-indigo-950"
+                className="text-sm font-bold text-indigo-950 dark:text-white"
               >
                 Height Today (ft &amp; in)
               </label>
               <div className="text-right">
-                <span className="text-base font-bold font-mono tabular-nums text-sky-700">
+                <span className="text-base font-bold font-mono tabular-nums text-sky-700 dark:text-sky-300">
                   {formatFeetInches(draftHeightCm)}{' '}
-                  <span className="text-xs font-bold text-indigo-950">
+                  <span className="text-xs font-bold text-indigo-950 dark:text-slate-200">
                     ({formatTotalInches(draftHeightCm)})
                   </span>
                 </span>
-                <span className="block text-[11px] font-mono tabular-nums text-slate-400">
+                <span className="block text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
                   {formatMetricHeight(draftHeightCm)}
                 </span>
               </div>
@@ -743,7 +744,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 type="button"
                 aria-label="Decrease height by half an inch"
                 onClick={() => applyDraftInches(draftTotalInchesNum - 0.5)}
-                className="w-10 h-10 flex items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100 transition-colors shrink-0 cursor-pointer"
+                className="w-10 h-10 flex items-center justify-center rounded-lg border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 text-sky-900 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
               >
                 <Minus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -756,14 +757,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 step={0.25}
                 value={clampNumber(draftTotalInchesNum, 26, 68)}
                 onChange={(e) => applyDraftInches(parseFloat(e.target.value))}
-                className="w-full accent-sky-600 h-2.5 bg-sky-100 rounded-lg cursor-pointer"
+                className="w-full accent-sky-600 h-2.5 bg-sky-100 dark:bg-slate-700 rounded-lg cursor-pointer"
               />
 
               <button
                 type="button"
                 aria-label="Increase height by half an inch"
                 onClick={() => applyDraftInches(draftTotalInchesNum + 0.5)}
-                className="w-10 h-10 flex items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100 transition-colors shrink-0 cursor-pointer"
+                className="w-10 h-10 flex items-center justify-center rounded-lg border border-sky-200 dark:border-slate-700 bg-sky-50 dark:bg-slate-800 text-sky-900 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -774,7 +775,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <div className="flex items-center gap-2">
                 <label
                   htmlFor="draft-feet-select"
-                  className="text-xs font-semibold text-slate-600 whitespace-nowrap"
+                  className="text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap"
                 >
                   Feet
                 </label>
@@ -785,7 +786,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     const nextFt = parseInt(e.target.value, 10);
                     applyDraftInches(nextFt * 12 + draftSplitHeight.inches);
                   }}
-                  className="w-full h-9 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                  className="w-full h-9 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
                 >
                   {[2, 3, 4, 5].map((ft) => (
                     <option key={ft} value={ft}>
@@ -798,7 +799,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <div className="flex items-center gap-2">
                 <label
                   htmlFor="draft-inches-input"
-                  className="text-xs font-semibold text-slate-600 whitespace-nowrap"
+                  className="text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap"
                 >
                   Inches
                 </label>
@@ -813,7 +814,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     const nextIn = clampNumber(parseFloat(e.target.value) || 0, 0, 11.9);
                     applyDraftInches(draftSplitHeight.feet * 12 + nextIn);
                   }}
-                  className="w-full h-9 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                  className="w-full h-9 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
                 />
               </div>
             </div>
@@ -822,27 +823,27 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             <button
               type="button"
               onClick={onOpenWallHeightEstimator}
-              className="w-full py-2 px-3 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="w-full py-2 px-3 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-950 dark:text-emerald-200 text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Ruler className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+              <Ruler className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
               Guesstimate Inches from a Wall Photo
             </button>
           </div>
 
           {/* Weight Slider + Pounds Controls (Pounds Primary, kg Secondary) */}
-          <div className="space-y-2.5 pt-2 border-t border-sky-100">
+          <div className="space-y-2.5 pt-2 border-t border-sky-100 dark:border-slate-800">
             <div className="flex items-baseline justify-between gap-2">
               <label
                 htmlFor="weight-slider"
-                className="text-sm font-bold text-indigo-950"
+                className="text-sm font-bold text-indigo-950 dark:text-white"
               >
                 Weight Today (lb)
               </label>
               <div className="text-right">
-                <span className="text-base font-bold font-mono tabular-nums text-rose-700">
+                <span className="text-base font-bold font-mono tabular-nums text-rose-700 dark:text-rose-400">
                   {formatPounds(draftWeightKg)}
                 </span>
-                <span className="block text-[11px] font-mono tabular-nums text-slate-400">
+                <span className="block text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
                   {formatMetricWeight(draftWeightKg)}
                 </span>
               </div>
@@ -853,7 +854,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 type="button"
                 aria-label="Decrease weight by half a pound"
                 onClick={() => applyDraftPounds(draftWeightLbsNum - 0.5)}
-                className="w-10 h-10 flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
+                className="w-10 h-10 flex items-center justify-center rounded-lg border border-amber-200 dark:border-slate-700 bg-amber-50 dark:bg-slate-800 text-amber-950 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
               >
                 <Minus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -866,14 +867,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 step={0.5}
                 value={clampNumber(draftWeightLbsNum, 16, 165)}
                 onChange={(e) => applyDraftPounds(parseFloat(e.target.value))}
-                className="w-full accent-rose-500 h-2.5 bg-amber-100 rounded-lg cursor-pointer"
+                className="w-full accent-rose-500 h-2.5 bg-amber-100 dark:bg-slate-700 rounded-lg cursor-pointer"
               />
 
               <button
                 type="button"
                 aria-label="Increase weight by half a pound"
                 onClick={() => applyDraftPounds(draftWeightLbsNum + 0.5)}
-                className="w-10 h-10 flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-950 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
+                className="w-10 h-10 flex items-center justify-center rounded-lg border border-amber-200 dark:border-slate-700 bg-amber-50 dark:bg-slate-800 text-amber-950 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-slate-700 transition-colors shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -881,12 +882,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           </div>
 
           {/* Automatic Age from Date of Birth + Manual Preview Override */}
-          <div className="space-y-2.5 pt-2 border-t border-slate-100">
+          <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
             {dobCalculatedOnDraftDate ? (
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="text-slate-700">
-                  <span className="font-bold text-indigo-950">Auto-Calculated Age:</span>{' '}
-                  <span className="font-mono font-bold text-sky-800">
+                <div className="text-slate-700 dark:text-slate-300">
+                  <span className="font-bold text-indigo-950 dark:text-white">
+                    Auto-Calculated Age:
+                  </span>{' '}
+                  <span className="font-mono font-bold text-sky-800 dark:text-sky-300">
                     {dobCalculatedOnDraftDate.formattedExactAge}
                   </span>
                 </div>
@@ -896,7 +899,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     onClick={() =>
                       onChangeDraftAgeMonths(dobCalculatedOnDraftDate.totalMonths)
                     }
-                    className="font-bold text-sky-700 hover:underline whitespace-nowrap cursor-pointer"
+                    className="font-bold text-sky-700 dark:text-sky-300 hover:underline whitespace-nowrap cursor-pointer"
                   >
                     Sync to DOB
                   </button>
@@ -904,19 +907,19 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   <button
                     type="button"
                     onClick={() => onTabChange('character')}
-                    className="text-slate-500 hover:text-indigo-950 whitespace-nowrap cursor-pointer"
+                    className="text-slate-500 dark:text-slate-400 hover:text-indigo-950 dark:hover:text-white whitespace-nowrap cursor-pointer"
                   >
                     DOB {formatHumanDate(childProfile.birthDate)}
                   </button>
                 )}
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
+              <div className="flex items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
                 <span>Enter Date of Birth to calculate age automatically</span>
                 <button
                   type="button"
                   onClick={() => onTabChange('character')}
-                  className="font-bold text-sky-700 hover:underline whitespace-nowrap cursor-pointer"
+                  className="font-bold text-sky-700 dark:text-sky-300 hover:underline whitespace-nowrap cursor-pointer"
                 >
                   Set Birthday
                 </button>
@@ -927,7 +930,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <div className="space-y-1">
                 <label
                   htmlFor="age-years-select"
-                  className="block text-xs font-semibold text-slate-700"
+                  className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
                 >
                   Age (Years)
                 </label>
@@ -940,7 +943,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                       clampNumber(yrs * 12 + draftRemMonths, 0, 216),
                     );
                   }}
-                  className="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                  className="w-full h-10 px-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
                 >
                   {Array.from({ length: 18 }, (_, idx) => idx).map((yr) => (
                     <option key={yr} value={yr}>
@@ -953,7 +956,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <div className="space-y-1">
                 <label
                   htmlFor="age-months-select"
-                  className="block text-xs font-semibold text-slate-700"
+                  className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
                 >
                   Extra Months
                 </label>
@@ -964,7 +967,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     const mos = parseInt(e.target.value, 10);
                     onChangeDraftAgeMonths(clampNumber(draftYears * 12 + mos, 0, 216));
                   }}
-                  className="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                  className="w-full h-10 px-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
                 >
                   {Array.from({ length: 12 }, (_, m) => m).map((m) => (
                     <option key={m} value={m}>
@@ -980,7 +983,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             <div className="space-y-1.5">
               <label
                 htmlFor="recorded-date-input"
-                className="block text-xs font-semibold text-slate-700"
+                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
               >
                 Measured On
               </label>
@@ -990,7 +993,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 required
                 value={draftDate}
                 onChange={(e) => onChangeDraftDate(e.target.value)}
-                className="w-full h-10 px-3 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                className="w-full h-10 px-3 text-sm font-mono tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
               />
             </div>
 
@@ -998,7 +1001,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <div className="flex items-center justify-between gap-2">
                 <label
                   htmlFor="milestone-note-input"
-                  className="block text-xs font-semibold text-slate-700"
+                  className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
                 >
                   Memory Note
                 </label>
@@ -1009,7 +1012,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold rounded-md transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 ${
                     isRecordingNote
                       ? 'bg-rose-500 text-white hover:bg-rose-600'
-                      : 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100'
+                      : 'bg-indigo-50 dark:bg-indigo-950/70 text-indigo-900 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/70'
                   }`}
                 >
                   {isRecordingNote ? (
@@ -1019,7 +1022,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     </>
                   ) : (
                     <>
-                      <Mic className="w-3 h-3 text-indigo-700" aria-hidden="true" />
+                      <Mic className="w-3 h-3 text-indigo-700 dark:text-indigo-400" aria-hidden="true" />
                       {isTranscribingNote ? 'Transcribing...' : 'Voice Note'}
                     </>
                   )}
@@ -1034,12 +1037,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 }
                 value={draftNote}
                 onChange={(e) => onChangeDraftNote(e.target.value)}
-                className="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                className="w-full h-10 px-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-600"
               />
               {voiceNoteFeedback && (
                 <p
                   className={`text-[11px] font-medium ${
-                    voiceNoteFeedback.type === 'error' ? 'text-rose-700' : 'text-emerald-700'
+                    voiceNoteFeedback.type === 'error'
+                      ? 'text-rose-700 dark:text-rose-400'
+                      : 'text-emerald-700 dark:text-emerald-400'
                   }`}
                 >
                   {voiceNoteFeedback.message}
@@ -1049,20 +1054,20 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           </div>
 
           {/* Unboxed Growth Comparison Summary (Feet/Inches & Pounds Primary, Metric Secondary) */}
-          <div className="pt-3 border-t border-slate-100 space-y-1">
-            <p className="text-xs font-semibold text-slate-800">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1">
+            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
               Growth vs. Age 2 ({formatFeetInches(childProfile.ageTwoHeightCm)} /{' '}
               {formatTotalInches(childProfile.ageTwoHeightCm)},{' '}
               {formatPounds(childProfile.ageTwoWeightKg)})
             </p>
-            <p className="text-xs font-mono font-bold tabular-nums text-indigo-950">
+            <p className="text-xs font-mono font-bold tabular-nums text-indigo-950 dark:text-white">
               <span>{formatHeightDelta(heightGainCm, 'imperial')} height</span>
               <span className="mx-1.5 text-slate-400" aria-hidden="true">·</span>
               <span>{formatWeightDelta(weightGainKg, 'imperial')} weight</span>
               <span className="mx-1.5 text-slate-400" aria-hidden="true">·</span>
               <span>+{percentTaller.toFixed(0)}% taller</span>
             </p>
-            <p className="text-[11px] font-mono tabular-nums text-slate-400">
+            <p className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
               <span>Secondary: {formatHeightDelta(heightGainCm, 'metric')}</span>
               <span className="mx-1.5" aria-hidden="true">·</span>
               <span>{formatWeightDelta(weightGainKg, 'metric')}</span>
@@ -1088,7 +1093,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
               <button
                 type="button"
                 onClick={onResetDraft}
-                className="h-11 px-3.5 py-2.5 text-xs font-bold text-sky-900 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                className="h-11 px-3.5 py-2.5 text-xs font-bold text-sky-900 dark:text-sky-200 bg-sky-100 dark:bg-slate-800 hover:bg-sky-200 dark:hover:bg-slate-700 rounded-lg transition-colors inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                 Reset
@@ -1100,21 +1105,21 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
         /* Child Info, Date of Birth & Realistic Photo Avatar Form */
         <form noValidate onSubmit={handleCharacterFormSubmit} className="space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-indigo-950">
+            <h3 className="text-sm font-bold text-indigo-950 dark:text-white">
               {childProfile.name}’s Info &amp; Avatar
             </h3>
             <button
               type="button"
               onClick={onOpenAddChildModal}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-emerald-950 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-950/70 hover:bg-emerald-200 dark:hover:bg-emerald-900/70 rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <UserPlus className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+              <UserPlus className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
               Add Another Child
             </button>
           </div>
 
           {/* Realistic Child Photo Avatar Strip */}
-          <div className="flex items-center justify-between gap-3 p-3 bg-sky-50/90 border border-sky-200 rounded-xl">
+          <div className="flex items-center justify-between gap-3 p-3 bg-sky-50/90 dark:bg-slate-800/90 border border-sky-200 dark:border-slate-700 rounded-xl">
             <div className="flex items-center gap-3 min-w-0">
               <img
                 src={avatarPhotoUrl || defaultAppAvatar.portraitUrl}
@@ -1123,10 +1128,10 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 className="w-12 h-12 rounded-full object-cover object-top border-2 border-amber-400 bg-sky-50 shrink-0"
               />
               <div className="min-w-0">
-                <p className="text-xs font-bold text-indigo-950 truncate">
+                <p className="text-xs font-bold text-indigo-950 dark:text-white truncate">
                   {avatarPhotoUrl ? 'Real Photo Avatar Active' : 'SproutScale Avatar Active'}
                 </p>
-                <p className="text-[11px] text-slate-600">
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
                   {avatarPhotoUrl
                     ? 'Remove to restore default app avatar'
                     : 'Or take a camera pic / upload a photo'}
@@ -1147,7 +1152,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   type="button"
                   aria-label="Remove photo from avatar"
                   onClick={() => void onRemoveAvatarPhoto()}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -1157,11 +1162,11 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
           {/* ElevenLabs Avatar Voice Selector (shown when ELEVENLABS_API_KEY is connected) */}
           {elevenLabsConfigured && elevenLabsVoices.length > 0 && (
-            <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+            <div className="p-3 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <label
                   htmlFor="elevenlabs-voice-select"
-                  className="text-xs font-bold text-indigo-950"
+                  className="text-xs font-bold text-indigo-950 dark:text-indigo-200"
                 >
                   Avatar Voice (ElevenLabs)
                 </label>
@@ -1169,9 +1174,9 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   type="button"
                   disabled={isTestingVoice}
                   onClick={() => void handleTestSelectedVoice()}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-indigo-950 bg-white border border-indigo-200 hover:bg-indigo-100 rounded-md transition-colors cursor-pointer disabled:opacity-50"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-indigo-950 dark:text-indigo-200 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-700 hover:bg-indigo-100 dark:hover:bg-slate-700 rounded-md transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  <Volume2 className="w-3 h-3 text-indigo-700" aria-hidden="true" />
+                  <Volume2 className="w-3 h-3 text-indigo-700 dark:text-indigo-400" aria-hidden="true" />
                   {isTestingVoice ? 'Playing...' : 'Test Voice'}
                 </button>
               </div>
@@ -1183,7 +1188,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   setSelectedVoiceId(nextId);
                   saveElevenLabsVoiceId(nextId);
                 }}
-                className="w-full h-9 px-2.5 text-xs font-medium bg-white border border-indigo-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full h-9 px-2.5 text-xs font-medium bg-white dark:bg-slate-800 border border-indigo-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 {elevenLabsVoices.map((v) => (
                   <option key={v.id} value={v.id}>
@@ -1201,7 +1206,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             <div className="space-y-1.5">
               <label
                 htmlFor="kid-name-input"
-                className="block text-xs font-semibold text-slate-700"
+                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
               >
                 Child’s Name
               </label>
@@ -1214,14 +1219,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 placeholder="e.g. Maya"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                className="w-full h-10 px-3 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
               />
             </div>
 
             <div className="space-y-1.5">
               <label
                 htmlFor="kid-dob-input"
-                className="block text-xs font-semibold text-slate-700"
+                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
               >
                 Date of Birth
               </label>
@@ -1231,14 +1236,14 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 max={getLocalTodayIso()}
                 value={editBirthDate}
                 onChange={(e) => setEditBirthDate(e.target.value)}
-                className="w-full h-10 px-3 text-sm font-mono tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                className="w-full h-10 px-3 text-sm font-mono tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
               />
             </div>
           </div>
 
           {/* WHO Growth Chart Reference Curve (Boy / Girl / Combined) */}
           <div className="space-y-1.5">
-            <span className="block text-xs font-semibold text-slate-700">
+            <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               WHO Growth Chart Curve
             </span>
             <div className="grid grid-cols-3 gap-1.5">
@@ -1255,8 +1260,8 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   onClick={() => setEditSex(opt.id)}
                   className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap cursor-pointer ${
                     editSex === opt.id
-                      ? 'border-sky-600 bg-sky-50 text-indigo-950'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      ? 'border-sky-600 dark:border-sky-400 bg-sky-50 dark:bg-sky-950/60 text-indigo-950 dark:text-sky-200'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                   }`}
                 >
                   {opt.label}
@@ -1267,13 +1272,13 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
           {/* Live Calculated Age Readout from Date of Birth */}
           {liveFormDobCalc && (
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 pt-0.5">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 dark:text-slate-300 pt-0.5">
               <Cake className="w-3.5 h-3.5 text-rose-500 shrink-0" aria-hidden="true" />
-              <span className="font-bold text-indigo-950">
+              <span className="font-bold text-indigo-950 dark:text-white">
                 Age: {liveFormDobCalc.formattedExactAge}
               </span>
               <span aria-hidden="true">·</span>
-              <span className="text-slate-600">
+              <span className="text-slate-600 dark:text-slate-400">
                 {liveFormDobCalc.isBirthdayToday
                   ? 'Happy Birthday today!'
                   : `Next birthday in ${liveFormDobCalc.daysUntilNextBirthday} days`}
@@ -1282,11 +1287,11 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           )}
 
           {/* Age 2 Baseline Height (ft & in) & Weight (lb) — Metric Secondary */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div className="space-y-1">
               <label
                 htmlFor="age2-feet-select"
-                className="block text-xs font-semibold text-slate-700"
+                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
               >
                 Age 2 Height (ft &amp; in)
               </label>
@@ -1298,7 +1303,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     const ft = parseInt(e.target.value, 10);
                     updateAgeTwoFeetInches(ft, editAgeTwoSplit.inches);
                   }}
-                  className="w-full h-10 px-2 text-xs font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                  className="w-full h-10 px-2 text-xs font-mono font-semibold tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
                 >
                   <option value={2}>2 ft</option>
                   <option value={3}>3 ft</option>
@@ -1315,10 +1320,10 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     const nextIn = clampNumber(parseFloat(e.target.value) || 0, 0, 11.9);
                     updateAgeTwoFeetInches(editAgeTwoSplit.feet, nextIn);
                   }}
-                  className="w-full h-10 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                  className="w-full h-10 px-2.5 text-xs font-mono font-semibold tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
                 />
               </div>
-              <p className="text-[11px] text-slate-500 font-mono tabular-nums">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                 {formatTotalInches(editAgeTwoHeight)} · {formatMetricHeight(editAgeTwoHeight)}
               </p>
             </div>
@@ -1326,7 +1331,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
             <div className="space-y-1">
               <label
                 htmlFor="age2-weight-lbs-input"
-                className="block text-xs font-semibold text-slate-700"
+                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
               >
                 Age 2 Weight (lb)
               </label>
@@ -1338,17 +1343,17 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 max={55}
                 value={editAgeTwoWeightLbs}
                 onChange={(e) => updateAgeTwoPounds(parseFloat(e.target.value) || 27.6)}
-                className="w-full h-10 px-3 text-sm font-mono font-semibold tabular-nums bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-600"
+                className="w-full h-10 px-3 text-sm font-mono font-semibold tabular-nums bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-600"
               />
-              <p className="text-[11px] text-slate-500 font-mono tabular-nums">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono tabular-nums">
                 Secondary: {formatMetricWeight(editAgeTwoWeight)}
               </p>
             </div>
           </div>
 
           {/* Natural Skin Complexion Swatches */}
-          <div className="space-y-1.5 pt-2 border-t border-slate-100">
-            <span className="block text-xs font-semibold text-slate-700">
+          <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               Natural Complexion
             </span>
             <div className="flex flex-wrap items-center gap-2">
@@ -1363,8 +1368,8 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     onClick={() => setEditSkinTone(tone.hex)}
                     className={`p-1 rounded-full border-2 transition-transform cursor-pointer ${
                       selected
-                        ? 'border-sky-600 scale-110'
-                        : 'border-transparent hover:border-slate-300'
+                        ? 'border-sky-600 dark:border-sky-400 scale-110'
+                        : 'border-transparent hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
                     <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
@@ -1386,7 +1391,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           {/* Natural Hair Color & Style */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700">
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Hair Color &amp; Style
               </span>
               <div className="flex items-center gap-1.5">
@@ -1400,7 +1405,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                       aria-label={`Hair color ${hc.label}`}
                       onClick={() => setEditHairColor(hc.hex)}
                       className={`p-0.5 rounded-full border-2 cursor-pointer ${
-                        selected ? 'border-sky-600' : 'border-transparent'
+                        selected ? 'border-sky-600 dark:border-sky-400' : 'border-transparent'
                       }`}
                     >
                       <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -1427,8 +1432,8 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   onClick={() => setEditHair(h.id)}
                   className={`px-2.5 py-2 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     editHair === h.id
-                      ? 'border-sky-600 bg-sky-50 text-indigo-950'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      ? 'border-sky-600 dark:border-sky-400 bg-sky-50 dark:bg-sky-950/60 text-indigo-950 dark:text-sky-200'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                   }`}
                 >
                   {h.label}
@@ -1439,7 +1444,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
           {/* Outfit Color Palette Picker */}
           <div className="space-y-1.5">
-            <span className="block text-xs font-semibold text-slate-700">
+            <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               Outfit Colors
             </span>
             <div className="grid grid-cols-2 gap-2">
@@ -1453,8 +1458,8 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     onClick={() => setEditPalette(pid)}
                     className={`px-3 py-2 text-xs font-semibold rounded-lg border text-left transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       active
-                        ? 'border-sky-600 bg-sky-50 text-indigo-950'
-                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        ? 'border-sky-600 dark:border-sky-400 bg-sky-50 dark:bg-sky-950/60 text-indigo-950 dark:text-sky-200'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                     }`}
                   >
                     {p.label}
@@ -1466,7 +1471,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
 
           {/* Top Accessory Picker */}
           <div className="space-y-1.5">
-            <span className="block text-xs font-semibold text-slate-700">
+            <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               Head Accessory
             </span>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
@@ -1477,8 +1482,8 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                   onClick={() => setEditAccessory(acc.id)}
                   className={`px-2 py-2 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     editAccessory === acc.id
-                      ? 'border-sky-600 bg-sky-50 text-indigo-950'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      ? 'border-sky-600 dark:border-sky-400 bg-sky-50 dark:bg-sky-950/60 text-indigo-950 dark:text-sky-200'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                   }`}
                 >
                   {acc.label}
@@ -1498,10 +1503,10 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
           </button>
 
           {totalChildrenCount > 1 && (
-            <div className="pt-2 border-t border-slate-100">
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
               {confirmDeleteChild ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-rose-50 border border-rose-200">
-                  <span className="text-xs font-semibold text-rose-900">
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800">
+                  <span className="text-xs font-semibold text-rose-900 dark:text-rose-200">
                     Remove {childProfile.name} &amp; their measurements?
                   </span>
                   <div className="flex items-center gap-1.5">
@@ -1516,7 +1521,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteChild(false)}
-                      className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-md cursor-pointer"
+                      className="px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -1526,7 +1531,7 @@ export const MeasurementControlDeck: React.FC<MeasurementControlDeckProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteChild(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-rose-700 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-700 dark:hover:text-rose-400 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                   Remove {childProfile.name}’s profile

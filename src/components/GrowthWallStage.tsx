@@ -161,23 +161,25 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   };
 
   return (
-    <div className="bg-white border-2 border-sky-200 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5 shadow-xs">
+    <div className="bg-white dark:bg-slate-900 border-2 border-sky-200 dark:border-slate-700 rounded-2xl p-5 sm:p-6 flex flex-col justify-between gap-5 shadow-xs">
       {/* Stage Top Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-100 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-100 dark:border-slate-800 pb-4">
         <div className="space-y-0.5">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-            <span className="font-bold text-indigo-950">{childProfile.name}’s Growth Wall</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+            <span className="font-bold text-indigo-950 dark:text-white">
+              {childProfile.name}’s Growth Wall
+            </span>
             <span aria-hidden="true">·</span>
-            <span className="font-semibold text-sky-700">{stageInfo.stageName}</span>
+            <span className="font-semibold text-sky-700 dark:text-sky-300">{stageInfo.stageName}</span>
             <span aria-hidden="true">·</span>
-            <span className="font-mono tabular-nums font-bold text-indigo-950">
+            <span className="font-mono tabular-nums font-bold text-indigo-950 dark:text-white">
               {formatFeetInches(activeHeightCm)} ({formatTotalInches(activeHeightCm)}) ·{' '}
               {formatPounds(activeWeightKg)}
             </span>
             {showSecondaryMetric && (
               <>
                 <span aria-hidden="true">·</span>
-                <span className="font-mono tabular-nums text-slate-500">
+                <span className="font-mono tabular-nums text-slate-500 dark:text-slate-400">
                   {formatMetricHeight(activeHeightCm)} · {formatMetricWeight(activeWeightKg)}
                 </span>
               </>
@@ -193,29 +195,29 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             {isPreviewDirty && (
               <>
                 <span aria-hidden="true">·</span>
-                <span className="text-orange-600 font-bold">Live Preview</span>
+                <span className="text-orange-600 dark:text-amber-400 font-bold">Live Preview</span>
               </>
             )}
           </div>
-          <p className="text-xs text-slate-600">{stageInfo.description}</p>
+          <p className="text-xs text-slate-600 dark:text-slate-400">{stageInfo.description}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onOpenWallHeightEstimator}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-950 dark:text-emerald-200 bg-emerald-100 dark:bg-emerald-950/70 hover:bg-emerald-200 dark:hover:bg-emerald-900/70 border border-transparent dark:border-emerald-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <Ruler className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+            <Ruler className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
             Wall Photo Guesstimate
           </button>
 
           <button
             type="button"
             onClick={onOpenPhotoStudio}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-sky-950 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-sky-950 dark:text-sky-200 bg-sky-100 dark:bg-sky-950/70 hover:bg-sky-200 dark:hover:bg-sky-900/70 border border-transparent dark:border-sky-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
-            <Camera className="w-3.5 h-3.5 text-sky-700" aria-hidden="true" />
+            <Camera className="w-3.5 h-3.5 text-sky-700 dark:text-sky-400" aria-hidden="true" />
             {avatarPhotoUrl ? 'Change Photo' : 'Photo Avatar'}
           </button>
 
@@ -225,7 +227,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               isSpeakingAvatar
                 ? 'bg-rose-500 hover:bg-rose-600 text-white'
-                : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-950'
+                : 'bg-indigo-100 dark:bg-indigo-950/70 hover:bg-indigo-200 dark:hover:bg-indigo-900/70 text-indigo-950 dark:text-indigo-200 border border-transparent dark:border-indigo-800'
             }`}
           >
             {isSpeakingAvatar ? (
@@ -235,7 +237,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
               </>
             ) : (
               <>
-                <Volume2 className="w-3.5 h-3.5 text-indigo-700" aria-hidden="true" />
+                <Volume2 className="w-3.5 h-3.5 text-indigo-700 dark:text-indigo-400" aria-hidden="true" />
                 {isLoadingSpeech ? 'Speaking...' : 'Hear Avatar'}
               </>
             )}
@@ -265,8 +267,8 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             onClick={() => setShowSecondaryMetric((prev) => !prev)}
             className={`px-2.5 py-2 text-xs font-bold rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               showSecondaryMetric
-                ? 'bg-sky-50 border-sky-200 text-sky-900'
-                : 'bg-white border-slate-200 text-slate-500 hover:text-slate-800'
+                ? 'bg-sky-50 dark:bg-slate-800 border-sky-200 dark:border-slate-700 text-sky-900 dark:text-sky-300'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
             }`}
           >
             {showSecondaryMetric ? 'cm · kg sub: On' : 'cm · kg sub: Off'}
@@ -275,7 +277,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
       </div>
 
       {/* Main Interactive Bright Storybook Playroom Wall & Scale Canvas */}
-      <div className="w-full overflow-hidden rounded-xl border-2 border-sky-200">
+      <div className="w-full overflow-hidden rounded-xl border-2 border-sky-200 dark:border-slate-700">
         <svg
           viewBox="0 0 680 604"
           className="w-full h-auto select-none"
@@ -909,21 +911,29 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
       {/* Bright Kid-Friendly Size Discovery Strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
         <div className="space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800 dark:text-sky-300">
             <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-hidden="true" />
             <span>How Tall Is That?</span>
           </div>
-          <p className="text-xs text-slate-700 leading-relaxed">{funFacts.heightFact}</p>
+          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+            {funFacts.heightFact}
+          </p>
         </div>
 
-        <div className="space-y-1 md:border-l md:border-sky-200 md:pl-4">
-          <p className="text-xs font-bold text-emerald-800">Sprouted Since Age 2</p>
-          <p className="text-xs text-slate-700 leading-relaxed">{funFacts.growthFact}</p>
+        <div className="space-y-1 md:border-l md:border-sky-200 dark:md:border-slate-700 md:pl-4">
+          <p className="text-xs font-bold text-emerald-800 dark:text-emerald-400">
+            Sprouted Since Age 2
+          </p>
+          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+            {funFacts.growthFact}
+          </p>
         </div>
 
-        <div className="space-y-1 md:border-l md:border-sky-200 md:pl-4">
-          <p className="text-xs font-bold text-rose-700">Scale Fun Fact</p>
-          <p className="text-xs text-slate-700 leading-relaxed">{funFacts.weightFact}</p>
+        <div className="space-y-1 md:border-l md:border-sky-200 dark:md:border-slate-700 md:pl-4">
+          <p className="text-xs font-bold text-rose-700 dark:text-rose-400">Scale Fun Fact</p>
+          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+            {funFacts.weightFact}
+          </p>
         </div>
       </div>
     </div>
