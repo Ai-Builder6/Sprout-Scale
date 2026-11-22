@@ -4,11 +4,33 @@ let audioCtx: AudioContext | null = null;
 let globalMuted = false;
 const victoryListeners = new Set<() => void>();
 
+export type KidGameExcitementEvent = 'correct' | 'victory';
+const excitementListeners = new Set<(event: KidGameExcitementEvent) => void>();
+
 export function onKidGameVictory(listener: () => void): () => void {
   victoryListeners.add(listener);
   return () => {
     victoryListeners.delete(listener);
   };
+}
+
+export function onKidGameExcitement(
+  listener: (event: KidGameExcitementEvent) => void,
+): () => void {
+  excitementListeners.add(listener);
+  return () => {
+    excitementListeners.delete(listener);
+  };
+}
+
+function emitExcitement(event: KidGameExcitementEvent): void {
+  excitementListeners.forEach((listener) => {
+    try {
+      listener(event);
+    } catch {
+      // Never let a listener interrupt game audio
+    }
+  });
 }
 
 function getOrCreateAudioContext(): AudioContext | null {
@@ -67,6 +89,7 @@ export function isKidGamesMuted(): boolean {
  * Cheerful soap-bubble pop sound with gentle ascending musical tone
  */
 export function playBubblePopSound(pitchIndex = 0): void {
+  emitExcitement('correct');
   withReadyAudioContext((ctx) => {
     const now = ctx.currentTime;
     const pentatonicHz = [392.0, 440.0, 493.88, 523.25, 587.33, 659.25, 783.99];
@@ -93,6 +116,7 @@ export function playBubblePopSound(pitchIndex = 0): void {
  * Soft water-droplet plink + rising xylophone sprout note
  */
 export function playSproutGrowSound(step: number): void {
+  emitExcitement('correct');
   withReadyAudioContext((ctx) => {
     const now = ctx.currentTime;
     const scale = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99];
@@ -142,6 +166,7 @@ export function playGentleBoopSound(): void {
  * Happy double-chime for correct answers
  */
 export function playHappyMatchSound(): void {
+  emitExcitement('correct');
   withReadyAudioContext((ctx) => {
     const now = ctx.currentTime;
     const notes = [523.25, 659.25];
@@ -168,6 +193,7 @@ export function playHappyMatchSound(): void {
  * Joyful C-E-G-C celebratory xylophone arpeggio for finishing a game
  */
 export function playVictoryFanfare(): void {
+  emitExcitement('victory');
   victoryListeners.forEach((listener) => {
     try {
       listener();
@@ -289,6 +315,7 @@ export function playClockChimeSound(isOClock = false): void {
  * Wooden bridge plank snap + bright climb tone for Sight-Word Treasure Bridge
  */
 export function playPlankPlaceSound(step = 0): void {
+  emitExcitement('correct');
   withReadyAudioContext((ctx) => {
     const now = ctx.currentTime;
     const scale = [329.63, 392.0, 440.0, 523.25, 659.25];
@@ -315,6 +342,7 @@ export function playPlankPlaceSound(step = 0): void {
  * Shimmering space star-power chime for Planet Orbit Math & Logic
  */
 export function playSpaceChimeSound(planetIdx = 0): void {
+  emitExcitement('correct');
   withReadyAudioContext((ctx) => {
     const now = ctx.currentTime;
     const base = 392 + (planetIdx % 5) * 65;

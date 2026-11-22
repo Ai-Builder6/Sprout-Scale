@@ -39,6 +39,7 @@ interface GrowthWallStageProps {
   onToggleTimelapse: () => void;
   onOpenPhotoStudio: () => void;
   onOpenWallHeightEstimator: () => void;
+  onEditAgeTwoBaseline?: () => void;
 }
 
 const MIN_RULER_INCHES = 26; // 2' 2" (~66 cm)
@@ -80,6 +81,7 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
   onToggleTimelapse,
   onOpenPhotoStudio,
   onOpenWallHeightEstimator,
+  onEditAgeTwoBaseline,
 }) => {
   const [showSecondaryMetric, setShowSecondaryMetric] = useState<boolean>(true);
   const [isSpeakingAvatar, setIsSpeakingAvatar] = useState<boolean>(false);
@@ -499,94 +501,127 @@ export const GrowthWallStage: React.FC<GrowthWallStageProps> = ({
             strokeDasharray="6 4"
           />
 
-          {/* Age 2 Overhead Height Tag on the Child */}
-          <g>
+          {/* Clickable At Age 2 Lane (Tag + Toddler Figure + Baseline Card) */}
+          <g
+            role={onEditAgeTwoBaseline ? 'button' : undefined}
+            tabIndex={onEditAgeTwoBaseline ? 0 : undefined}
+            aria-label={
+              onEditAgeTwoBaseline
+                ? `Edit ${childProfile.name} at Age 2 height and weight (${formatFeetInches(childProfile.ageTwoHeightCm)}, ${formatPounds(childProfile.ageTwoWeightKg)})`
+                : undefined
+            }
+            onClick={onEditAgeTwoBaseline}
+            onKeyDown={(e) => {
+              if (!onEditAgeTwoBaseline) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onEditAgeTwoBaseline();
+              }
+            }}
+            className={
+              onEditAgeTwoBaseline
+                ? 'cursor-pointer group focus:outline-none'
+                : undefined
+            }
+          >
+            {onEditAgeTwoBaseline && (
+              <title>{`Click to adjust ${childProfile.name}'s Age 2 height and weight`}</title>
+            )}
+
+            {/* Age 2 Overhead Height Tag on the Child */}
+            <g>
+              <rect
+                x={74}
+                y={Math.max(16, ageTwoCrownY - 26)}
+                width={124}
+                height={22}
+                rx={7}
+                fill="#0284c7"
+                stroke="#ffffff"
+                strokeWidth={1.4}
+              />
+              <text
+                x={136}
+                y={Math.max(16, ageTwoCrownY - 26) + 14.5}
+                textAnchor="middle"
+                fill="#ffffff"
+                fontSize={10.5}
+                fontWeight={700}
+                fontFamily="JetBrains Mono, monospace"
+              >
+                {`${formatFeetInches(childProfile.ageTwoHeightCm)} (${cmToInches(childProfile.ageTwoHeightCm).toFixed(1)}")`}
+              </text>
+            </g>
+
+            <CharacterFigureGroup
+              instanceId="age_two_wall"
+              centerX={136}
+              floorY={FLOOR_Y}
+              crownY={ageTwoCrownY}
+              ageMonths={24}
+              heightCm={childProfile.ageTwoHeightCm}
+              weightKg={childProfile.ageTwoWeightKg}
+              paletteId={childProfile.paletteId}
+              accessoryId={childProfile.accessoryId}
+              hairStyle={childProfile.hairStyle}
+              skinTone={childProfile.skinTone}
+              hairColor={childProfile.hairColor}
+              avatarPhotoUrl={avatarPhotoUrl}
+              mode="age-two-baseline"
+            />
+
+            {/* Age 2 Baseline Card Directly Under Child (Feet & Pounds Primary, cm/kg Secondary) */}
             <rect
-              x={74}
-              y={Math.max(16, ageTwoCrownY - 26)}
-              width={124}
-              height={22}
-              rx={7}
-              fill="#0284c7"
-              stroke="#ffffff"
-              strokeWidth={1.4}
+              x={48}
+              y={FLOOR_Y + 10}
+              width={176}
+              height={showSecondaryMetric ? 58 : 44}
+              rx={10}
+              fill="#ffffff"
+              stroke="#38bdf8"
+              strokeWidth={1.8}
+              className={
+                onEditAgeTwoBaseline
+                  ? 'transition-colors group-hover:fill-sky-50 group-hover:stroke-sky-600'
+                  : undefined
+              }
             />
             <text
               x={136}
-              y={Math.max(16, ageTwoCrownY - 26) + 14.5}
+              y={FLOOR_Y + 26}
               textAnchor="middle"
-              fill="#ffffff"
-              fontSize={10.5}
+              fill="#0369a1"
+              fontSize={11.5}
+              fontWeight={700}
+              fontFamily="Plus Jakarta Sans, sans-serif"
+            >
+              {onEditAgeTwoBaseline ? 'At Age 2 · Edit' : 'At Age 2'}
+            </text>
+            <text
+              x={136}
+              y={FLOOR_Y + 43}
+              textAnchor="middle"
+              fill="#0f172a"
+              fontSize={11.5}
               fontWeight={700}
               fontFamily="JetBrains Mono, monospace"
             >
-              {`${formatFeetInches(childProfile.ageTwoHeightCm)} (${cmToInches(childProfile.ageTwoHeightCm).toFixed(1)}")`}
+              {`${formatFeetInches(childProfile.ageTwoHeightCm)} · ${formatPounds(childProfile.ageTwoWeightKg)}`}
             </text>
+            {showSecondaryMetric && (
+              <text
+                x={136}
+                y={FLOOR_Y + 58}
+                textAnchor="middle"
+                fill="#64748b"
+                fontSize={9.5}
+                fontWeight={600}
+                fontFamily="JetBrains Mono, monospace"
+              >
+                {`${formatTotalInches(childProfile.ageTwoHeightCm)} · ${formatMetricHeight(childProfile.ageTwoHeightCm)} · ${formatMetricWeight(childProfile.ageTwoWeightKg)}`}
+              </text>
+            )}
           </g>
-
-          <CharacterFigureGroup
-            instanceId="age_two_wall"
-            centerX={136}
-            floorY={FLOOR_Y}
-            crownY={ageTwoCrownY}
-            ageMonths={24}
-            heightCm={childProfile.ageTwoHeightCm}
-            weightKg={childProfile.ageTwoWeightKg}
-            paletteId={childProfile.paletteId}
-            accessoryId={childProfile.accessoryId}
-            hairStyle={childProfile.hairStyle}
-            skinTone={childProfile.skinTone}
-            hairColor={childProfile.hairColor}
-            avatarPhotoUrl={avatarPhotoUrl}
-            mode="age-two-baseline"
-          />
-
-          {/* Age 2 Baseline Card Directly Under Child (Feet & Pounds Primary, cm/kg Secondary) */}
-          <rect
-            x={48}
-            y={FLOOR_Y + 10}
-            width={176}
-            height={showSecondaryMetric ? 58 : 44}
-            rx={10}
-            fill="#ffffff"
-            stroke="#38bdf8"
-            strokeWidth={1.8}
-          />
-          <text
-            x={136}
-            y={FLOOR_Y + 26}
-            textAnchor="middle"
-            fill="#0369a1"
-            fontSize={11.5}
-            fontWeight={700}
-            fontFamily="Plus Jakarta Sans, sans-serif"
-          >
-            At Age 2
-          </text>
-          <text
-            x={136}
-            y={FLOOR_Y + 43}
-            textAnchor="middle"
-            fill="#0f172a"
-            fontSize={11.5}
-            fontWeight={700}
-            fontFamily="JetBrains Mono, monospace"
-          >
-            {`${formatFeetInches(childProfile.ageTwoHeightCm)} · ${formatPounds(childProfile.ageTwoWeightKg)}`}
-          </text>
-          {showSecondaryMetric && (
-            <text
-              x={136}
-              y={FLOOR_Y + 58}
-              textAnchor="middle"
-              fill="#64748b"
-              fontSize={9.5}
-              fontWeight={600}
-              fontFamily="JetBrains Mono, monospace"
-            >
-              {`${formatTotalInches(childProfile.ageTwoHeightCm)} · ${formatMetricHeight(childProfile.ageTwoHeightCm)} · ${formatMetricWeight(childProfile.ageTwoWeightKg)}`}
-            </text>
-          )}
 
           {/* GROWTH DELTA VERTICAL BRACKET (Inches Primary, cm Secondary) */}
           {Math.abs(ageTwoCrownY - currentCrownY) >= 6 && (

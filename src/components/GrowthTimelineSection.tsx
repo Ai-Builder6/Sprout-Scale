@@ -73,6 +73,8 @@ interface GrowthTimelineSectionProps {
   ) => Promise<void>;
   onDeleteMeasurement: (measurementId: string) => Promise<void>;
   onAddPhotoForMilestone?: (measurement: GrowthMeasurement) => void;
+  onEditAgeTwoBaseline?: () => void;
+  onOpenAgeOneSpurtEstimator?: () => void;
 }
 
 function formatCompactAge(months: number): string {
@@ -91,6 +93,8 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
   onUpdateMeasurement,
   onDeleteMeasurement,
   onAddPhotoForMilestone,
+  onEditAgeTwoBaseline,
+  onOpenAgeOneSpurtEstimator,
 }) => {
   const [chartMetric, setChartMetric] = useState<'height' | 'weight'>('height');
   const [velocityMetric, setVelocityMetric] = useState<'height' | 'weight'>('height');
@@ -495,6 +499,26 @@ export const GrowthTimelineSection: React.FC<GrowthTimelineSectionProps> = ({
                 ? formatMetricHeight(childProfile.ageTwoHeightCm)
                 : formatMetricWeight(childProfile.ageTwoWeightKg)}
             </span>
+            {onEditAgeTwoBaseline && (
+              <button
+                type="button"
+                onClick={onEditAgeTwoBaseline}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/70 border border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200 font-bold text-xs transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Pencil className="w-3 h-3 shrink-0" aria-hidden="true" />
+                Edit Age 2
+              </button>
+            )}
+            {onOpenAgeOneSpurtEstimator && (
+              <button
+                type="button"
+                onClick={onOpenAgeOneSpurtEstimator}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/70 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-bold text-xs transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <TrendingUp className="w-3 h-3 shrink-0" aria-hidden="true" />
+                Estimate from Age 1 + Photo
+              </button>
+            )}
           </div>
           <span className="font-medium text-sky-800 dark:text-sky-300">
             Click any milestone point to view on Growth Wall

@@ -28,6 +28,67 @@
   }
 }
 
+@keyframes sprout-star-burst {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.3) rotate(0deg);
+  }
+  18% {
+    opacity: 1;
+    transform: translate3d(calc(var(--dx) * 0.35), calc(var(--dy) * 0.35), 0)
+      scale(var(--sc, 1)) rotate(calc(var(--rot) * 0.3));
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dx), calc(var(--dy) + 95px), 0)
+      scale(calc(var(--sc, 1) * 0.55)) rotate(var(--rot));
+  }
+}
+
+@keyframes sprout-cheer-pop {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.72);
+  }
+  20% {
+    opacity: 1;
+    transform: translate3d(0, -6px, 0) scale(1.06);
+  }
+  38% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate3d(0, -10px, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -28px, 0) scale(0.94);
+  }
+}
+
+.sprout-star-particle {
+  will-change: transform, opacity;
+  animation-name: sprout-star-burst;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+.sprout-cheer-pop {
+  will-change: transform, opacity;
+  animation-name: sprout-cheer-pop;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprout-star-particle,
+  .sprout-cheer-pop {
+    animation-duration: 0.01ms !important;
+  }
+}
+
 @media print {
   body.printing-growth-report {
     background-color: #ffffff;

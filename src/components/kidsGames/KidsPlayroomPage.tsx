@@ -5,6 +5,7 @@ import {
   LayoutGrid,
   Moon,
   Play,
+  Sparkles,
   Sun,
   Trophy,
   Volume2,
@@ -12,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  calculateExactAgeFromDob,
   ChildProfile,
   formatFeetInches,
 } from '../../types';
@@ -33,6 +35,7 @@ import {
 } from '../../services/playroomBadgesService';
 import { useDefaultAppAvatar } from '../../services/defaultAvatarService';
 import { PlayroomBadgesGrid } from './PlayroomBadgesGrid';
+import { PlayroomExcitementOverlay } from './PlayroomExcitementOverlay';
 import { SunflowerSproutGame } from './SunflowerSproutGame';
 import { BubblePopAnimalGame } from './BubblePopAnimalGame';
 import { TallShortFriendsGame } from './TallShortFriendsGame';
@@ -275,6 +278,15 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
   const [selectedGame, setSelectedGame] = useState<PlayroomGameId>('hub');
   const [ageFilter, setAgeFilter] = useState<AgeGroupFilter>('all');
   const [isMuted, setIsMuted] = useState<boolean>(() => isKidGamesMuted());
+  const [extraExcitement, setExtraExcitement] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const saved = window.localStorage.getItem('sproutscale_playroom_excitement_v1');
+      return saved === null ? true : saved === '1';
+    } catch {
+      return true;
+    }
+  });
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
   const [playroomProgress, setPlayroomProgress] = useState<ChildPlayroomProgress>(() =>
     loadChildPlayroomProgress(activeChild.id),
@@ -346,6 +358,18 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
     setRecentUnlockedBadges([]);
   };
 
+  const handleToggleExcitement = () => {
+    const next = !extraExcitement;
+    setExtraExcitement(next);
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('sproutscale_playroom_excitement_v1', next ? '1' : '0');
+      } catch {
+        // Ignore storage write errors
+      }
+    }
+  };
+
   const activeHeightFormatted = formatFeetInches(activeChildHeightCm);
   const visibleGames =
     ageFilter === 'all'
@@ -355,8 +379,60 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
   const countByAge = (group: Exclude<AgeGroupFilter, 'all'>) =>
     PLAYROOM_GAMES.filter((g) => g.ageGroup === group).length;
 
+  const ageRecommendation = useMemo(() => {
+    const exactAge = activeChild.birthDate
+      ? calculateExactAgeFromDob(activeChild.birthDate)
+      : null;
+    const years = exactAge ? exactAge.totalMonths / 12 : 3.2;
+
+    if (years < 3.5) {
+      return {
+        tier: '2_4' as const,
+        tierLabel: 'Ages 2–4',
+        nextLabel: 'Ages 3–5 & 3–6 up next as they grow',
+        tip: 'Extra stars & bouncy cheers fire on every right tap for little learners!',
+      };
+    }
+    if (years < 4.8) {
+      return {
+        tier: '3_5' as const,
+        tierLabel: 'Ages 3–5',
+        nextLabel: 'Ages 3–6 & 4–7 ready whenever they want a bigger challenge',
+        tip: 'Big star bursts celebrate every match, count, and letter!',
+      };
+    }
+    if (years < 5.8) {
+      return {
+        tier: '3_6' as const,
+        tierLabel: 'Ages 3–6',
+        nextLabel: 'Ages 4–7 & 5–8 unlock sight-word bridges and space math next',
+        tip: 'Clock quests, phonics, and rocket shapes grow right alongside them.',
+      };
+    }
+    if (years < 6.8) {
+      return {
+        tier: '4_7' as const,
+        tierLabel: 'Ages 4–7',
+        nextLabel: 'Ages 5–8 Planet Math arrays waiting up next',
+        tip: 'Step up from sight-word bridges to skip-counting and space logic.',
+      };
+    }
+    return {
+      tier: '5_8' as const,
+      tierLabel: 'Ages 5–8',
+      nextLabel: 'All 12 Playroom challenges unlocked',
+      tip: 'Tackle 2-digit sums, multiplication arrays, and collect every trophy badge.',
+    };
+  }, [activeChild.birthDate]);
+
   return (
     <section aria-label="Kids Playroom" className="space-y-6">
+      {/* Live Star & Cheer Celebration Overlay for Every Right Answer */}
+      <PlayroomExcitementOverlay
+        childName={activeChild.name}
+        enabled={extraExcitement}
+      />
+
       {/* Live Badge Unlock Celebration Banner */}
       {recentUnlockedBadges.length > 0 && (
         <div
@@ -456,6 +532,21 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
               </button>
             )}
 
+            {/* Extra Stars & Cheers Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleExcitement}
+              aria-pressed={extraExcitement}
+              className={`min-h-[44px] inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border-2 text-sm font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                extraExcitement
+                  ? 'bg-pink-50 dark:bg-pink-950/50 border-pink-300 dark:border-pink-700 text-pink-900 dark:text-pink-200 hover:bg-pink-100 dark:hover:bg-pink-900/60'
+                  : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 shrink-0" aria-hidden="true" />
+              {extraExcitement ? 'Extra Stars On' : 'Gentle Mode'}
+            </button>
+
             {/* Sound Toggle */}
             <button
               type="button"
@@ -524,6 +615,42 @@ export const KidsPlayroomPage: React.FC<KidsPlayroomPageProps> = ({
             })}
           </div>
         )}
+
+        {/* Growing With Child Age Recommendation Strip */}
+        <div className="mt-4 pt-4 border-t border-amber-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-slate-600 dark:text-slate-300">
+            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" aria-hidden="true" />
+            <span className="font-bold text-indigo-950 dark:text-white">
+              Growing with {activeChild.name}:
+            </span>
+            <span>{ageRecommendation.tip}</span>
+            <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">
+              ·
+            </span>
+            <span className="font-medium text-amber-800 dark:text-amber-300">
+              {ageRecommendation.nextLabel}
+            </span>
+          </div>
+          {selectedGame === 'hub' && (
+            <button
+              type="button"
+              onClick={() =>
+                setAgeFilter((prev) =>
+                  prev === ageRecommendation.tier ? 'all' : ageRecommendation.tier,
+                )
+              }
+              className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                ageFilter === ageRecommendation.tier
+                  ? 'bg-amber-400 text-slate-950'
+                  : 'bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+              }`}
+            >
+              {ageFilter === ageRecommendation.tier
+                ? `Showing ${ageRecommendation.tierLabel} · Show All`
+                : `Show Best for ${activeChild.name} (${ageRecommendation.tierLabel})`}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Quick Game Switcher Tabs */}

@@ -104,6 +104,12 @@ import { ChildAvatarPhotoModal } from './components/ChildAvatarPhotoModal';
 import { WallPhotoHeightEstimatorModal } from './components/WallPhotoHeightEstimatorModal';
 import { AddChildModal, NewChildCreationPayload } from './components/AddChildModal';
 import {
+  BaselineModalMode,
+  EditAgeTwoBaselineModal,
+  SaveAgeOneSpurtPayload,
+} from './components/EditAgeTwoBaselineModal';
+import { PhotoCheckInReminderCard } from './components/PhotoCheckInReminderCard';
+import {
   MobileAppDownloadModal,
   OfflineIndicator,
   PWAInstallActionStrip,
@@ -380,6 +386,7 @@ function SproutScaleWorkspace() {
   const [avatarPhotoMap, setAvatarPhotoMap] = useState<Record<string, string>>({});
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isWallEstimatorOpen, setIsWallEstimatorOpen] = useState<boolean>(false);
+  const [ageTwoModalMode, setAgeTwoModalMode] = useState<BaselineModalMode | null>(null);
   const [isMobileAppModalOpen, setIsMobileAppModalOpen] = useState<boolean>(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
   const [mobileNavActive, setMobileNavActive] = useState<
@@ -1634,19 +1641,25 @@ function SproutScaleWorkspace() {
     kind,
     caption,
     heightCmOverride,
+    weightKgOverride,
+    ageMonthsOverride,
+    capturedDateOverride,
     existingPhotoId,
   }: {
     dataUrl: string;
     kind: ChildPhotoKind;
     caption: string;
     heightCmOverride?: number;
+    weightKgOverride?: number;
+    ageMonthsOverride?: number;
+    capturedDateOverride?: string;
     existingPhotoId?: string | null;
   }): Promise<string | null> => {
     const targetChild = activeChild;
     const safeCaption = caption.trim().slice(0, VALIDATION_BOUNDS.CAPTION_MAX_LEN);
     const safeAgeMonths = Math.round(
       clampNumber(
-        draftAgeMonths,
+        ageMonthsOverride ?? draftAgeMonths,
         VALIDATION_BOUNDS.AGE_MONTHS_MIN,
         VALIDATION_BOUNDS.AGE_MONTHS_MAX,
       ),
@@ -1660,7 +1673,7 @@ function SproutScaleWorkspace() {
     );
     const safeWeightKg = Number(
       clampNumber(
-        kind === 'wall' ? draftWeightKg : 0,
+        weightKgOverride ?? (kind === 'wall' ? draftWeightKg : 0),
         0,
         VALIDATION_BOUNDS.WEIGHT_KG_MAX,
       ).toFixed(1),
@@ -1705,7 +1718,10 @@ function SproutScaleWorkspace() {
     }
 
     const photoId = sanitizeId(`photo_${kind}_${Date.now()}`);
-    const capturedDate = getTodayIsoDate();
+    const capturedDate =
+      capturedDateOverride && VALIDATION_BOUNDS.DATE_PATTERN.test(capturedDateOverride)
+        ? capturedDateOverride
+        : getTodayIsoDate();
     const createdAtMs = Date.now();
     const compressedJpeg = await compressPhotoToStorageJpeg(dataUrl, 1200, 0.85);
 
@@ -2656,6 +2672,142 @@ function SproutScaleWorkspace() {
         }
       }
       showTransientBanner('success', `Saved ${safeName}’s info, age & avatar!`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveAgeOneAndPhotoSpurt = async (payload: SaveAgeOneSpurtPayload) => {
+    setIsSaving(true);
+    const targetChildId = activeChild.id;
+
+    try {
+      // 1. Update estimated Age 2 baseline on the child profile
+      await handleSaveCharacterProfile({
+        name: activeChild.name,
+        birthDate: activeChild.birthDate ?? '',
+        sex: activeChild.sex ?? 'unspecified',
+        ageTwoHeightCm: payload.ageTwoHeightCm,
+        ageTwoWeightKg: payload.ageTwoWeightKg,
+        paletteId: activeChild.paletteId,
+        accessoryId: activeChild.accessoryId,
+        hairStyle: activeChild.hairStyle,
+        skinTone: activeChild.skinTone ?? SKIN_TONE_PRESETS[1].hex,
+        hairColor: activeChild.hairColor ?? HAIR_COLOR_PRESETS[1].hex,
+      });
+
+      // 2. Save Age 1 (12m) baseline & Later Photo milestone into measurements
+      const itemsToSave = [
+        { suffix: 'age1', m: payload.ageOneMeasurement },
+        { suffix: 'spurt', m: payload.laterMeasurement },
+      ];
+      const nowBase = Date.now();
+
+      for (let i = 0; i < itemsToSave.length; i += 1) {
+        const { suffix, m } = itemsToSave[i];
+        const safeAgeMonths = Math.round(
+          clampNumber(
+            m.ageMonths,
+            VALIDATION_BOUNDS.AGE_MONTHS_MIN,
+            VALIDATION_BOUNDS.AGE_MONTHS_MAX,
+          ),
+        );
+        const safeHeightCm = Number(
+          clampNumber(
+            m.heightCm,
+            VALIDATION_BOUNDS.HEIGHT_CM_MIN,
+            VALIDATION_BOUNDS.HEIGHT_CM_MAX,
+          ).toFixed(1),
+        );
+        const safeWeightKg = Number(
+          clampNumber(
+            m.weightKg,
+            VALIDATION_BOUNDS.WEIGHT_KG_MIN,
+            VALIDATION_BOUNDS.WEIGHT_KG_MAX,
+          ).toFixed(1),
+        );
+        const safeDate = VALIDATION_BOUNDS.DATE_PATTERN.test(m.recordedDate)
+          ? m.recordedDate
+          : getTodayIsoDate();
+        const safeNote = m.note.trim().slice(0, VALIDATION_BOUNDS.NOTE_MAX_LEN);
+
+        if (user) {
+          const measurementId = sanitizeId(`m_${suffix}_${nowBase + i}`);
+          const path = `children/${targetChildId}/measurements/${measurementId}`;
+          const optimisticM: GrowthMeasurement = {
+            id: measurementId,
+            ownerId: user.uid,
+            childId: targetChildId,
+            ageMonths: safeAgeMonths,
+            heightCm: safeHeightCm,
+            weightKg: safeWeightKg,
+            recordedDate: safeDate,
+            note: safeNote,
+          };
+          setCloudMeasurementsByChild((prev) => ({
+            ...prev,
+            [targetChildId]: [...(prev[targetChildId] ?? []), optimisticM].sort(
+              (a, b) => a.ageMonths - b.ageMonths,
+            ),
+          }));
+          try {
+            await setDoc(doc(db, 'children', targetChildId, 'measurements', measurementId), {
+              ownerId: user.uid,
+              childId: targetChildId,
+              ageMonths: safeAgeMonths,
+              heightCm: safeHeightCm,
+              weightKg: safeWeightKg,
+              recordedDate: safeDate,
+              note: safeNote,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          } catch (err) {
+            handleFirestoreError(err, OperationType.CREATE, path);
+          }
+        } else {
+          const demoEntry: GrowthMeasurement = {
+            id: sanitizeId(`demo_m_${suffix}_${nowBase + i}`),
+            ownerId: 'demo_family',
+            childId: targetChildId,
+            ageMonths: safeAgeMonths,
+            heightCm: safeHeightCm,
+            weightKg: safeWeightKg,
+            recordedDate: safeDate,
+            note: safeNote,
+          };
+          setDemoMeasurementsMap((prev) => ({
+            ...prev,
+            [targetChildId]: [...(prev[targetChildId] ?? []), demoEntry].sort(
+              (a, b) => a.ageMonths - b.ageMonths,
+            ),
+          }));
+        }
+      }
+
+      // 3. Optionally save the uploaded later photo to the Photo Album & Drive
+      if (payload.photoPayload) {
+        await handleSaveCapturedPhoto({
+          dataUrl: payload.photoPayload.dataUrl,
+          kind: 'milestone',
+          caption: payload.photoPayload.caption,
+          heightCmOverride: payload.photoPayload.heightCm,
+          weightKgOverride: payload.photoPayload.weightKg,
+          ageMonthsOverride: payload.photoPayload.ageMonths,
+          capturedDateOverride: payload.photoPayload.capturedDate,
+        });
+      }
+
+      // 4. Point Growth Wall preview to the later photo milestone so the jump is visible right away
+      setDraftHeightCm(payload.laterMeasurement.heightCm);
+      setDraftWeightKg(payload.laterMeasurement.weightKg);
+      setDraftAgeMonths(payload.laterMeasurement.ageMonths);
+      setDraftDate(payload.laterMeasurement.recordedDate);
+
+      showTransientBanner(
+        'success',
+        `Saved Age 1, estimated Age 2 (${formatFeetInches(payload.ageTwoHeightCm)}), and later milestone · ${payload.spurtSummary}`,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -3675,6 +3827,7 @@ function SproutScaleWorkspace() {
                   onToggleTimelapse={handleToggleTimelapse}
                   onOpenPhotoStudio={() => setIsPhotoModalOpen(true)}
                   onOpenWallHeightEstimator={() => setIsWallEstimatorOpen(true)}
+                  onEditAgeTwoBaseline={() => setAgeTwoModalMode('age2')}
                 />
               </div>
 
@@ -3725,6 +3878,14 @@ function SproutScaleWorkspace() {
           )}
         </section>
 
+        {/* Photo Check-In Reminder (Every 7 or 14 Days) */}
+        <PhotoCheckInReminderCard
+          childProfile={activeChild}
+          photos={activePhotos}
+          measurements={activeMeasurements}
+          onTakeOrUploadPhoto={() => openAddMemoryModal()}
+        />
+
         {/* Section 2: Growth Trajectory Curve, Velocity Chart & Wall Marks Table */}
         <GrowthTimelineSection
           childProfile={activeChild}
@@ -3735,6 +3896,8 @@ function SproutScaleWorkspace() {
           onInspectMilestone={handleInspectMilestone}
           onUpdateMeasurement={handleUpdateMeasurement}
           onDeleteMeasurement={handleDeleteMeasurement}
+          onEditAgeTwoBaseline={() => setAgeTwoModalMode('age2')}
+          onOpenAgeOneSpurtEstimator={() => setAgeTwoModalMode('age1_spurt')}
           onAddPhotoForMilestone={(m) =>
             openAddMemoryModal({
               dateIso: m.recordedDate,
@@ -4060,6 +4223,30 @@ function SproutScaleWorkspace() {
         isSaving={isSaving}
         onClose={() => setIsAddChildModalOpen(false)}
         onCreateChild={handleCreateNewChild}
+      />
+
+      {/* Quick At Age 2 Baseline & Age 1 + Later Photo Growth Spurt Guesstimator Modal */}
+      <EditAgeTwoBaselineModal
+        isOpen={ageTwoModalMode !== null}
+        initialMode={ageTwoModalMode ?? 'age2'}
+        childProfile={activeChild}
+        isSaving={isSaving}
+        onClose={() => setAgeTwoModalMode(null)}
+        onSaveAgeTwoBaseline={async ({ ageTwoHeightCm, ageTwoWeightKg }) => {
+          await handleSaveCharacterProfile({
+            name: activeChild.name,
+            birthDate: activeChild.birthDate ?? '',
+            sex: activeChild.sex ?? 'unspecified',
+            ageTwoHeightCm,
+            ageTwoWeightKg,
+            paletteId: activeChild.paletteId,
+            accessoryId: activeChild.accessoryId,
+            hairStyle: activeChild.hairStyle,
+            skinTone: activeChild.skinTone ?? SKIN_TONE_PRESETS[1].hex,
+            hairColor: activeChild.hairColor ?? HAIR_COLOR_PRESETS[1].hex,
+          });
+        }}
+        onSaveAgeOneAndPhotoSpurt={handleSaveAgeOneAndPhotoSpurt}
       />
 
       {/* Unified Portfolio Photos & Milestone Events Composer Modal */}
