@@ -207,6 +207,66 @@ export async function generatePersonalizedStorybook(
   };
 }
 
+export async function searchAndFetchReadAlongBook(params: {
+  query: string;
+  childId: string;
+  childName: string;
+  ageMonths: number;
+  mode: StorybookMode;
+  storyDate: string;
+}): Promise<SavedStorybook> {
+  const response = await fetch('/api/storybook/search-story', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: params.query.trim(),
+      childName: params.childName,
+      ageMonths: params.ageMonths,
+      mode: params.mode,
+    }),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    title?: string;
+    subtitle?: string;
+    dedication?: string;
+    pages?: StorybookPage[];
+    conversationPrompt?: string;
+    closingLine?: string;
+  };
+
+  if (!response.ok || !Array.isArray(payload.pages) || payload.pages.length === 0) {
+    throw new Error(
+      payload.error || 'Could not download that story right now. Please try again.',
+    );
+  }
+
+  return {
+    id: `search_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    childId: params.childId,
+    childName: params.childName,
+    ageMonths: params.ageMonths,
+    mode: params.mode,
+    storyDate: params.storyDate,
+    title: payload.title || params.query.trim(),
+    subtitle: payload.subtitle || 'Downloaded Read-Along Book',
+    dedication:
+      payload.dedication || `Downloaded for ${params.childName} — follow the glowing words!`,
+    pages: payload.pages,
+    conversationPrompt:
+      payload.conversationPrompt || `What was your favorite part, ${params.childName}?`,
+    closingLine:
+      payload.closingLine ||
+      (params.mode === 'bedtime'
+        ? `Goodnight, ${params.childName}!`
+        : `Great job reading along, ${params.childName}!`),
+    photoIds: [],
+    todayPrompt: `Searched Story: ${params.query.trim()}`,
+    createdAtMs: Date.now(),
+  };
+}
+
 export interface StorybookWordTiming {
   word: string;
   startSec: number;

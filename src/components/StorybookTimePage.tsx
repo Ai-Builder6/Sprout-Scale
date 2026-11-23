@@ -7,13 +7,16 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Download,
   Loader2,
   Moon,
+  Search,
   Sparkles,
   Square,
   Sun,
   Trash2,
   Volume2,
+  X,
 } from 'lucide-react';
 import {
   calculateExactAgeFromDob,
@@ -38,10 +41,16 @@ import {
   loadChildStorybooks,
   saveChildStorybook,
   SavedStorybook,
+  searchAndFetchReadAlongBook,
   StorybookAudioResult,
   StorybookMode,
   StorybookWordTiming,
 } from '../services/storybookService';
+import {
+  ClassicStoryTemplate,
+  instantiateClassicStoryForChild,
+  searchClassicCatalog,
+} from '../services/classicStoriesCatalog';
 import {
   ElevenLabsVoiceOption,
   fetchElevenLabsVoices,
@@ -221,6 +230,11 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Classic & On-Demand Read-Along Story Search state
+  const [storySearchQuery, setStorySearchQuery] = useState<string>('');
+  const [isSearchingStory, setIsSearchingStory] = useState<boolean>(false);
+  const [searchStoryError, setSearchStoryError] = useState<string | null>(null);
 
   // Per-child bookshelf + active open storybook state
   const [savedBooks, setSavedBooks] = useState<SavedStorybook[]>(() =>
@@ -655,7 +669,78 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
     setCurrentPageIdx(0);
     wholeBookActiveRef.current = true;
     setIsAutoReadingWholeBook(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     void speakPage(book, 0, true);
+  };
+
+  // Live filtered classic catalog (Three Little Pigs, Itsy Bitsy Spider, etc.)
+  const matchingClassicStories = useMemo(
+    () => searchClassicCatalog(storySearchQuery),
+    [storySearchQuery],
+  );
+
+  const handleDownloadClassicBook = (template: ClassicStoryTemplate) => {
+    const book = instantiateClassicStoryForChild(template, {
+      childId: activeChild.id,
+      childName: activeChild.name,
+      ageMonths: currentAgeMonths,
+      storyDate: todayIso,
+    });
+    const updatedBookshelf = saveChildStorybook(book);
+    setSavedBooks(updatedBookshelf);
+    handleOpenAndReadAlong(book);
+  };
+
+  const handleSearchAndDownloadStory = async (
+    queryOverride?: string,
+    forceFetchCustom = false,
+  ) => {
+    const q = (queryOverride ?? storySearchQuery).trim();
+    if (!q || isSearchingStory) return;
+    setSearchStoryError(null);
+
+    // If user didn't force custom fetch and an exact instant classic matches, download & launch immediately!
+    if (!forceFetchCustom) {
+      const instantMatches = searchClassicCatalog(q);
+      const qLower = q.toLowerCase();
+      const exactMatch =
+        instantMatches.length === 1
+          ? instantMatches[0]
+          : instantMatches.find(
+              (c) =>
+                c.title.toLowerCase() === qLower ||
+                c.title.toLowerCase().replace(/^the\s+/, '') === qLower.replace(/^the\s+/, ''),
+            );
+      if (exactMatch) {
+        handleDownloadClassicBook(exactMatch);
+        return;
+      }
+    }
+
+    stopReadAloud();
+    setIsSearchingStory(true);
+    try {
+      const downloaded = await searchAndFetchReadAlongBook({
+        query: q,
+        childId: activeChild.id,
+        childName: activeChild.name,
+        ageMonths: currentAgeMonths,
+        mode,
+        storyDate: todayIso,
+      });
+      const updatedBookshelf = saveChildStorybook(downloaded);
+      setSavedBooks(updatedBookshelf);
+      setStorySearchQuery('');
+      handleOpenAndReadAlong(downloaded);
+    } catch (err: unknown) {
+      setSearchStoryError(
+        err instanceof Error
+          ? err.message
+          : 'Could not download that story right now. Please try again.',
+      );
+    } finally {
+      setIsSearchingStory(false);
+    }
   };
 
   const handleToggleReadCurrentPage = () => {
@@ -1536,6 +1621,242 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Search & Download Classic Read-Along Stories (Three Little Pigs, Itsy Bitsy Spider & Any Story!) */}
+      <div
+        className={`pt-5 border-t border-current/10 space-y-4`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div className="space-y-0.5">
+            <h3 className="text-base sm:text-lg font-display font-bold inline-flex items-center gap-2">
+              <Search className="w-4 h-4 text-amber-500 shrink-0" aria-hidden="true" />
+              Search &amp; Download Read-Along Stories for {activeChild.name}
+            </h3>
+            <p className="text-xs opacity-75">
+              Search classic fairy tales, nursery rhymes, or any story — download straight to{' '}
+              {activeChild.name}’s bookshelf and read along as every word lights up.
+            </p>
+          </div>
+          <span className="text-xs font-mono tabular-nums opacity-75">
+            {matchingClassicStories.length} classic{matchingClassicStories.length === 1 ? '' : 's'}{' '}
+            + search any title
+          </span>
+        </div>
+
+        {/* Search Form */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSearchAndDownloadStory();
+          }}
+          className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
+        >
+          <div className="relative flex-1">
+            <Search
+              className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-55 pointer-events-none"
+              aria-hidden="true"
+            />
+            <input
+              type="text"
+              value={storySearchQuery}
+              onChange={(e) => {
+                setStorySearchQuery(e.target.value);
+                setSearchStoryError(null);
+              }}
+              placeholder="Search Three Little Pigs, Itsy Bitsy Spider, Little Red Riding Hood, Humpty Dumpty..."
+              aria-label="Search for a read-along story"
+              maxLength={120}
+              className={`w-full min-h-[46px] pl-10 pr-9 py-2.5 text-sm font-medium rounded-xl border focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+                isBedtimeTheme
+                  ? 'bg-indigo-950 border-indigo-700 text-white placeholder:text-indigo-400'
+                  : 'bg-white dark:bg-slate-800 border-sky-300 dark:border-slate-600 text-slate-900 dark:text-white placeholder:text-slate-400'
+              }`}
+            />
+            {storySearchQuery && (
+              <button
+                type="button"
+                aria-label="Clear story search"
+                onClick={() => {
+                  setStorySearchQuery('');
+                  setSearchStoryError(null);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-65 hover:opacity-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSearchingStory || !storySearchQuery.trim()}
+            className="min-h-[46px] px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 rounded-xl shadow-xs transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            {isSearchingStory ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                Downloading Book...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" aria-hidden="true" />
+                Find &amp; Download Book
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* Quick Popular Story Searches */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            'Three Little Pigs',
+            'Itsy Bitsy Spider',
+            'Goldilocks',
+            'Tortoise and the Hare',
+            'Little Red Riding Hood',
+            'Humpty Dumpty',
+            'Old MacDonald',
+            'Twinkle Little Star',
+          ].map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              onClick={() => {
+                setStorySearchQuery(suggestion);
+                setSearchStoryError(null);
+              }}
+              className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg border transition-colors cursor-pointer ${
+                isBedtimeTheme
+                  ? 'border-indigo-700 bg-indigo-950/70 text-indigo-200 hover:bg-indigo-800'
+                  : 'border-sky-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+
+        {searchStoryError && (
+          <div
+            role="alert"
+            className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-xs font-semibold text-rose-800 dark:text-rose-200"
+          >
+            {searchStoryError}
+          </div>
+        )}
+
+        {/* On-Demand Fetch Card when user searches a title not in the instant 8 (or wants a custom version) */}
+        {storySearchQuery.trim().length >= 2 && (
+          <div
+            className={`rounded-2xl border-2 border-dashed p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              isBedtimeTheme
+                ? 'border-amber-400/60 bg-indigo-900/60'
+                : 'border-amber-400 bg-amber-50/80 dark:bg-slate-800/90'
+            }`}
+          >
+            <div className="space-y-0.5">
+              <p className="text-sm font-display font-bold">
+                Download “{storySearchQuery.trim()}” as a Read-Along Book
+              </p>
+              <p className="text-xs opacity-80">
+                Builds a complete 5-page read-along edition for {activeChild.name}, saves it to{' '}
+                {activeChild.name}’s bookshelf, and starts glowing word-by-word narration!
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={isSearchingStory}
+              onClick={() => void handleSearchAndDownloadStory(storySearchQuery.trim(), true)}
+              className="min-h-[44px] px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 rounded-xl inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              {isSearchingStory ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  Downloading...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" aria-hidden="true" />
+                  Download &amp; Read Along
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Instant Classic Read-Along Catalog Grid */}
+        {matchingClassicStories.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {matchingClassicStories.map((classic) => {
+              const classicId = `classic_${classic.slug}_${activeChild.id}`;
+              const isDownloaded = savedBooks.some((b) => b.id === classicId);
+              const isClassicBedtime = classic.mode === 'bedtime';
+              return (
+                <div
+                  key={classic.slug}
+                  className={`rounded-2xl border p-4 flex flex-col justify-between gap-3 transition-colors ${
+                    isDownloaded
+                      ? 'border-emerald-400/80 bg-emerald-500/10'
+                      : isBedtimeTheme
+                        ? 'border-indigo-700/80 bg-indigo-900/50 hover:bg-indigo-900/80'
+                        : 'border-sky-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 hover:border-amber-300'
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 text-[11px] font-bold">
+                      <span
+                        className={
+                          isClassicBedtime
+                            ? isBedtimeTheme
+                              ? 'text-indigo-200'
+                              : 'text-indigo-700 dark:text-indigo-300'
+                            : isBedtimeTheme
+                              ? 'text-amber-300'
+                              : 'text-sky-800 dark:text-sky-300'
+                        }
+                      >
+                        {classic.category}
+                      </span>
+                      {isDownloaded && (
+                        <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                          <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                          Saved
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-sm font-display font-bold leading-snug">{classic.title}</h4>
+                    <p className="text-xs opacity-75 leading-relaxed">{classic.subtitle}</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadClassicBook(classic)}
+                    className={`w-full min-h-[42px] px-3 py-2 text-xs font-bold rounded-xl inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+                      isDownloaded
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : isClassicBedtime
+                          ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                          : 'bg-sky-600 hover:bg-sky-700 text-white'
+                    }`}
+                  >
+                    {isDownloaded ? (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
+                        Read Along Now
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5" aria-hidden="true" />
+                        Download &amp; Read Along
+                      </>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Ready-to-Read Follow-Along Stories (Instant Light-Up Word Books for activeChild) */}
       <div className="pt-4 border-t border-current/10 space-y-3">

@@ -944,6 +944,180 @@ async function startServer(): Promise<void> {
     }
   });
 
+  app.post('/api/storybook/search-story', async (req, res) => {
+    try {
+      const { query, childName, ageMonths, mode } = (req.body ?? {}) as {
+        query?: string;
+        childName?: string;
+        ageMonths?: number;
+        mode?: 'daytime' | 'bedtime';
+      };
+
+      const cleanQuery = String(query || '').trim().slice(0, 120);
+      if (!cleanQuery) {
+        res.status(400).json({ error: 'Please type a story title, rhyme, or topic to search.' });
+        return;
+      }
+
+      const safeChildName = String(childName || 'Sprout').trim().slice(0, 40) || 'Sprout';
+      const safeAgeMonths = Number.isFinite(Number(ageMonths))
+        ? Math.max(12, Math.min(144, Math.round(Number(ageMonths))))
+        : 48;
+      const ageYearsText =
+        safeAgeMonths < 24
+          ? `${safeAgeMonths} months old`
+          : `${Math.floor(safeAgeMonths / 12)} years old`;
+      const isBedtime = mode === 'bedtime';
+
+      const promptText = `Create a warm, joyful, child-safe 5-page READ-ALONG storybook based on the family's search: "${cleanQuery}".
+
+Audience & personalization:
+- Dedicated to ${safeChildName} (age ${ageYearsText}).
+- Tone: ${
+        isBedtime
+          ? 'Bedtime Read-Along — gentle, cozy, soothing, peaceful ending ready for sleep.'
+          : 'Daytime Read-Along — cheerful, playful, rhythmic, easy for young kids to follow along word by word.'
+      }
+
+Important story rules:
+- If "${cleanQuery}" is a well-known classic public-domain fairy tale, folk tale, Aesop fable, or nursery rhyme (such as "The Three Little Pigs", "The Itsy Bitsy Spider", "Little Red Riding Hood", "Humpty Dumpty", "Row Row Row Your Boat", "Cinderella", "The Ugly Duckling", "Five Little Monkeys", "Baa Baa Black Sheep", etc.), tell that beloved classic faithfully in gentle, non-scary, age-appropriate language with fun sound words and rhythmic phrasing!
+- If "${cleanQuery}" references a modern copyrighted book or trademarked character, create a charming original read-along story inspired by the theme/adventure instead without copying copyrighted text.
+- Write EXACTLY 5 pages. Each page has a short 2–6 word heading and 2–3 clear, rhythmic read-along sentences (22–40 words per page) so young kids can follow every glowing word as the announcer reads aloud.
+- Keep everything 100% wholesome, kind, and never scary (even wolves or giants are silly/gentle).
+- Set usePhotoIndex to -1 on every page.
+- Return ONLY valid JSON matching the schema.`;
+
+      const ai = getGenAIClient();
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: [{ role: 'user', parts: [{ text: promptText }] }],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              subtitle: { type: Type.STRING },
+              dedication: { type: Type.STRING },
+              pages: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    pageNumber: { type: Type.INTEGER },
+                    heading: { type: Type.STRING },
+                    text: { type: Type.STRING },
+                    sceneMood: {
+                      type: Type.STRING,
+                      enum: ['sunny', 'playful', 'wonder', 'cozy', 'sleepy'],
+                    },
+                    usePhotoIndex: { type: Type.INTEGER },
+                  },
+                  required: ['pageNumber', 'heading', 'text', 'sceneMood', 'usePhotoIndex'],
+                },
+              },
+              conversationPrompt: { type: Type.STRING },
+              closingLine: { type: Type.STRING },
+            },
+            required: [
+              'title',
+              'subtitle',
+              'dedication',
+              'pages',
+              'conversationPrompt',
+              'closingLine',
+            ],
+          },
+        },
+      });
+
+      const rawText = (response.text || '').trim();
+      if (!rawText) {
+        res.status(502).json({ error: 'Story search returned an empty response. Please try again.' });
+        return;
+      }
+
+      const parsed = JSON.parse(rawText) as {
+        title?: string;
+        subtitle?: string;
+        dedication?: string;
+        pages?: Array<{
+          pageNumber?: number;
+          heading?: string;
+          text?: string;
+          sceneMood?: string;
+          usePhotoIndex?: number;
+        }>;
+        conversationPrompt?: string;
+        closingLine?: string;
+      };
+
+      const rawPages = Array.isArray(parsed.pages) ? parsed.pages : [];
+      if (rawPages.length === 0) {
+        res.status(502).json({ error: 'Could not build story pages. Please try again.' });
+        return;
+      }
+
+      const allowedMoods = new Set(['sunny', 'playful', 'wonder', 'cozy', 'sleepy']);
+      const normalizedPages = rawPages.slice(0, 5).map((p, idx) => ({
+        pageNumber: idx + 1,
+        heading: String(p.heading || `Page ${idx + 1}`).trim().slice(0, 80),
+        text: String(p.text || '').trim().slice(0, 600),
+        sceneMood: allowedMoods.has(String(p.sceneMood || ''))
+          ? String(p.sceneMood)
+          : isBedtime
+            ? 'cozy'
+            : 'sunny',
+        usePhotoIndex: -1,
+      }));
+
+      res.json({
+        title: String(parsed.title || cleanQuery).trim().slice(0, 100),
+        subtitle: String(parsed.subtitle || 'Classic Read-Along Book').trim().slice(0, 120),
+        dedication: String(
+          parsed.dedication || `Downloaded for ${safeChildName} — follow the glowing words!`,
+        )
+          .trim()
+          .slice(0, 160),
+        pages: normalizedPages,
+        conversationPrompt: String(
+          parsed.conversationPrompt || `What was your favorite part of this story, ${safeChildName}?`,
+        )
+          .trim()
+          .slice(0, 180),
+        closingLine: String(
+          parsed.closingLine ||
+            (isBedtime
+              ? `Goodnight, ${safeChildName} — sweet dreams!`
+              : `Hooray! Great job reading along, ${safeChildName}!`),
+        )
+          .trim()
+          .slice(0, 160),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.includes('MISSING_GEMINI_API_KEY') ||
+        msg.includes('API_KEY_INVALID') ||
+        msg.includes('PERMISSION_DENIED')
+      ) {
+        res.status(403).json({
+          error: 'Gemini API key is missing or invalid in Settings > Secrets.',
+        });
+        return;
+      }
+      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429')) {
+        res.status(429).json({
+          error: 'Story search quota reached right now. Try one of the instant classic stories below!',
+        });
+        return;
+      }
+      res.status(500).json({
+        error: `Could not fetch that story right now (${msg.slice(0, 120)}).`,
+      });
+    }
+  });
+
   app.post('/api/storybook/read-aloud', async (req, res) => {
     try {
       const { text, mode, voiceId } = (req.body ?? {}) as {
