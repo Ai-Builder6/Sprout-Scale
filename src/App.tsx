@@ -26,6 +26,7 @@ import {
   Image as ImageIcon,
   LogOut,
   Moon,
+  Music,
   Pencil,
   Plus,
   Ruler,
@@ -116,6 +117,7 @@ import {
 } from './components/MobileAppDownloadModal';
 import { KidsPlayroomPage } from './components/kidsGames/KidsPlayroomPage';
 import { StorybookTimePage } from './components/StorybookTimePage';
+import { DancePlayhousePage } from './components/DancePlayhousePage';
 import {
   DeletionExecutionResult,
   LegalPageId,
@@ -201,7 +203,7 @@ function loadStoredSelectedChildId(): string {
   return DEMO_CHILD.id;
 }
 
-type AppPageView = 'growth_wall' | 'playroom' | 'storybook' | LegalPageId;
+type AppPageView = 'growth_wall' | 'playroom' | 'storybook' | 'playhouse' | LegalPageId;
 
 function resolveAppViewFromPath(pathname: string): AppPageView {
   const normalized = pathname.replace(/\/+$/, '').toLowerCase();
@@ -212,6 +214,7 @@ function resolveAppViewFromPath(pathname: string): AppPageView {
   if (normalized === '/data-deletion' || normalized === '/delete-data') return 'data-deletion';
   if (normalized === '/games' || normalized === '/playroom') return 'playroom';
   if (normalized === '/storybook' || normalized === '/stories') return 'storybook';
+  if (normalized === '/playhouse' || normalized === '/dance') return 'playhouse';
   return 'growth_wall';
 }
 
@@ -231,6 +234,8 @@ function getPathForAppView(view: AppPageView): string {
       return '/games';
     case 'storybook':
       return '/storybook';
+    case 'playhouse':
+      return '/playhouse';
     default:
       return '/';
   }
@@ -388,7 +393,7 @@ function SproutScaleWorkspace() {
   const [isMobileAppModalOpen, setIsMobileAppModalOpen] = useState<boolean>(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
   const [mobileNavActive, setMobileNavActive] = useState<
-    'wall' | 'storybook' | 'games' | 'ruler' | 'app'
+    'wall' | 'storybook' | 'playhouse' | 'games' | 'ruler' | 'app'
   >('wall');
 
   useEffect(() => {
@@ -430,6 +435,13 @@ function SproutScaleWorkspace() {
     setAppView('storybook');
     pushAppPath('storybook');
     setMobileNavActive('storybook');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateToPlayhouse = () => {
+    setAppView('playhouse');
+    pushAppPath('playhouse');
+    setMobileNavActive('playhouse');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -3323,6 +3335,18 @@ function SproutScaleWorkspace() {
             </button>
             <button
               type="button"
+              onClick={navigateToPlayhouse}
+              className={`inline-flex items-center gap-1.5 hover:text-pink-700 dark:hover:text-pink-300 hover:underline decoration-2 decoration-pink-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                appView === 'playhouse'
+                  ? 'text-pink-700 dark:text-pink-300 font-bold underline'
+                  : ''
+              }`}
+            >
+              <Music className="w-4 h-4 shrink-0" aria-hidden="true" />
+              Playhouse
+            </button>
+            <button
+              type="button"
               onClick={navigateToPlayroom}
               className={`inline-flex items-center gap-1.5 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline decoration-2 decoration-emerald-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 appView === 'playroom'
@@ -3339,13 +3363,6 @@ function SproutScaleWorkspace() {
               className="hover:text-sky-700 dark:hover:text-sky-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Photo Ruler
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsMobileAppModalOpen(true)}
-              className="hover:text-sky-700 dark:hover:text-sky-300 hover:underline decoration-2 decoration-amber-400 underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              {isInstalled ? 'Share App' : 'Download App'}
             </button>
           </nav>
 
@@ -3419,6 +3436,19 @@ function SproutScaleWorkspace() {
             }}
             onBackToGrowthWall={() => navigateToGrowthWall('measure')}
             onQuickUploadDayPhoto={handleQuickUploadStorybookDayPhotos}
+            isDark={isDark}
+            onToggleTheme={toggleTheme}
+          />
+        ) : appView === 'playhouse' ? (
+          <DancePlayhousePage
+            activeChild={activeChild}
+            childrenList={activeChildrenList}
+            currentAgeMonths={draftAgeMonths}
+            onSelectChild={(kidId) => {
+              pendingChildIdRef.current = null;
+              selectChildProfile(kidId);
+            }}
+            onBackToGrowthWall={() => navigateToGrowthWall('measure')}
             isDark={isDark}
             onToggleTheme={toggleTheme}
           />
@@ -3564,6 +3594,15 @@ function SproutScaleWorkspace() {
                 >
                   <BookOpen className="w-3.5 h-3.5" aria-hidden="true" />
                   Storybook Time (Day &amp; Bedtime)
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={navigateToPlayhouse}
+                  className="inline-flex items-center gap-1 font-bold text-pink-700 dark:text-pink-300 hover:text-indigo-950 dark:hover:text-white hover:underline whitespace-nowrap cursor-pointer"
+                >
+                  <Music className="w-3.5 h-3.5" aria-hidden="true" />
+                  Dance Playhouse (Music &amp; Moves)
                 </button>
               </div>
             </div>
@@ -4015,6 +4054,19 @@ function SproutScaleWorkspace() {
 
         <button
           type="button"
+          onClick={navigateToPlayhouse}
+          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
+            appView === 'playhouse'
+              ? 'text-pink-700 dark:text-pink-300 font-bold'
+              : 'text-slate-600 dark:text-slate-400'
+          }`}
+        >
+          <Music className="w-4 h-4" aria-hidden="true" />
+          <span className="text-[10px] leading-none whitespace-nowrap">Playhouse</span>
+        </button>
+
+        <button
+          type="button"
           onClick={navigateToPlayroom}
           className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
             appView === 'playroom'
@@ -4040,24 +4092,6 @@ function SproutScaleWorkspace() {
         >
           <Ruler className="w-4 h-4" aria-hidden="true" />
           <span className="text-[10px] leading-none whitespace-nowrap">Photo Ruler</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setMobileNavActive('app');
-            setIsMobileAppModalOpen(true);
-          }}
-          className={`min-h-[48px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors cursor-pointer ${
-            mobileNavActive === 'app'
-              ? 'text-amber-700 dark:text-amber-300 font-bold'
-              : 'text-slate-600 dark:text-slate-400'
-          }`}
-        >
-          <Share2 className="w-4 h-4" aria-hidden="true" />
-          <span className="text-[10px] leading-none whitespace-nowrap">
-            {isInstalled ? 'Share App' : 'Get App'}
-          </span>
         </button>
       </nav>
 

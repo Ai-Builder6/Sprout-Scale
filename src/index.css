@@ -82,10 +82,140 @@
   animation-fill-mode: both;
 }
 
+@keyframes dance-bounce {
+  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1) scaleX(1); }
+  25% { transform: translate3d(0, 6px, 0) scaleY(0.94) scaleX(1.05); }
+  55% { transform: translate3d(0, -18px, 0) scaleY(1.04) scaleX(0.97); }
+  80% { transform: translate3d(0, 2px, 0) scaleY(0.98) scaleX(1.02); }
+}
+
+@keyframes dance-reach-sky {
+  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1) rotate(0deg); }
+  45% { transform: translate3d(0, -24px, 0) scaleY(1.09) scaleX(0.94) rotate(-3deg); }
+  75% { transform: translate3d(0, -14px, 0) scaleY(1.06) scaleX(0.96) rotate(3deg); }
+}
+
+@keyframes dance-spin {
+  0% { transform: translate3d(0, 0, 0) scaleX(1) rotate(0deg); }
+  25% { transform: translate3d(0, -12px, 0) scaleX(0.18) rotate(-4deg); }
+  50% { transform: translate3d(0, -16px, 0) scaleX(-1) rotate(0deg); }
+  75% { transform: translate3d(0, -10px, 0) scaleX(0.18) rotate(4deg); }
+  100% { transform: translate3d(0, 0, 0) scaleX(1) rotate(0deg); }
+}
+
+@keyframes dance-star-jump {
+  0%, 100% { transform: translate3d(0, 4px, 0) scale(0.94, 0.92); }
+  42% { transform: translate3d(0, -34px, 0) scale(1.13, 1.08) rotate(-4deg); }
+  58% { transform: translate3d(0, -34px, 0) scale(1.13, 1.08) rotate(4deg); }
+}
+
+@keyframes dance-robot {
+  0%, 20% { transform: translate3d(-10px, 0, 0) rotate(-6deg); }
+  25%, 45% { transform: translate3d(-10px, -6px, 0) rotate(0deg); }
+  50%, 70% { transform: translate3d(10px, 0, 0) rotate(6deg); }
+  75%, 95% { transform: translate3d(10px, -6px, 0) rotate(0deg); }
+  100% { transform: translate3d(-10px, 0, 0) rotate(-6deg); }
+}
+
+@keyframes dance-march {
+  0%, 100% { transform: translate3d(-8px, 0, 0) rotate(-5deg); }
+  25% { transform: translate3d(0, -14px, 0) rotate(0deg); }
+  50% { transform: translate3d(8px, 0, 0) rotate(5deg); }
+  75% { transform: translate3d(0, -14px, 0) rotate(0deg); }
+}
+
+@keyframes dance-stomp {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1, 1); }
+  30% { transform: translate3d(-6px, -22px, 0) rotate(-7deg) scale(1.03); }
+  50% { transform: translate3d(-6px, 6px, 0) rotate(0deg) scale(1.08, 0.91); }
+  75% { transform: translate3d(6px, -22px, 0) rotate(7deg) scale(1.03); }
+  92% { transform: translate3d(6px, 6px, 0) rotate(0deg) scale(1.08, 0.91); }
+}
+
+@keyframes dance-bunny-hop {
+  0%, 100% { transform: translate3d(0, 4px, 0) scale(1.04, 0.92); }
+  35% { transform: translate3d(12px, -30px, 0) scale(0.95, 1.08) rotate(5deg); }
+  65% { transform: translate3d(-12px, -28px, 0) scale(0.95, 1.08) rotate(-5deg); }
+}
+
+@keyframes dance-wiggle {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) skewX(0deg); }
+  20% { transform: translate3d(-10px, -4px, 0) rotate(-9deg) skewX(-5deg); }
+  40% { transform: translate3d(10px, -6px, 0) rotate(9deg) skewX(5deg); }
+  60% { transform: translate3d(-10px, -4px, 0) rotate(-8deg) skewX(-4deg); }
+  80% { transform: translate3d(10px, -6px, 0) rotate(8deg) skewX(4deg); }
+}
+
+@keyframes dance-flamingo {
+  0%, 100% { transform: translate3d(0, -8px, 0) rotate(-10deg) scale(1.02); }
+  50% { transform: translate3d(0, -12px, 0) rotate(10deg) scale(1.02); }
+}
+
+@keyframes dance-disco-high {
+  0%, 100% { transform: translate3d(-12px, 4px, 0) rotate(-8deg) scale(0.98); }
+  50% { transform: translate3d(16px, -22px, 0) rotate(11deg) scale(1.07); }
+}
+
+@keyframes dance-disco-low {
+  0%, 100% { transform: translate3d(14px, -16px, 0) rotate(9deg) scale(1.04); }
+  50% { transform: translate3d(-16px, 8px, 0) rotate(-11deg) scale(0.95); }
+}
+
+@keyframes dance-side-slide {
+  0%, 100% { transform: translate3d(-34px, 0, 0) rotate(-5deg); }
+  25% { transform: translate3d(0, -12px, 0) rotate(0deg); }
+  50% { transform: translate3d(34px, 0, 0) rotate(5deg); }
+  75% { transform: translate3d(0, -12px, 0) rotate(0deg); }
+}
+
+@keyframes dance-squat-blast {
+  0%, 35% { transform: translate3d(0, 14px, 0) scale(1.09, 0.84); }
+  65% { transform: translate3d(0, -40px, 0) scale(0.94, 1.12); }
+  100% { transform: translate3d(0, 0, 0) scale(1, 1); }
+}
+
+@keyframes dance-moonwalk {
+  0%, 100% { transform: translate3d(28px, 0, 0) skewX(-7deg); }
+  50% { transform: translate3d(-28px, -6px, 0) skewX(7deg); }
+}
+
+@keyframes dance-wave {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-6deg); }
+  50% { transform: translate3d(0, -10px, 0) rotate(8deg) scale(1.04); }
+}
+
+@keyframes dance-note-float {
+  0% { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.75); }
+  25% { opacity: 1; transform: translate3d(0, -8px, 0) scale(1.08); }
+  100% { opacity: 0; transform: translate3d(0, -48px, 0) scale(0.9); }
+}
+
+.dance-move-bounce { animation: dance-bounce var(--beat-dur, 0.52s) cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }
+.dance-move-reach_sky { animation: dance-reach-sky calc(var(--beat-dur, 0.52s) * 2) ease-in-out infinite; }
+.dance-move-spin { animation: dance-spin calc(var(--beat-dur, 0.52s) * 2) ease-in-out infinite; }
+.dance-move-star_jump { animation: dance-star-jump calc(var(--beat-dur, 0.52s) * 1.5) cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }
+.dance-move-robot_arms { animation: dance-robot calc(var(--beat-dur, 0.52s) * 2) steps(4, end) infinite; }
+.dance-move-march { animation: dance-march calc(var(--beat-dur, 0.52s) * 2) ease-in-out infinite; }
+.dance-move-stomp { animation: dance-stomp calc(var(--beat-dur, 0.52s) * 2) ease-in-out infinite; }
+.dance-move-bunny_hop { animation: dance-bunny-hop calc(var(--beat-dur, 0.52s) * 1.5) cubic-bezier(0.34, 1.56, 0.64, 1) infinite; }
+.dance-move-wiggle { animation: dance-wiggle calc(var(--beat-dur, 0.52s) * 1.5) ease-in-out infinite; }
+.dance-move-flamingo { animation: dance-flamingo calc(var(--beat-dur, 0.52s) * 2) ease-in-out infinite; }
+.dance-move-disco_high { animation: dance-disco-high calc(var(--beat-dur, 0.52s) * 2) ease-in-out infinite; }
+.dance-move-disco_low { animation: dance-disco-low calc(var(--beat-dur, 0.52s) * 2) ease-in-out infinite; }
+.dance-move-side_slide { animation: dance-side-slide calc(var(--beat-dur, 0.52s) * 2) ease-in-out infinite; }
+.dance-move-squat_blast { animation: dance-squat-blast calc(var(--beat-dur, 0.52s) * 2) cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.dance-move-moonwalk { animation: dance-moonwalk calc(var(--beat-dur, 0.52s) * 2.5) ease-in-out infinite; }
+.dance-move-wave { animation: dance-wave calc(var(--beat-dur, 0.52s) * 1.5) ease-in-out infinite; }
+.dance-move-freeze { transform: scale(1.03) rotate(-3deg); transition: transform 140ms ease-out; }
+.dance-note-float { animation: dance-note-float 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards; will-change: transform, opacity; }
+
 @media (prefers-reduced-motion: reduce) {
   .sprout-star-particle,
-  .sprout-cheer-pop {
+  .sprout-cheer-pop,
+  [class*="dance-move-"],
+  .dance-note-float {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 
