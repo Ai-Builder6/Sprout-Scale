@@ -30,13 +30,17 @@ import {
 } from '../types';
 import { useAgeAwareAppAvatar, useDefaultAppAvatar } from '../services/defaultAvatarService';
 import {
+  buildEstimatedWordTimings,
+  buildStarterReadAlongBooks,
   deleteChildStorybook,
   fetchStorybookReadAloudAudio,
   generatePersonalizedStorybook,
   loadChildStorybooks,
   saveChildStorybook,
   SavedStorybook,
+  StorybookAudioResult,
   StorybookMode,
+  StorybookWordTiming,
 } from '../services/storybookService';
 import {
   ElevenLabsVoiceOption,
@@ -76,6 +80,84 @@ const BEDTIME_QUICK_IDEAS = [
   'Dreaming about floating on soft golden clouds',
   'Saying goodnight to toys, the moon, and tomorrow’s adventures',
 ];
+
+interface ReadAlongSegmentProps {
+  text: string;
+  baseCharOffset: number;
+  activeRange: { startChar: number; endChar: number } | null;
+  isReadingActive: boolean;
+  isBedtimeTheme: boolean;
+  onWordTap?: (globalCharStart: number) => void;
+}
+
+const ReadAlongSegment: React.FC<ReadAlongSegmentProps> = ({
+  text,
+  baseCharOffset,
+  activeRange,
+  isReadingActive,
+  isBedtimeTheme,
+  onWordTap,
+}) => {
+  const tokens = useMemo(() => {
+    const list: Array<{ chunk: string; isWord: boolean; start: number; end: number }> = [];
+    const regex = /(\S+|\s+)/g;
+    let match: RegExpExecArray | null = regex.exec(text);
+    while (match !== null) {
+      const chunk = match[0];
+      list.push({
+        chunk,
+        isWord: !/^\s+$/.test(chunk),
+        start: baseCharOffset + match.index,
+        end: baseCharOffset + match.index + chunk.length,
+      });
+      match = regex.exec(text);
+    }
+    return list;
+  }, [text, baseCharOffset]);
+
+  return (
+    <>
+      {tokens.map((tok, idx) => {
+        if (!tok.isWord) {
+          return <React.Fragment key={idx}>{tok.chunk}</React.Fragment>;
+        }
+
+        const isLit = Boolean(
+          activeRange && activeRange.startChar < tok.end && activeRange.endChar > tok.start,
+        );
+        const isPast = Boolean(activeRange && tok.end <= activeRange.startChar);
+
+        let stateClass = '';
+        if (isLit) {
+          stateClass = isBedtimeTheme
+            ? 'bg-amber-300 text-indigo-950 font-bold shadow-[0_0_16px_rgba(252,211,77,0.75)] ring-2 ring-amber-200/80'
+            : 'bg-amber-300 text-slate-950 font-bold shadow-xs ring-2 ring-amber-400/75';
+        } else if (isReadingActive && !isPast) {
+          stateClass = isBedtimeTheme
+            ? 'text-indigo-100/70'
+            : 'text-slate-700/70 dark:text-slate-200/70';
+        } else if (isReadingActive && isPast) {
+          stateClass = isBedtimeTheme
+            ? 'text-amber-100'
+            : 'text-indigo-950 dark:text-white';
+        }
+
+        return (
+          <span
+            key={idx}
+            onClick={onWordTap ? () => onWordTap(tok.start) : undefined}
+            title={onWordTap ? 'Tap word to hear from here' : undefined}
+            className={`inline rounded-md px-0.5 -mx-0.5 transition-colors duration-100 ${
+              onWordTap ? 'cursor-pointer hover:underline decoration-amber-400/70' : ''
+            } ${stateClass}`}
+          >
+            {tok.chunk}
+          </span>
+        );
+      })}
+    </>
+  );
+};
 
 export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
   activeChild,
@@ -147,20 +229,44 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
   const [openBook, setOpenBook] = useState<SavedStorybook | null>(null);
   const [currentPageIdx, setCurrentPageIdx] = useState<number>(0);
 
-  // Read-aloud narration state
+  // Read-aloud narration & synchronized word-lighting state
   const [isReadingAloud, setIsReadingAloud] = useState<boolean>(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState<boolean>(false);
   const [isAutoReadingWholeBook, setIsAutoReadingWholeBook] = useState<boolean>(false);
+  const [readAlongSpeed, setReadAlongSpeed] = useState<'normal' | 'slow'>('normal');
+  const [activeWordRange, setActiveWordRange] = useState<{
+    startChar: number;
+    endChar: number;
+  } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioCacheRef = useRef<Map<string, string>>(new Map());
+  const audioCacheRef = useRef<Map<string, StorybookAudioResult>>(new Map());
+  const activeTimingsRef = useRef<StorybookWordTiming[]>([]);
+  const rafIdRef = useRef<number | null>(null);
+  const readAlongSpeedRef = useRef<'normal' | 'slow'>(readAlongSpeed);
   const wholeBookActiveRef = useRef<boolean>(false);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    readAlongSpeedRef.current = readAlongSpeed;
+    if (audioRef.current) {
+      audioRef.current.playbackRate = readAlongSpeed === 'slow' ? 0.84 : 1.0;
+    }
+  }, [readAlongSpeed]);
+
+  const stopHighlightLoop = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      window.cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+  }, []);
+
   const stopReadAloud = useCallback(() => {
     wholeBookActiveRef.current = false;
+    stopHighlightLoop();
     setIsAutoReadingWholeBook(false);
     setIsReadingAloud(false);
     setIsLoadingAudio(false);
+    setActiveWordRange(null);
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.onended = null;
@@ -174,7 +280,7 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
         // Ignore speech cancel issues
       }
     }
-  }, []);
+  }, [stopHighlightLoop]);
 
   // Whenever the signed-in / selected child switches (e.g. Tommy -> Joey -> Sandra),
   // immediately switch the bookshelf, open book, date & selected photos to THAT child!
@@ -330,9 +436,14 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
     }
   };
 
-  // Speak one page using ElevenLabs announcer (with Gemini TTS & Web Speech fallback)
+  // Speak one page using ElevenLabs announcer with exact word-by-word read-along lighting
   const speakPage = useCallback(
-    async (book: SavedStorybook, pageIndex: number, continueAfter: boolean) => {
+    async (
+      book: SavedStorybook,
+      pageIndex: number,
+      continueAfter: boolean,
+      startAtChar?: number,
+    ) => {
       const page = book.pages[pageIndex];
       if (!page) {
         stopReadAloud();
@@ -349,6 +460,8 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
       setIsLoadingAudio(true);
 
       const handleFinished = () => {
+        stopHighlightLoop();
+        setActiveWordRange(null);
         if (continueAfter && wholeBookActiveRef.current && pageIndex + 1 < book.pages.length) {
           const nextIdx = pageIndex + 1;
           setCurrentPageIdx(nextIdx);
@@ -361,7 +474,55 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
         }
       };
 
+      const startSyncLoop = (audioEl: HTMLAudioElement, initialTimings: StorybookWordTiming[]) => {
+        stopHighlightLoop();
+        activeTimingsRef.current = initialTimings;
+
+        const tick = () => {
+          if (audioRef.current !== audioEl || audioEl.ended) {
+            return;
+          }
+          let timings = activeTimingsRef.current;
+          if (
+            timings.length === 0 &&
+            Number.isFinite(audioEl.duration) &&
+            audioEl.duration > 0
+          ) {
+            timings = buildEstimatedWordTimings(narrationText, audioEl.duration);
+            activeTimingsRef.current = timings;
+          }
+
+          if (timings.length > 0) {
+            // Slight 45ms lookahead makes the glowing word feel snappy & synced to the voice
+            const t = audioEl.currentTime + 0.045;
+            let matched: StorybookWordTiming | null = null;
+            for (let i = 0; i < timings.length; i += 1) {
+              const item = timings[i];
+              if (t >= item.startSec && t <= item.endSec + 0.14) {
+                matched = item;
+                break;
+              }
+              if (t >= item.startSec) {
+                matched = item;
+              }
+            }
+            if (matched) {
+              setActiveWordRange((prev) =>
+                prev &&
+                prev.startChar === matched!.startChar &&
+                prev.endChar === matched!.endChar
+                  ? prev
+                  : { startChar: matched!.startChar, endChar: matched!.endChar },
+              );
+            }
+          }
+          rafIdRef.current = window.requestAnimationFrame(tick);
+        };
+        rafIdRef.current = window.requestAnimationFrame(tick);
+      };
+
       const fallbackBrowserSpeech = () => {
+        stopHighlightLoop();
         setIsLoadingAudio(false);
         if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
           handleFinished();
@@ -370,9 +531,19 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
         try {
           window.speechSynthesis.cancel();
           const utter = new SpeechSynthesisUtterance(narrationText);
-          utter.rate = book.mode === 'bedtime' ? 0.84 : 0.98;
-          utter.pitch = book.mode === 'bedtime' ? 0.94 : 1.08;
+          const baseRate = book.mode === 'bedtime' ? 0.84 : 0.96;
+          utter.rate = readAlongSpeedRef.current === 'slow' ? baseRate * 0.86 : baseRate;
+          utter.pitch = book.mode === 'bedtime' ? 0.94 : 1.06;
           utter.onstart = () => setIsReadingAloud(true);
+          utter.onboundary = (event) => {
+            if (typeof event.charIndex === 'number') {
+              const idx = event.charIndex;
+              const rest = narrationText.slice(idx);
+              const wordMatch = rest.match(/^\S+/);
+              const wordLen = wordMatch ? wordMatch[0].length : Math.max(1, event.charLength || 1);
+              setActiveWordRange({ startChar: idx, endChar: idx + wordLen });
+            }
+          };
           utter.onend = handleFinished;
           utter.onerror = handleFinished;
           setIsReadingAloud(true);
@@ -383,16 +554,16 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
       };
 
       try {
-        let dataUrl = audioCacheRef.current.get(cacheKey);
-        if (!dataUrl) {
+        let cached = audioCacheRef.current.get(cacheKey);
+        if (!cached) {
           const fetched = await fetchStorybookReadAloudAudio(
             narrationText,
             book.mode,
             selectedVoiceId || undefined,
           );
           if (fetched?.audioDataUrl) {
-            dataUrl = fetched.audioDataUrl;
-            audioCacheRef.current.set(cacheKey, dataUrl);
+            cached = fetched;
+            audioCacheRef.current.set(cacheKey, fetched);
           }
         }
 
@@ -401,24 +572,91 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
           return;
         }
 
-        if (!dataUrl) {
+        if (!cached?.audioDataUrl) {
           fallbackBrowserSpeech();
           return;
         }
 
-        const audio = new Audio(dataUrl);
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.onended = null;
+          audioRef.current.onerror = null;
+        }
+
+        const audio = new Audio(cached.audioDataUrl);
+        audio.playbackRate = readAlongSpeedRef.current === 'slow' ? 0.84 : 1.0;
         audioRef.current = audio;
+
+        if (typeof startAtChar === 'number' && cached.wordTimings.length > 0) {
+          const targetTiming = cached.wordTimings.find(
+            (w) => startAtChar >= w.startChar && startAtChar <= w.endChar,
+          );
+          if (targetTiming) {
+            audio.currentTime = Math.max(0, targetTiming.startSec - 0.02);
+          }
+        }
+
         setIsLoadingAudio(false);
         setIsReadingAloud(true);
         audio.onended = handleFinished;
         audio.onerror = fallbackBrowserSpeech;
         await audio.play();
+        startSyncLoop(audio, cached.wordTimings);
       } catch {
         fallbackBrowserSpeech();
       }
     },
-    [stopReadAloud, selectedVoiceId],
+    [stopReadAloud, stopHighlightLoop, selectedVoiceId],
   );
+
+  const handleTapWordToHear = useCallback(
+    (globalCharStart: number) => {
+      if (!openBook) return;
+      // If current audio is already playing with timings, seek instantaneously!
+      if (audioRef.current && !audioRef.current.ended && activeTimingsRef.current.length > 0) {
+        const hit = activeTimingsRef.current.find(
+          (w) => globalCharStart >= w.startChar && globalCharStart <= w.endChar,
+        );
+        if (hit) {
+          audioRef.current.currentTime = Math.max(0, hit.startSec - 0.02);
+          setActiveWordRange({ startChar: hit.startChar, endChar: hit.endChar });
+          if (audioRef.current.paused) {
+            void audioRef.current.play();
+            setIsReadingAloud(true);
+          }
+          return;
+        }
+      }
+      // Otherwise launch narration starting right at the tapped word!
+      wholeBookActiveRef.current = false;
+      setIsAutoReadingWholeBook(false);
+      void speakPage(openBook, currentPageIdx, false, globalCharStart);
+    },
+    [openBook, currentPageIdx, speakPage],
+  );
+
+  // Ready-to-read personalized Read-Along Starter Stories for the active child
+  const starterReadAlongBooks = useMemo(
+    () =>
+      buildStarterReadAlongBooks({
+        childId: activeChild.id,
+        childName: activeChild.name,
+        ageMonths: currentAgeMonths,
+        heightSummary,
+        storyDate: todayIso,
+      }),
+    [activeChild.id, activeChild.name, currentAgeMonths, heightSummary, todayIso],
+  );
+
+  const handleOpenAndReadAlong = (book: SavedStorybook) => {
+    stopReadAloud();
+    setMode(book.mode);
+    setOpenBook(book);
+    setCurrentPageIdx(0);
+    wholeBookActiveRef.current = true;
+    setIsAutoReadingWholeBook(true);
+    void speakPage(book, 0, true);
+  };
 
   const handleToggleReadCurrentPage = () => {
     if (!openBook) return;
@@ -711,6 +949,21 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
 
               <button
                 type="button"
+                onClick={() => setReadAlongSpeed((s) => (s === 'normal' ? 'slow' : 'normal'))}
+                title="Switch between normal speed and slower early-reader speed"
+                className={`min-h-[44px] px-3 py-2 text-xs font-bold rounded-xl border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  readAlongSpeed === 'slow'
+                    ? 'border-emerald-500 bg-emerald-600 text-white'
+                    : isBedtimeTheme
+                      ? 'border-indigo-700 bg-indigo-900/80 text-indigo-100 hover:bg-indigo-800'
+                      : 'border-sky-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-indigo-950 dark:text-slate-100 hover:bg-sky-50 dark:hover:bg-slate-700'
+                }`}
+              >
+                {readAlongSpeed === 'slow' ? 'Early Reader 0.85×' : 'Normal 1×'}
+              </button>
+
+              <button
+                type="button"
                 onClick={handleToggleReadCurrentPage}
                 className={`min-h-[44px] inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   isReadingAloud && !isAutoReadingWholeBook
@@ -725,7 +978,7 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
                 ) : (
                   <Volume2 className="w-4 h-4" aria-hidden="true" />
                 )}
-                {isReadingAloud && !isAutoReadingWholeBook ? 'Stop Voice' : 'Read Page Aloud'}
+                {isReadingAloud && !isAutoReadingWholeBook ? 'Stop Voice' : 'Read Along Page'}
               </button>
 
               <button
@@ -838,23 +1091,49 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
               </div>
             </div>
 
-            {/* Right Spread: Cozy Story Typography & Page Controls */}
+            {/* Right Spread: Synchronized Read-Along Typography & Page Controls */}
             <div className="lg:col-span-6 p-6 sm:p-8 flex flex-col justify-between gap-6">
               <div className="space-y-4">
-                <div
-                  className={`text-xs font-mono tabular-nums font-semibold ${
-                    isBedtimeTheme ? 'text-amber-300' : 'text-amber-700 dark:text-amber-300'
-                  }`}
-                >
-                  Page 0{activeBookPage.pageNumber} · {activeBookPage.heading}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div
+                    className={`text-xs sm:text-sm font-mono tabular-nums font-semibold ${
+                      isBedtimeTheme ? 'text-amber-300' : 'text-amber-800 dark:text-amber-300'
+                    }`}
+                  >
+                    <span>Page 0{activeBookPage.pageNumber} · </span>
+                    <ReadAlongSegment
+                      text={activeBookPage.heading}
+                      baseCharOffset={0}
+                      activeRange={activeWordRange}
+                      isReadingActive={isReadingAloud}
+                      isBedtimeTheme={isBedtimeTheme}
+                      onWordTap={handleTapWordToHear}
+                    />
+                  </div>
+                  <span
+                    className={`text-[11px] font-semibold ${
+                      isBedtimeTheme ? 'text-indigo-300' : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {isReadingAloud
+                      ? 'Follow the glowing words · Tap any word to repeat'
+                      : 'Tap Read Along or tap any word to follow along'}
+                  </span>
                 </div>
 
                 <p
-                  className={`text-lg sm:text-xl leading-relaxed font-medium ${
+                  className={`text-xl sm:text-2xl leading-[1.75] font-medium tracking-[0.01em] ${
                     isBedtimeTheme ? 'text-indigo-50' : 'text-slate-800 dark:text-slate-100'
                   }`}
                 >
-                  {activeBookPage.text}
+                  <ReadAlongSegment
+                    text={activeBookPage.text}
+                    baseCharOffset={activeBookPage.heading.length + 2}
+                    activeRange={activeWordRange}
+                    isReadingActive={isReadingAloud}
+                    isBedtimeTheme={isBedtimeTheme}
+                    onWordTap={handleTapWordToHear}
+                  />
                 </p>
 
                 {/* Final Page Keepsake Closing Line + Parent-Child Question */}
@@ -866,7 +1145,18 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
                         : 'border-amber-200 dark:border-slate-700 text-indigo-950 dark:text-amber-200'
                     }`}
                   >
-                    <p className="text-base font-display font-bold">{openBook.closingLine}</p>
+                    <p className="text-base sm:text-lg font-display font-bold leading-relaxed">
+                      <ReadAlongSegment
+                        text={openBook.closingLine}
+                        baseCharOffset={
+                          activeBookPage.heading.length + 2 + activeBookPage.text.length + 1
+                        }
+                        activeRange={activeWordRange}
+                        isReadingActive={isReadingAloud}
+                        isBedtimeTheme={isBedtimeTheme}
+                        onWordTap={handleTapWordToHear}
+                      />
+                    </p>
                     <p
                       className={`text-xs sm:text-sm ${
                         isBedtimeTheme ? 'text-indigo-200' : 'text-slate-600 dark:text-slate-300'
@@ -1247,6 +1537,81 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
         </div>
       )}
 
+      {/* Ready-to-Read Follow-Along Stories (Instant Light-Up Word Books for activeChild) */}
+      <div className="pt-4 border-t border-current/10 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-0.5">
+            <h3 className="text-base sm:text-lg font-display font-bold">
+              Instant Read-Along Stories for {activeChild.name}
+            </h3>
+            <p className="text-xs opacity-75">
+              Tap any book to hear your ElevenLabs announcer read while every word lights up in real
+              time.
+            </p>
+          </div>
+          <span className="text-xs font-mono tabular-nums opacity-75">
+            {starterReadAlongBooks.length} ready now
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {starterReadAlongBooks.map((book) => {
+            const isBookBedtime = book.mode === 'bedtime';
+            const isOpen = openBook?.id === book.id;
+            return (
+              <div
+                key={book.id}
+                className={`rounded-2xl border p-4 flex flex-col justify-between gap-3 transition-colors ${
+                  isOpen
+                    ? 'border-amber-400 bg-amber-400/15'
+                    : isBedtimeTheme
+                      ? 'border-indigo-700/80 bg-indigo-900/50 hover:bg-indigo-900/80'
+                      : 'border-sky-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 hover:border-amber-300'
+                }`}
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                    {isBookBedtime ? (
+                      <Moon className="w-3.5 h-3.5 text-indigo-400 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <Sun className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-hidden="true" />
+                    )}
+                    <span
+                      className={
+                        isBookBedtime
+                          ? isBedtimeTheme
+                            ? 'text-indigo-200'
+                            : 'text-indigo-700 dark:text-indigo-300'
+                          : isBedtimeTheme
+                            ? 'text-amber-300'
+                            : 'text-amber-700 dark:text-amber-300'
+                      }
+                    >
+                      {isBookBedtime ? 'Bedtime Read-Along' : 'Daytime Read-Along'}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-display font-bold leading-snug">{book.title}</h4>
+                  <p className="text-xs opacity-75 leading-relaxed">{book.subtitle}</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenAndReadAlong(book)}
+                  className={`w-full min-h-[42px] px-3 py-2 text-xs font-bold rounded-xl inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer ${
+                    isBookBedtime
+                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                      : 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+                  }`}
+                >
+                  <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  Read Along Now
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Per-Child Saved Bookshelf (Strictly Filtered to activeChild) */}
       <div className="pt-4 border-t border-current/10 space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -1260,8 +1625,8 @@ export const StorybookTimePage: React.FC<StorybookTimePageProps> = ({
 
         {savedBooks.length === 0 ? (
           <p className="text-xs sm:text-sm opacity-75">
-            No saved stories for {activeChild.name} yet. Create a Daytime Adventure or Bedtime Story
-            above to start {activeChild.name}’s bookshelf!
+            No custom photo stories saved for {activeChild.name} yet. Create a Daytime Adventure or
+            Bedtime Story above to save it to {activeChild.name}’s bookshelf!
           </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">

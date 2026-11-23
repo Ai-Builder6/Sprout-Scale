@@ -960,13 +960,146 @@ async function startServer(): Promise<void> {
 
       const isBedtime = mode === 'bedtime';
 
-      // 1. Prefer ElevenLabs storyteller/announcer voice whenever ELEVENLABS_API_KEY is configured
+      interface WordTimingItem {
+        word: string;
+        startSec: number;
+        endSec: number;
+        startChar: number;
+        endChar: number;
+      }
+
+      const buildWordTimingsFromAlignment = (alignment?: {
+        characters?: string[];
+        character_start_times_seconds?: number[];
+        character_end_times_seconds?: number[];
+      }): WordTimingItem[] => {
+        if (
+          !alignment ||
+          !Array.isArray(alignment.characters) ||
+          !Array.isArray(alignment.character_start_times_seconds) ||
+          !Array.isArray(alignment.character_end_times_seconds)
+        ) {
+          return [];
+        }
+        const chars = alignment.characters;
+        const starts = alignment.character_start_times_seconds;
+        const ends = alignment.character_end_times_seconds;
+        const len = Math.min(chars.length, starts.length, ends.length);
+
+        const timings: WordTimingItem[] = [];
+        let wordBuf = '';
+        let wordStartChar = -1;
+        let wordStartSec = 0;
+        let wordEndSec = 0;
+
+        for (let i = 0; i < len; i += 1) {
+          const ch = String(chars[i] ?? '');
+          if (/\s/.test(ch)) {
+            if (wordBuf.length > 0) {
+              timings.push({
+                word: wordBuf,
+                startSec: Number(wordStartSec.toFixed(3)),
+                endSec: Number(Math.max(wordEndSec, wordStartSec + 0.06).toFixed(3)),
+                startChar: wordStartChar,
+                endChar: i,
+              });
+              wordBuf = '';
+              wordStartChar = -1;
+            }
+          } else {
+            if (wordStartChar === -1) {
+              wordStartChar = i;
+              wordStartSec = Number(starts[i] ?? 0);
+            }
+            wordBuf += ch;
+            wordEndSec = Number(ends[i] ?? wordStartSec + 0.08);
+          }
+        }
+        if (wordBuf.length > 0 && wordStartChar !== -1) {
+          timings.push({
+            word: wordBuf,
+            startSec: Number(wordStartSec.toFixed(3)),
+            endSec: Number(Math.max(wordEndSec, wordStartSec + 0.06).toFixed(3)),
+            startChar: wordStartChar,
+            endChar: len,
+          });
+        }
+        return timings;
+      };
+
+      // 1. Prefer ElevenLabs /with-timestamps for exact word-by-word read-along highlighting
       const elevenLabsKey = (process.env.ELEVENLABS_API_KEY || '').trim();
       if (elevenLabsKey) {
         const rawVoiceId = String(voiceId || process.env.ELEVENLABS_VOICE_ID || '').trim();
         const safeVoiceId = /^[a-zA-Z0-9_-]{8,64}$/.test(rawVoiceId)
           ? rawVoiceId
           : 'EXAVITQu4vr4xnSDxMaL';
+
+        const voiceSettings = isBedtime
+          ? {
+              stability: 0.72,
+              similarity_boost: 0.82,
+              style: 0.16,
+              speed: 0.88,
+              use_speaker_boost: true,
+            }
+          : {
+              stability: 0.48,
+              similarity_boost: 0.82,
+              style: 0.42,
+              speed: 1.0,
+              use_speaker_boost: true,
+            };
+
+        try {
+          const tsUpstream = await fetch(
+            `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(safeVoiceId)}/with-timestamps`,
+            {
+              method: 'POST',
+              headers: {
+                'xi-api-key': elevenLabsKey,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                text: cleanText,
+                model_id: 'eleven_multilingual_v2',
+                voice_settings: voiceSettings,
+              }),
+            },
+          );
+
+          if (tsUpstream.ok) {
+            const tsJson = (await tsUpstream.json().catch(() => ({}))) as {
+              audio_base64?: string;
+              alignment?: {
+                characters?: string[];
+                character_start_times_seconds?: number[];
+                character_end_times_seconds?: number[];
+              };
+              normalized_alignment?: {
+                characters?: string[];
+                character_start_times_seconds?: number[];
+                character_end_times_seconds?: number[];
+              };
+            };
+
+            if (tsJson.audio_base64) {
+              const wordTimings = buildWordTimingsFromAlignment(
+                tsJson.alignment ?? tsJson.normalized_alignment,
+              );
+              res.json({
+                audioBase64: tsJson.audio_base64,
+                mimeType: 'audio/mpeg',
+                engine: 'elevenlabs',
+                voiceId: safeVoiceId,
+                wordTimings,
+              });
+              return;
+            }
+          }
+        } catch {
+          // Fall through to standard ElevenLabs TTS endpoint below
+        }
 
         try {
           const upstream = await fetch(
@@ -981,21 +1114,7 @@ async function startServer(): Promise<void> {
               body: JSON.stringify({
                 text: cleanText,
                 model_id: 'eleven_multilingual_v2',
-                voice_settings: isBedtime
-                  ? {
-                      stability: 0.72,
-                      similarity_boost: 0.82,
-                      style: 0.16,
-                      speed: 0.88,
-                      use_speaker_boost: true,
-                    }
-                  : {
-                      stability: 0.48,
-                      similarity_boost: 0.82,
-                      style: 0.42,
-                      speed: 1.0,
-                      use_speaker_boost: true,
-                    },
+                voice_settings: voiceSettings,
               }),
             },
           );
@@ -1008,6 +1127,7 @@ async function startServer(): Promise<void> {
                 mimeType: 'audio/mpeg',
                 engine: 'elevenlabs',
                 voiceId: safeVoiceId,
+                wordTimings: [],
               });
               return;
             }
@@ -1059,6 +1179,7 @@ async function startServer(): Promise<void> {
         audioBase64: base64Wav,
         mimeType: 'audio/wav',
         engine: 'gemini',
+        wordTimings: [],
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
