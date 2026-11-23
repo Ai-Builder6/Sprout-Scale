@@ -2316,6 +2316,108 @@ Important story rules:
     }
   });
 
+  // Safe YouTube & YouTube Shorts metadata lookup for the parent-approved Playhouse Video Theater
+  app.post('/api/playhouse/youtube-meta', async (req, res) => {
+    try {
+      const rawUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+      if (!rawUrl || rawUrl.length > 512) {
+        res.status(400).json({ error: 'Please provide a valid YouTube link.' });
+        return;
+      }
+
+      const idPattern = /^[A-Za-z0-9_-]{11}$/;
+      const allowedHosts = new Set([
+        'youtube.com',
+        'www.youtube.com',
+        'm.youtube.com',
+        'music.youtube.com',
+        'youtu.be',
+        'www.youtu.be',
+        'youtube-nocookie.com',
+        'www.youtube-nocookie.com',
+      ]);
+
+      let videoId = '';
+      let isShort = false;
+
+      if (idPattern.test(rawUrl)) {
+        videoId = rawUrl;
+      } else {
+        const normalized = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+        const parsed = new URL(normalized);
+        const host = parsed.hostname.toLowerCase();
+        if (!allowedHosts.has(host)) {
+          res.status(400).json({ error: 'Only YouTube and YouTube Shorts links are supported.' });
+          return;
+        }
+        const segs = parsed.pathname.split('/').filter(Boolean);
+        if (host === 'youtu.be' || host === 'www.youtu.be') {
+          if (segs[0] && idPattern.test(segs[0])) videoId = segs[0];
+        } else if (segs[0] === 'shorts' && segs[1] && idPattern.test(segs[1])) {
+          videoId = segs[1];
+          isShort = true;
+        } else if (
+          (segs[0] === 'embed' || segs[0] === 'live') &&
+          segs[1] &&
+          idPattern.test(segs[1])
+        ) {
+          videoId = segs[1];
+        } else {
+          const vParam = parsed.searchParams.get('v') ?? '';
+          if (idPattern.test(vParam)) videoId = vParam;
+        }
+      }
+
+      if (!videoId || !idPattern.test(videoId)) {
+        res.status(400).json({ error: 'Could not find a valid YouTube video ID in that link.' });
+        return;
+      }
+
+      // Strictly construct the official YouTube oEmbed endpoint from the validated 11-char ID only
+      const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(
+        `https://www.youtube.com/watch?v=${videoId}`,
+      )}&format=json`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      let title = isShort ? 'Saved YouTube Short' : 'Saved YouTube Video';
+      let authorName = 'YouTube';
+
+      try {
+        const ytRes = await fetch(oembedUrl, {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        });
+        if (ytRes.ok) {
+          const data = (await ytRes.json()) as {
+            title?: string;
+            author_name?: string;
+          };
+          if (typeof data.title === 'string' && data.title.trim()) {
+            title = data.title.trim().slice(0, 140);
+          }
+          if (typeof data.author_name === 'string' && data.author_name.trim()) {
+            authorName = data.author_name.trim().slice(0, 80);
+          }
+        }
+      } catch {
+        // Fallback to clean generic title if YouTube oEmbed times out
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      res.json({
+        videoId,
+        isShort,
+        title,
+        authorName,
+        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
+      });
+    } catch {
+      res.status(400).json({ error: 'Invalid YouTube URL.' });
+    }
+  });
+
   // Explicit binary routes for the Meta Launch Kit ZIP & OG Social Share Banner
   // so they always return exact MIME types and never fall through to SPA HTML.
   app.get('/SproutScale-Meta-Launch-Kit.zip', (_req, res) => {

@@ -20,6 +20,7 @@ import {
   Star,
   Sun,
   Trophy,
+  Tv,
   Volume2,
   VolumeX,
   X,
@@ -47,9 +48,10 @@ import {
   saveChildDanceProgress,
 } from '../services/danceRoutinesCatalog';
 import { speakDanceCoachLine, stopDanceCoachVoice } from '../services/danceCoachVoice';
+import { PlayhouseVideoTheater } from './PlayhouseVideoTheater';
 import playhouseStageImg from '../assets/images/playhouse_dance_stage_1795413823595.jpg';
 
-type PlayhouseMode = 'learn' | 'party' | 'freeze';
+type PlayhouseMode = 'learn' | 'party' | 'freeze' | 'videos';
 type TempoPreset = 0.85 | 1.0 | 1.15;
 type FreezePhase = 'idle' | 'dancing' | 'frozen_prompt' | 'frozen_caught' | 'missed';
 
@@ -642,6 +644,7 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return;
+      if (modeRef.current === 'videos') return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       e.preventDefault();
@@ -826,14 +829,14 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
         <div
           role="tablist"
           aria-label="Playhouse activity modes"
-          className="inline-flex items-center gap-1 p-1.5 bg-white/90 dark:bg-slate-900 border border-amber-200 dark:border-slate-800 rounded-xl shadow-xs self-start lg:self-auto"
+          className="inline-flex flex-wrap items-center gap-1 p-1.5 bg-white/90 dark:bg-slate-900 border border-amber-200 dark:border-slate-800 rounded-xl shadow-xs self-start lg:self-auto"
         >
           <button
             type="button"
             role="tab"
             aria-selected={mode === 'learn'}
             onClick={() => handleSelectMode('learn')}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               mode === 'learn'
                 ? 'bg-amber-400 text-slate-950 shadow-xs'
                 : 'text-slate-700 dark:text-slate-300 hover:bg-amber-50 dark:hover:bg-slate-800'
@@ -847,7 +850,7 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
             role="tab"
             aria-selected={mode === 'party'}
             onClick={() => handleSelectMode('party')}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               mode === 'party'
                 ? 'bg-pink-500 text-white shadow-xs'
                 : 'text-slate-700 dark:text-slate-300 hover:bg-pink-50 dark:hover:bg-slate-800'
@@ -861,7 +864,7 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
             role="tab"
             aria-selected={mode === 'freeze'}
             onClick={() => handleSelectMode('freeze')}
-            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               mode === 'freeze'
                 ? 'bg-sky-500 text-white shadow-xs'
                 : 'text-slate-700 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-slate-800'
@@ -870,10 +873,38 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
             <Snowflake className="w-4 h-4" aria-hidden="true" />
             Freeze Dance
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'videos'}
+            onClick={() => handleSelectMode('videos')}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs sm:text-sm font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              mode === 'videos'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'text-slate-700 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Tv className="w-4 h-4" aria-hidden="true" />
+            Watch Videos
+          </button>
         </div>
       </section>
 
-      {/* Dominant Focal Anchor: The Live Animated Dance Playhouse Stage + Interactive Deck */}
+      {mode === 'videos' ? (
+        <PlayhouseVideoTheater
+          childId={activeChild.id}
+          childName={activeChild.name}
+          dancerFullBodyUrl={dancerAvatar.fullBodyUrl}
+          onEarnStar={(count) =>
+            updateChildProgress((prev) => ({
+              ...prev,
+              starsEarned: prev.starsEarned + count,
+            }))
+          }
+          onSwitchToDance={() => handleSelectMode('party')}
+        />
+      ) : (
+      /* Dominant Focal Anchor: The Live Animated Dance Playhouse Stage + Interactive Deck */
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* Left / Center: Animated Illustrated Playhouse Stage (7 cols on desktop) */}
         <div className="lg:col-span-7 flex flex-col bg-white dark:bg-slate-900 border border-amber-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
@@ -1432,6 +1463,7 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
           )}
         </div>
       </section>
+      )}
 
       {/* Dance Class Library: 6 Guided Upbeat Dances */}
       <section className="space-y-4">
