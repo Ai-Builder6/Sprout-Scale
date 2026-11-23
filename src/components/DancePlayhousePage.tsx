@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Bluetooth,
+  Cast,
+  Check,
   Flame,
   Mic,
   MicOff,
@@ -8,25 +11,30 @@ import {
   Music,
   Pause,
   Play,
+  RefreshCw,
   Repeat,
   RotateCcw,
   Snowflake,
   Sparkles,
+  Speaker,
   Star,
   Sun,
   Trophy,
   Volume2,
   VolumeX,
+  X,
   Zap,
 } from 'lucide-react';
 import { calculateExactAgeFromDob, ChildProfile } from '../types';
 import { useAgeAwareAppAvatar, useDefaultAppAvatar } from '../services/defaultAvatarService';
 import {
+  AudioOutputSpeaker,
   DANCE_TRACKS,
   danceAudioEngine,
   DanceTrackId,
   DjFxId,
   getDanceTrackById,
+  LoudnessBoostLevel,
 } from '../services/dancePlayhouseAudio';
 import {
   ChildDanceProgress,
@@ -136,6 +144,21 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(() => danceAudioEngine.getMuted());
   const [coachVoiceOn, setCoachVoiceOn] = useState<boolean>(true);
   const [practiceSingleMove, setPracticeSingleMove] = useState<boolean>(false);
+
+  // Bluetooth Speaker Casting & Loud Party Boost state
+  const [loudnessBoost, setLoudnessBoost] = useState<LoudnessBoostLevel>(() =>
+    danceAudioEngine.getLoudnessBoost(),
+  );
+  const [isSpeakerModalOpen, setIsSpeakerModalOpen] = useState<boolean>(false);
+  const [availableSpeakers, setAvailableSpeakers] = useState<AudioOutputSpeaker[]>([
+    { deviceId: 'default', label: 'Device Speaker (Default)', isDefault: true },
+  ]);
+  const [selectedSpeaker, setSelectedSpeaker] = useState<{ deviceId: string; label: string }>(() =>
+    danceAudioEngine.getSelectedSpeaker(),
+  );
+  const [isScanningSpeakers, setIsScanningSpeakers] = useState<boolean>(false);
+  const [speakerStatusNote, setSpeakerStatusNote] = useState<string | null>(null);
+  const castCaps = useMemo(() => danceAudioEngine.getCastCapabilities(), []);
 
   // Beat & choreography state
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
@@ -738,6 +761,25 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
 
           <button
             type="button"
+            onClick={() => {
+              setIsSpeakerModalOpen(true);
+              setSpeakerStatusNote(null);
+              void danceAudioEngine.listOutputSpeakers(false).then((list) => {
+                setAvailableSpeakers(list);
+              });
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-sky-600 hover:bg-sky-500 text-white shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Bluetooth className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span className="max-w-[150px] truncate">
+              {selectedSpeaker.deviceId !== 'default'
+                ? selectedSpeaker.label
+                : 'Cast to Speaker'}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleToggleMute}
             aria-label={isMuted ? 'Unmute music' : 'Mute music'}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
@@ -747,7 +789,7 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
             ) : (
               <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
             )}
-            <span>{isMuted ? 'Music Off' : 'Music On'}</span>
+            <span>{isMuted ? 'Music Off' : `Loud ${Math.round(loudnessBoost * 100)}%`}</span>
           </button>
 
           {onToggleTheme && (
@@ -1480,6 +1522,236 @@ export const DancePlayhousePage: React.FC<DancePlayhousePageProps> = ({
           })}
         </div>
       </section>
+
+      {/* Bluetooth / Wireless Speaker Cast & Loud Party Boost Modal */}
+      {isSpeakerModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cast-speaker-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs"
+          onClick={() => setIsSpeakerModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 flex items-center justify-center shrink-0">
+                  <Bluetooth className="w-5 h-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <h2
+                    id="cast-speaker-title"
+                    className="text-lg font-bold text-indigo-950 dark:text-white"
+                  >
+                    Cast to Bluetooth Speaker
+                  </h2>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Route both Dance Music &amp; Dance Coach to a loud external speaker
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSpeakerModalOpen(false)}
+                aria-label="Close speaker settings"
+                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5 max-h-[78vh] overflow-y-auto">
+              {/* 1. Loud Party Boost (Mastering Limiter Gain for quiet iPads & laptops) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-indigo-950 dark:text-white">
+                    Loud Party Volume Boost
+                  </h3>
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                    {Math.round(loudnessBoost * 100)}% Output · Built-in Anti-Clip Limiter
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      { level: 1.0 as LoudnessBoostLevel, title: 'Normal', sub: '100%' },
+                      { level: 1.5 as LoudnessBoostLevel, title: 'Loud Room', sub: '150%' },
+                      { level: 2.0 as LoudnessBoostLevel, title: 'Max Party', sub: '200%' },
+                    ] as const
+                  ).map((opt) => {
+                    const active = loudnessBoost === opt.level;
+                    return (
+                      <button
+                        key={opt.level}
+                        type="button"
+                        onClick={() => {
+                          setLoudnessBoost(opt.level);
+                          danceAudioEngine.setLoudnessBoost(opt.level);
+                          if (isMuted) {
+                            setIsMuted(false);
+                            danceAudioEngine.setMuted(false);
+                          }
+                          danceAudioEngine.playSpeakerTestSound();
+                        }}
+                        className={`p-3 rounded-xl border text-center transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-amber-400 border-amber-500 text-slate-950 font-extrabold shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-amber-400'
+                        }`}
+                      >
+                        <span className="block text-sm font-bold">{opt.title}</span>
+                        <span className="block text-xs opacity-80 tabular-nums">{opt.sub}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Native Wireless / AirPlay Cast Button (iPad, iPhone, Mac, Chrome/Android) */}
+              <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const result = await danceAudioEngine.openNativeSpeakerCastPicker();
+                      setSpeakerStatusNote(result.message);
+                    }}
+                    className="flex-1 min-w-[200px] px-4 py-3 rounded-xl text-sm font-bold bg-sky-600 hover:bg-sky-500 text-white shadow-xs transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+                  >
+                    <Cast className="w-4 h-4 shrink-0" aria-hidden="true" />
+                    {castCaps.canAirPlay
+                      ? 'Open AirPlay / Bluetooth Picker'
+                      : 'Cast to Wireless Speaker'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isMuted) {
+                        setIsMuted(false);
+                        danceAudioEngine.setMuted(false);
+                      }
+                      danceAudioEngine.playSpeakerTestSound();
+                      setSpeakerStatusNote(
+                        `Playing test sound on ${selectedSpeaker.label} at ${Math.round(loudnessBoost * 100)}% volume.`,
+                      );
+                    }}
+                    className="px-4 py-3 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <Volume2 className="w-4 h-4" aria-hidden="true" />
+                    Test Speaker
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Direct Paired Bluetooth / External Speaker Output List (Chrome, Edge, Laptop, Android) */}
+              <div className="space-y-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-indigo-950 dark:text-white">
+                    Paired Bluetooth &amp; Audio Speakers
+                  </h3>
+                  <button
+                    type="button"
+                    disabled={isScanningSpeakers}
+                    onClick={async () => {
+                      setIsScanningSpeakers(true);
+                      setSpeakerStatusNote(null);
+                      const list = await danceAudioEngine.listOutputSpeakers(true);
+                      setAvailableSpeakers(list);
+                      setIsScanningSpeakers(false);
+                      setSpeakerStatusNote(
+                        list.length > 1
+                          ? `Found ${list.length} audio outputs — tap your Bluetooth speaker below.`
+                          : 'Pair your Bluetooth speaker in device Bluetooth Settings, then tap Scan Again.',
+                      );
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-sky-100 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${isScanningSpeakers ? 'animate-spin' : ''}`}
+                      aria-hidden="true"
+                    />
+                    {isScanningSpeakers ? 'Scanning...' : 'Scan Bluetooth Speakers'}
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {availableSpeakers.map((spk) => {
+                    const isCurrent = selectedSpeaker.deviceId === spk.deviceId;
+                    return (
+                      <button
+                        key={spk.deviceId}
+                        type="button"
+                        onClick={async () => {
+                          const res = await danceAudioEngine.selectOutputSpeaker(
+                            spk.deviceId,
+                            spk.label,
+                          );
+                          setSelectedSpeaker({ deviceId: spk.deviceId, label: spk.label });
+                          if (res.ok) {
+                            danceAudioEngine.playSpeakerTestSound();
+                            setSpeakerStatusNote(
+                              `Connected! Dance music and coach voice now play on ${spk.label}.`,
+                            );
+                          } else if (res.error) {
+                            setSpeakerStatusNote(res.error);
+                          }
+                        }}
+                        className={`w-full flex items-center justify-between gap-3 px-3.5 py-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                          isCurrent
+                            ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-400 dark:border-sky-600'
+                            : 'bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-sky-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Speaker
+                            className={`w-4 h-4 shrink-0 ${
+                              isCurrent ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500'
+                            }`}
+                            aria-hidden="true"
+                          />
+                          <span className="text-sm font-semibold text-indigo-950 dark:text-white truncate">
+                            {spk.label}
+                          </span>
+                        </div>
+                        {isCurrent && (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 dark:text-sky-300 shrink-0">
+                            <Check className="w-4 h-4" aria-hidden="true" />
+                            Active
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {speakerStatusNote && (
+                <p className="text-xs font-medium text-sky-900 dark:text-sky-200 bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 rounded-xl px-3.5 py-2.5">
+                  {speakerStatusNote}
+                </p>
+              )}
+
+              {/* Quick iPad / Laptop Bluetooth Helper */}
+              <div className="text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3.5 space-y-1">
+                <p className="font-bold text-slate-800 dark:text-slate-200">
+                  Using an iPad, iPhone, or Laptop Bluetooth Speaker?
+                </p>
+                <p>
+                  Pair your speaker (JBL, Bose, Echo, Sonos, HomePod) once in{' '}
+                  <strong>Settings → Bluetooth</strong> or swipe down for{' '}
+                  <strong>Control Center → Audio Output</strong>. Turn on{' '}
+                  <strong>Max Party (200%)</strong> above for extra-loud, clean bass without
+                  clipping.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

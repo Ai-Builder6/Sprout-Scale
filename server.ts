@@ -2355,10 +2355,11 @@ Important story rules:
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
+    const disableHmr = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
-        ws: { server: httpServer },
+        hmr: disableHmr ? false : { server: httpServer },
       },
       appType: 'spa',
     });

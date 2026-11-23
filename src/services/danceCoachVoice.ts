@@ -82,7 +82,11 @@ export async function speakDanceCoachLine(
 
   const playUrl = (url: string) => {
     if (myGen !== coachSpeakGeneration) return;
-    const audio = new Audio(url);
+    const audio = new Audio(url) as HTMLAudioElement & {
+      setSinkId?: (sinkId: string) => Promise<void>;
+    };
+    audio.setAttribute('playsinline', 'true');
+    audio.setAttribute('x-webkit-airplay', 'allow');
     activeCoachAudio = audio;
     audio.onended = () => {
       if (myGen === coachSpeakGeneration) {
@@ -96,11 +100,22 @@ export async function speakDanceCoachLine(
         danceAudioEngine.setDucked(false);
       }
     };
-    void audio.play().catch(() => {
-      if (myGen === coachSpeakGeneration) {
-        danceAudioEngine.setDucked(false);
-      }
-    });
+
+    const selected = danceAudioEngine.getSelectedSpeaker();
+    const startPlayback = () => {
+      if (myGen !== coachSpeakGeneration) return;
+      void audio.play().catch(() => {
+        if (myGen === coachSpeakGeneration) {
+          danceAudioEngine.setDucked(false);
+        }
+      });
+    };
+
+    if (selected.deviceId && selected.deviceId !== 'default' && typeof audio.setSinkId === 'function') {
+      void audio.setSinkId(selected.deviceId).then(startPlayback).catch(startPlayback);
+    } else {
+      startPlayback();
+    }
   };
 
   if (cachedUrl) {
